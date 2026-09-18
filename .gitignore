@@ -1,0 +1,6 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+case_text.txt
+*.pdf
