@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 case_text.txt
 *.pdf
+database/*.db
