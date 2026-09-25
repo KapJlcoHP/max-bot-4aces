@@ -24,10 +24,10 @@ async def main() -> None:
 
     bot = Bot(token=token)
     dp = Dispatcher()
-    dp.include_router(start_handler.router)
+    dp.include_routers(start_handler.router)
 
     me = await bot.get_me()
-    print(f"Бот: @{me.username} ({me.name})")
+    print(f"Бот: @{me.username} ({me.first_name})")
     print("Long polling запущен. Ctrl+C — остановить.")
     await dp.start_polling(bot)
 
