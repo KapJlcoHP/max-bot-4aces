@@ -5,7 +5,10 @@ const MONTHS = [
 
 export function parseDate(iso: string | null | undefined): Date | null {
   if (!iso) return null;
-  const d = new Date(iso);
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const d = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(iso);
   return isNaN(d.getTime()) ? null : d;
 }
 

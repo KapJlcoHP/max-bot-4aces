@@ -1,27 +1,30 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "../api";
-import { fmtWhen } from "../format";
+import { fmtWhen, parseDate } from "../format";
 import type { BpRecord } from "../types";
-import { Badge, Header, useToast } from "../components/ui";
+import { Button, Badge, BrandMark, Header, useToast } from "../components/ui";
 import { I } from "../icons";
 
 function Chart({ records }: { records: BpRecord[] }) {
-  // последние 14 записей в хронологическом порядке
+  // Записи за последние 14 дней в хронологическом порядке.
   const pts = useMemo(
-    () => [...records].slice(0, 14).reverse(),
+    () => [...records].filter((r) => (parseDate(r.at)?.getTime() ?? 0) >= Date.now() - 14 * 86400000).reverse(),
     [records],
   );
   if (pts.length < 2) return <div className="muted" style={{ marginTop: 10 }}>Нужно минимум две записи для графика.</div>;
 
   const W = 320, H = 150, PAD = 14;
+  const values = pts.flatMap((r) => [r.systolic, r.diastolic]);
+  const min = Math.max(0, Math.min(...values) - 10);
+  const max = Math.max(...values) + 10;
   const xs = (i: number) => PAD + (i * (W - 2 * PAD)) / (pts.length - 1);
-  const ys = (v: number) => H - 20 - ((v - 60) * (H - 40)) / 100; // диапазон 60–160
+  const ys = (v: number) => H - 20 - ((v - min) * (H - 40)) / (max - min);
   const line = (get: (r: BpRecord) => number) => pts.map((r, i) => `${xs(i)},${ys(get(r))}`).join(" ");
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", marginTop: 10 }}>
-      {[40, 80, 120].map((y) => (
-        <line key={y} x1={PAD} y1={ys(y)} x2={W - PAD} y2={ys(y)} stroke="#E7E7EA" strokeDasharray="3 4" />
+      {[35, 75, 115].map((y) => (
+        <line key={y} x1={PAD} y1={y} x2={W - PAD} y2={y} stroke="#E7E7EA" strokeDasharray="3 4" />
       ))}
       <polyline points={line((r) => r.systolic)} fill="none" stroke="#2563EB" strokeWidth="2.5" strokeLinejoin="round" />
       <polyline points={line((r) => r.diastolic)} fill="none" stroke="#8B5CF6" strokeWidth="2.5" strokeLinejoin="round" />
@@ -73,13 +76,13 @@ export default function Health() {
 
   return (
     <div className="app" style={{ display: "flex", flexDirection: "column" }}>
-      <Header title="Дневник здоровья" subtitle="Мониторинг давления" back="/profile" />
+      <Header title="Дневник здоровья" subtitle="Мониторинг давления" back="/profile" right={<BrandMark />} />
       <div className="screen-body">
         {status === "error" && (
           <div className="state-wrap">
             <div className="alert-circle"><I.alert size={30} /></div>
             <h2>Не удалось загрузить</h2>
-            <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={load}>Повторить</button>
+            <Button className="btn btn-primary" style={{ marginTop: 14 }} onClick={load}>Повторить</Button>
           </div>
         )}
         {status === "loading" && (
@@ -92,7 +95,7 @@ export default function Health() {
           <>
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <h3 className="h3">Давление, последние записи</h3>
+                <h3 className="h3">Давление за 14 дней</h3>
                 <div className="legend">
                   <span><i style={{ background: "#2563EB" }} />Сис.</span>
                   <span><i style={{ background: "#8B5CF6" }} />Диас.</span>
@@ -109,7 +112,7 @@ export default function Health() {
                   <div className="field"><input inputMode="numeric" placeholder="Диастол." value={form.dia} onChange={(e) => setForm({ ...form, dia: e.target.value })} /></div>
                   <div className="field"><input inputMode="numeric" placeholder="Пульс" value={form.pulse} onChange={(e) => setForm({ ...form, pulse: e.target.value })} /></div>
                 </div>
-                <button className="btn btn-primary" onClick={add} disabled={busy}>{busy ? "Сохраняем…" : "Сохранить"}</button>
+                <Button className="btn btn-primary" onClick={add} disabled={busy}>{busy ? "Сохраняем…" : "Сохранить"}</Button>
               </div>
             )}
 
@@ -135,9 +138,9 @@ export default function Health() {
         )}
       </div>
       <div className="foot">
-        <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
+        <Button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
           {showForm ? "Свернуть форму" : "Новая запись"}
-        </button>
+        </Button>
       </div>
       {toast}
     </div>

@@ -1,17 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
+import { Avatar as MaxAvatar, Button as MaxButton, IconButton, Switch } from "@maxhub/max-ui";
+import type { ButtonProps } from "@maxhub/max-ui";
 import { I, Logo } from "../icons";
 
 export function Badge({ color, children }: { color: "blue" | "yellow" | "green" | "gray"; children: ReactNode }) {
   return <span className={`badge badge-${color}`}>{children}</span>;
 }
 
+export function BrandMark() {
+  return <div className="brand-mark"><Logo size={26} /><strong>МедМаршрут</strong></div>;
+}
+
+export function Button({ className = "", variant, ...props }: ButtonProps) {
+  const resolvedVariant = variant ?? (className.includes("secondary") ? "secondary" : "primary");
+  return <MaxButton size="large" stretched variant={resolvedVariant} className={className} {...props} />;
+}
+
 export function Toggle({ on, onChange }: { on: boolean; onChange?: () => void }) {
   return (
-    <button type="button" className={`toggle${on ? " on" : ""}`} onClick={(e) => { e.stopPropagation(); onChange?.(); }}>
-      <i />
-    </button>
+    <Switch type="checkbox" checked={on} aria-label="Переключить" onClick={(e) => e.stopPropagation()} onChange={onChange} />
   );
 }
 
@@ -21,9 +30,9 @@ export function Header({ title, subtitle, back, right }: { title: string; subtit
     <div className="header">
       <div className="h-row">
         {back && (
-          <button className="back-btn" onClick={() => navigate(back)} aria-label="Назад">
+          <IconButton className="back-btn" variant="ghost" onClick={() => navigate(back)} aria-label="Назад">
             <I.back />
-          </button>
+          </IconButton>
         )}
         <div className="h-title">
           <h1>{title}</h1>
@@ -35,7 +44,7 @@ export function Header({ title, subtitle, back, right }: { title: string; subtit
   );
 }
 
-export function HomeHeader({ firstName, onBell }: { firstName: string; onBell: () => void }) {
+export function HomeHeader({ onBell }: { onBell: () => void }) {
   return (
     <div className="header">
       <div className="h-row">
@@ -43,12 +52,9 @@ export function HomeHeader({ firstName, onBell }: { firstName: string; onBell: (
           <div className="logo"><Logo /></div>
           <h1>МедМаршрут</h1>
         </div>
-        <button className="icon-btn" onClick={onBell} aria-label="Уведомления">
+        <IconButton className="icon-btn" variant="secondary" onClick={onBell} aria-label="Уведомления">
           <I.bell size={22} />
-        </button>
-      </div>
-      <div style={{ fontSize: 24, fontWeight: 700, marginTop: 10 }}>
-        Здравствуйте, {firstName}
+        </IconButton>
       </div>
     </div>
   );
@@ -64,7 +70,7 @@ const TABS = [
 
 export function BottomNav() {
   const navigate = useNavigate();
-  const { pathname } = { pathname: window.location.pathname };
+  const { pathname } = useLocation();
   return (
     <nav className="tabbar">
       {TABS.map((t) => {
@@ -89,7 +95,7 @@ export function StateView({ icon, title, text, button, onButton }: {
       {icon}
       <h2>{title}</h2>
       <p>{text}</p>
-      {button && <button className="btn btn-primary" onClick={onButton}>{button}</button>}
+      {button && <Button className="btn btn-primary" onClick={onButton}>{button}</Button>}
     </div>
   );
 }
@@ -126,8 +132,37 @@ export function useToast(): [ReactNode, (msg: string) => void] {
 
 export function Avatar({ text, color = "blue", size = 44, fontSize = 15 }: { text: string; color?: string; size?: number; fontSize?: number }) {
   return (
-    <div className={`avatar ${color}`} style={{ width: size, height: size, fontSize }}>
-      {text}
+    <MaxAvatar.Container size={size} form="circle" className={`avatar ${color}`}>
+      <MaxAvatar.Text className="avatar-text" style={{ fontSize }}>{text}</MaxAvatar.Text>
+    </MaxAvatar.Container>
+  );
+}
+
+export function TabHeader({ action, actionLabel, onAction }: { action?: ReactNode; actionLabel?: string; onAction?: () => void }) {
+  return (
+    <div className="header tab-header">
+      <div className="h-row">
+        <div className="brand"><div className="logo"><Logo /></div><h1>МедМаршрут</h1></div>
+        {onAction ? <IconButton className="icon-btn blue" variant="secondary" onClick={onAction} aria-label={actionLabel ?? "Действие"}>{action}</IconButton> : action}
+      </div>
     </div>
+  );
+}
+
+export function DesktopNav({ name }: { name: string }) {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  return (
+    <aside className="desktop-nav" aria-label="Основная навигация">
+      <div className="brand desktop-brand"><div className="logo"><Logo /></div><h1>МедМаршрут</h1></div>
+      <nav>
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          const active = t.to === "/" ? pathname === "/" : pathname.startsWith(t.to);
+          return <button key={t.to} className={`desktop-tab${active ? " active" : ""}`} onClick={() => navigate(t.to)}><Icon size={22} /><span>{t.label}</span></button>;
+        })}
+      </nav>
+      <div className="desktop-account"><Avatar text={name.slice(0, 2).toUpperCase()} size={40} /><span><strong>{name}</strong><small>Пациент</small></span></div>
+    </aside>
   );
 }

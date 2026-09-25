@@ -13,7 +13,7 @@
 
 - **Бэкенд:** Python 3.12, FastAPI + uvicorn, SQLAlchemy 2.0 + SQLite, pydantic v2
 - **Бот:** [maxapi](https://love-apples.github.io/maxapi/) (long polling в dev)
-- **Мини-ап:** Vite 6 + React 18 + TypeScript, MAX Bridge (`window.WebApp`)
+- **Мини-ап:** Vite 6 + React 19 + TypeScript, MAX Bridge (`window.WebApp`) и компоненты MAX UI (`@maxhub/max-ui`)
 - Аутентификация мини-апа — подписанный `initData` (HMAC-SHA256), проверяется на сервере
 
 ## Структура
@@ -24,7 +24,7 @@ zabota/
 ├── bot/           # адаптер чат-бота (maxapi): /start, /app, /help + кнопка мини-апа
 ├── server/        # FastAPI: REST /api/v1 (+ статика собранного мини-апа)
 ├── content/       # контент вне кода: каталог ситуаций, сценарии маршрутов, организации
-├── web/           # мини-ап (React): все экраны из макета mockup/
+├── web/           # мини-ап (React): мобильные экраны и десктопная раскладка по макету МедМаршрут
 ├── certs/         # российский CA-бандл для Bot API (пригодится в Docker)
 ├── run_api.bat    # запуск API: http://127.0.0.1:8000
 ├── run_web.bat    # dev-сервер мини-апа: http://localhost:5173 (нужен запущенный API)

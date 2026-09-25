@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
+import { openExternalLink } from "../bridge";
 import type { Organization } from "../types";
-import { Header } from "../components/ui";
+import { Button, Header } from "../components/ui";
 import { I } from "../icons";
 
 export default function OrgDetail() {
@@ -45,7 +46,7 @@ export default function OrgDetail() {
             <div
               className="map-ph"
               style={{ cursor: "pointer" }}
-              onClick={() => window.open(`https://yandex.ru/maps/?text=${encodeURIComponent(org.address)}`, "_blank")}
+              onClick={() => openExternalLink(`https://yandex.ru/maps/?text=${encodeURIComponent(org.address)}`)}
             >
               <I.pin size={40} />
               <span>Открыть карту</span>
@@ -67,12 +68,12 @@ export default function OrgDetail() {
             <a className="btn btn-secondary" href={`tel:${org.phone.replace(/[^+\d]/g, "")}`} style={{ textDecoration: "none" }}>
               Позвонить
             </a>
-            <button
+            <Button
               className="btn btn-primary"
-              onClick={() => window.open(`https://yandex.ru/maps/?text=${encodeURIComponent(org.address)}`, "_blank")}
+              onClick={() => openExternalLink(`https://yandex.ru/maps/?text=${encodeURIComponent(org.address)}`)}
             >
               Показать маршрут
-            </button>
+            </Button>
           </div>
         </div>
       )}

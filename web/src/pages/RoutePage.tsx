@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { fmtDeadline } from "../format";
 import type { RouteDto } from "../types";
-import { ErrorView, Header, StateView } from "../components/ui";
+import { Button, ErrorView, Header, StateView } from "../components/ui";
 import { I } from "../icons";
 
 export default function RoutePage() {
@@ -33,9 +33,9 @@ export default function RoutePage() {
   const current = route?.steps.find((s) => s.status === "current") ?? null;
 
   return (
-    <div className="app" style={{ display: "flex", flexDirection: "column" }}>
+    <div className="app route-screen" style={{ display: "flex", flexDirection: "column" }}>
       <Header title="Ваш маршрут" subtitle={route?.title ?? undefined} back="/" />
-      <div className="screen-body">
+      <div className="screen-body route-body">
         {status === "loading" && <div className="skel blk" />}
         {status === "ready" && route === null && (
           <StateView
@@ -47,17 +47,21 @@ export default function RoutePage() {
           />
         )}
         {route && finished && (
-          <StateView
-            icon={<div className="big-check"><I.check size={46} /></div>}
-            title="Маршрут завершён!"
-            text="Поздравляем! Вы прошли все шаги маршрута. Все необходимые процедуры и документы — выполнены."
-            button="Выбрать новую ситуацию"
-            onButton={() => nav("/catalog")}
-          />
+          <div className="route-complete">
+            <div className="big-check"><I.check size={46} /></div>
+            <h2>Маршрут завершён!</h2>
+            <p>Поздравляем! Вы прошли все шаги маршрута. Все необходимые процедуры и сбор документов успешно завершены.</p>
+            <div className="card route-complete-summary">
+              <div className="tl-top"><h3>{route.title}</h3><span className="badge badge-blue">100% готово</span></div>
+              <div className="progress"><i style={{ width: "100%" }} /></div>
+              <div className="route-stats"><span>Шаги<strong>{route.total_steps}</strong></span><span>Готово<strong>{route.done_steps}</strong></span><span>Следующий<strong>0</strong></span></div>
+            </div>
+            <Button className="btn btn-primary" onClick={() => nav("/catalog")}>Выбрать новую ситуацию</Button>
+          </div>
         )}
         {route && !finished && (
           <>
-            <div className="card">
+            <div className="card route-progress">
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                 <span style={{ fontSize: 13, color: "#8E8E93" }}>Прогресс маршрута</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: "#2563EB" }}>
@@ -69,7 +73,8 @@ export default function RoutePage() {
               </div>
             </div>
 
-            <div className="tl" style={{ marginTop: 4 }}>
+            <div className="tl route-timeline" style={{ marginTop: 4 }}>
+              <h2 className="route-timeline-title">Этапы прохождения</h2>
               {route.steps.map((s, i) => {
                 const last = i === route.steps.length - 1;
                 return (
@@ -99,17 +104,26 @@ export default function RoutePage() {
                 );
               })}
             </div>
+            {current && <div className="card route-current-detail">
+              <span className="badge badge-blue">ТЕКУЩИЙ ЭТАП</span>
+              <h2>{current.title}</h2>
+              {current.deadline && <p className="kv"><I.cal size={18} />Срок: {fmtDeadline(current.deadline, current.deadline_time)}</p>}
+              {current.place && <p className="kv"><I.pin size={18} />{current.place}</p>}
+              <h3>Что нужно сделать</h3>
+              <p className="muted">{current.description}</p>
+              <Button className="btn btn-primary" onClick={() => nav(`/step/${current.id}`)}>Открыть шаг</Button>
+            </div>}
           </>
         )}
       </div>
       {route && !finished && current && (
         <div className="foot">
-          <button className="btn btn-primary" onClick={() => nav(`/step/${current.id}`)}>
+          <Button className="btn btn-primary" onClick={() => nav(`/step/${current.id}`)}>
             Перейти к следующему шагу
-          </button>
-          <button className="btn btn-secondary" onClick={() => nav("/catalog")}>
+          </Button>
+          <Button className="btn btn-secondary" onClick={() => nav("/catalog")}>
             Сменить ситуацию
-          </button>
+          </Button>
         </div>
       )}
     </div>

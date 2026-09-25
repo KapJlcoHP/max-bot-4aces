@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "../api";
 import type { Checklist } from "../types";
-import { Header, StateView, useToast } from "../components/ui";
+import { Button, StateView, TabHeader, useToast } from "../components/ui";
 import { I } from "../icons";
 
 function CheckRow({ title, collected, onToggle }: { title: string; collected: boolean; onToggle: () => void }) {
@@ -19,6 +19,7 @@ export default function Checklist() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [newTitle, setNewTitle] = useState("");
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -50,6 +51,7 @@ export default function Checklist() {
       const item = await api.post<import("../types").ChecklistItem>("/api/v1/checklist", { title });
       setData((d) => (d ? { ...d, items: [...d.items, item], total: d.total + 1 } : d));
       setNewTitle("");
+      setAdding(false);
       showToast("Документ добавлен");
     } catch (e) {
       showToast(e instanceof ApiError ? e.message : "Не удалось добавить");
@@ -61,7 +63,7 @@ export default function Checklist() {
   if (status === "error") {
     return (
       <div className="app" style={{ display: "flex", flexDirection: "column" }}>
-        <Header title="Чек-лист документов" />
+        <TabHeader action={<I.plus size={22} />} actionLabel="Добавить документ" onAction={() => setAdding(true)} />
         <StateView
           icon={<div className="alert-circle"><I.alert size={30} /></div>}
           title="Ошибка загрузки списка"
@@ -78,15 +80,7 @@ export default function Checklist() {
 
   return (
     <div className="app" style={{ display: "flex", flexDirection: "column" }}>
-      <Header
-        title="Чек-лист документов"
-        subtitle={data ? `${data.collected} из ${data.total} собрано` : undefined}
-        right={
-          <span className="icon-btn blue" style={{ cursor: "default" }}>
-            <I.plus size={22} />
-          </span>
-        }
-      />
+      <TabHeader action={<I.plus size={22} />} actionLabel="Добавить документ" onAction={() => setAdding(true)} />
       <div className="screen-body">
         {status === "loading" && (
           <>
@@ -99,6 +93,8 @@ export default function Checklist() {
             icon={<I.doc size={64} />}
             title="Документы не добавлены"
             text="Начните собирать документы для вашего активного маршрута"
+            button="Добавить документ"
+            onButton={() => setAdding(true)}
           />
         )}
         {status === "ready" && data && data.total > 0 && (
@@ -110,21 +106,22 @@ export default function Checklist() {
           </>
         )}
       </div>
-      <div className="foot">
+      {adding && <div className="foot">
         <div className="btn-row">
           <div className="field" style={{ flex: 1, height: 48 }}>
             <input
+              autoFocus
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="Название документа…"
               onKeyDown={(e) => e.key === "Enter" && add()}
             />
           </div>
-          <button className="btn btn-primary" style={{ width: 56, flex: "0 0 56px" }} onClick={add} disabled={busy} aria-label="Добавить документ">
+          <Button className="btn btn-primary" style={{ width: 56, flex: "0 0 56px" }} onClick={add} disabled={busy} aria-label="Добавить документ">
             <I.plus size={20} />
-          </button>
+          </Button>
         </div>
-      </div>
+      </div>}
       {toast}
     </div>
   );
