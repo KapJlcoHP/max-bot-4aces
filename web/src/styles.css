@@ -1,7 +1,7 @@
 /* Дизайн-система «МедМаршрут» — порт из утверждённого макета (mockup/index.html) */
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body, #root { height: 100%; }
+html, body, #root { height: 100%; width: 100%; }
 body {
   font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
   background: #EDEEF2; color: #1A1A1A;
@@ -11,7 +11,7 @@ button { font-family: inherit; }
 a { color: #2563EB; text-decoration: none; }
 
 .app {
-  max-width: 430px; height: 100dvh; margin: 0 auto;
+  width: 100%; max-width: 430px; height: 100dvh; margin: 0 auto;
   background: #F5F5F7; display: flex; flex-direction: column;
   position: relative; box-shadow: 0 0 40px rgba(0,0,0,.08);
 }
@@ -42,7 +42,7 @@ a { color: #2563EB; text-decoration: none; }
 .brand h1 { font-size: 20px; font-weight: 700; }
 
 /* Контент */
-.screen-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: none; }
+.screen-body { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 16px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: none; }
 .screen-body::-webkit-scrollbar { display: none; }
 .screen-body.nopad { padding: 0; }
 .screen-body.center { align-items: center; text-align: center; padding-top: 40px; }
@@ -61,6 +61,8 @@ a { color: #2563EB; text-decoration: none; }
   justify-content: center; gap: 8px; cursor: pointer; transition: 0.2s;
 }
 .btn:disabled { opacity: 0.55; cursor: default; }
+.btn-content { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; }
+.btn-content svg { display: block; flex: 0 0 auto; }
 .btn-primary { background: #2563EB; color: #fff; }
 .btn-primary:hover:not(:disabled) { background: #1E54CE; }
 .btn-secondary { background: #fff; color: #1A1A1A; border: 1.5px solid #E2E2E6; }
@@ -122,6 +124,8 @@ a { color: #2563EB; text-decoration: none; }
 .search input { flex: 1; border: none; background: none; outline: none; font-size: 14px; color: #1A1A1A; font-family: inherit; }
 .field { height: 48px; border: 1px solid #E0E0E3; border-radius: 12px; display: flex; align-items: center; gap: 8px; padding: 0 16px; background: #fff; }
 .field input { flex: 1; border: none; background: none; outline: none; font-size: 15px; color: #1A1A1A; font-family: inherit; min-width: 0; }
+.checklist-add-button { width: 56px; height: 48px; flex: 0 0 56px; display: flex; align-items: center; justify-content: center; border-radius: 12px; }
+.checklist-add-button svg { display: block; flex: 0 0 auto; }
 
 /* Списки */
 .row-item {
@@ -146,7 +150,7 @@ a { color: #2563EB; text-decoration: none; }
 .tl { display: flex; flex-direction: column; }
 .tl-item { display: flex; gap: 14px; }
 .tl-left { width: 30px; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
-.tl-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.tl-dot { width: 28px; height: 28px; margin-top: 11px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .tl-dot.done { background: #22C55E; color: #fff; }
 .tl-dot.current { background: #2563EB; color: #fff; }
 .tl-dot.current i { width: 10px; height: 10px; border-radius: 50%; background: #fff; display: block; }
@@ -224,7 +228,7 @@ a { color: #2563EB; text-decoration: none; }
 :root { color-scheme: light; --med-blue: #2563eb; --med-purple: #8456f6; --med-surface: #f7f8fc; }
 html, body, #root, .max-ui-root { min-height: 100%; }
 .max-ui-root { height: 100dvh; background: var(--med-surface); font-family: "Inter", -apple-system, "Segoe UI", sans-serif; }
-.app-layout { display: flex; width: 100%; height: 100dvh; min-height: 0; --controls-active: #22c55e; }
+.app-layout { display: flex; width: 100%; height: 100dvh; min-height: 0; min-width: 0; --controls-active: #22c55e; }
 .app-layout > .app { flex: 1; width: 100%; min-width: 0; max-width: 430px; height: 100%; }
 .app > .app { flex: 1; min-height: 0; height: auto; max-width: none; width: 100%; margin: 0; box-shadow: none; }
 .app > .screen-body { min-height: 0; }
@@ -286,16 +290,58 @@ html, body, #root, .max-ui-root { min-height: 100%; }
 .tabbar { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 .tab { min-width: 0; }
 .tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-short-label { display: none; }
 .avatar { box-shadow: none; }
 .avatar.blue { background: #eef5ff; }
 .avatar.pink { background: #ffdddd; }
 .avatar.yellow { background: #ffe5bf; }
 .avatar-text { display: flex; align-items: center; justify-content: center; background: #eef5ff !important; color: #2563eb !important; }
+.avatar-text > span { display: block; width: 100%; line-height: 1; text-align: center; font-weight: 700; }
 .avatar.pink .avatar-text { background: #ffdddd !important; color: #8d3e48 !important; }
 .avatar.yellow .avatar-text { background: #ffe5bf !important; color: #805628 !important; }
 .desktop-nav { display: none; }
 
-@media (min-width: 800px) {
+/* Узкие телефоны: подписи навигации и карточки сохраняют читаемый размер. */
+@media (max-width: 479px) {
+  .header .brand-mark { display: none; }
+  .h-title h1 { font-size: clamp(16px, 5vw, 20px); }
+  .tabbar { padding-inline: 2px; }
+  .tab span { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; min-height: 2.3em; padding-inline: 2px; }
+  .tl-top { flex-wrap: wrap; }
+  .tl-top h3 { min-width: 0; overflow-wrap: anywhere; }
+  .tl-top span { white-space: normal; }
+  .route-stats span { min-width: 0; padding: 8px; overflow-wrap: anywhere; }
+  .health-chart-heading { flex-wrap: wrap; gap: 8px; }
+  .health-form-fields { flex-direction: column; }
+  .health-form-fields .field { width: 100%; min-height: 48px; }
+  .health-record { flex-wrap: wrap; }
+  .health-record > div { min-width: 0; }
+  .health-record .badge { margin-left: auto; }
+  .state-wrap { padding-inline: 16px; }
+  .next-step-heading { align-items: flex-start; gap: 12px; }
+  .next-step-heading .circ { width: 56px; height: 56px; flex-basis: 56px; }
+  .next-step-heading > div:last-child { min-width: 0; }
+  .next-step-heading .badge { white-space: normal; }
+  input, textarea { font-size: 16px; }
+}
+
+@media (max-width: 359px) {
+  .tab .tab-label { display: none; }
+  .tab .tab-short-label { display: block; min-height: 0; white-space: nowrap; }
+}
+
+/* На планшете используем всю ширину, оставляя контент удобным для чтения. */
+@media (min-width: 480px) and (max-width: 999px) {
+  .app-layout > .app { max-width: none; box-shadow: none; }
+  .app-layout > .app > .app > .screen-body { width: 100%; max-width: 720px; margin-inline: auto; }
+  .app-layout > .app > .app > .foot { width: 100%; padding-inline: max(16px, calc((100vw - 720px) / 2)); }
+  .app-layout > .app > .app > .header { padding-inline: max(16px, calc((100vw - 720px) / 2)); }
+  .app-layout > .app > .tabbar { justify-content: center; }
+  .app-layout > .app > .tabbar .tab { max-width: 144px; }
+  .app-layout > .app > .screen-body { width: 100%; max-width: 720px; margin-inline: auto; }
+}
+
+@media (min-width: 1000px) {
   body { background: var(--med-surface); }
   .app-layout > .app { max-width: none; box-shadow: none; }
   .desktop-nav { display: flex; width: 260px; flex: 0 0 260px; flex-direction: column; gap: 30px; padding: 24px; background: #fff; border-right: 1px solid #e3e4eb; }
@@ -330,4 +376,13 @@ html, body, #root, .max-ui-root { min-height: 100%; }
   .foot { padding: 16px 40px; }
   .app > .app > .screen-body:not(.dashboard-body) { max-width: 1120px; width: 100%; margin: 0 auto; }
   .demo-banner { text-align: left; padding-left: 40px; }
+}
+
+@media (min-width: 1000px) and (max-width: 1199px) {
+  .desktop-nav { width: 220px; flex-basis: 220px; padding: 20px; }
+  .header { padding-inline: 24px; }
+  .screen-body { padding: 24px; }
+  .route-body { gap: 16px; }
+  .route-timeline, .route-current-detail { padding: 20px; }
+  .foot { padding-inline: 24px; }
 }

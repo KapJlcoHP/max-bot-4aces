@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Avatar as MaxAvatar, Button as MaxButton, IconButton, Switch } from "@maxhub/max-ui";
 import type { ButtonProps } from "@maxhub/max-ui";
 import { I, Logo } from "../icons";
+import { initials } from "../format";
 
 export function Badge({ color, children }: { color: "blue" | "yellow" | "green" | "gray"; children: ReactNode }) {
   return <span className={`badge badge-${color}`}>{children}</span>;
@@ -13,9 +14,11 @@ export function BrandMark() {
   return <div className="brand-mark"><Logo size={26} /><strong>МедМаршрут</strong></div>;
 }
 
-export function Button({ className = "", variant, ...props }: ButtonProps) {
+export function Button({ className = "", variant, children, ...props }: ButtonProps) {
   const resolvedVariant = variant ?? (className.includes("secondary") ? "secondary" : "primary");
-  return <MaxButton size="large" stretched variant={resolvedVariant} className={className} {...props} />;
+  return <MaxButton size="large" stretched variant={resolvedVariant} className={className} {...props}>
+    <span className="btn-content">{children}</span>
+  </MaxButton>;
 }
 
 export function Toggle({ on, onChange }: { on: boolean; onChange?: () => void }) {
@@ -61,11 +64,11 @@ export function HomeHeader({ onBell }: { onBell: () => void }) {
 }
 
 const TABS = [
-  { to: "/", label: "Дашборд", icon: I.home },
-  { to: "/checklist", label: "Чек-лист", icon: I.list },
-  { to: "/orgs", label: "Организации", icon: I.building },
-  { to: "/reminders", label: "Напоминания", icon: I.bell },
-  { to: "/profile", label: "Профиль", icon: I.person },
+  { to: "/", label: "Дашборд", shortLabel: "Дашборд", icon: I.home },
+  { to: "/checklist", label: "Чек-лист", shortLabel: "Чек-лист", icon: I.list },
+  { to: "/orgs", label: "Организации", shortLabel: "Организ.", icon: I.building },
+  { to: "/reminders", label: "Напоминания", shortLabel: "Напомин.", icon: I.bell },
+  { to: "/profile", label: "Профиль", shortLabel: "Профиль", icon: I.person },
 ];
 
 export function BottomNav() {
@@ -77,9 +80,10 @@ export function BottomNav() {
         const active = t.to === "/" ? pathname === "/" : pathname.startsWith(t.to);
         const Icon = t.icon;
         return (
-          <button key={t.to} className={`tab${active ? " active" : ""}`} onClick={() => navigate(t.to)}>
+          <button key={t.to} className={`tab${active ? " active" : ""}`} onClick={() => navigate(t.to)} aria-label={t.label}>
             <Icon size={23} />
-            <span>{t.label}</span>
+            <span className="tab-label">{t.label}</span>
+            <span className="tab-short-label" aria-hidden="true">{t.shortLabel}</span>
           </button>
         );
       })}
@@ -162,7 +166,7 @@ export function DesktopNav({ name }: { name: string }) {
           return <button key={t.to} className={`desktop-tab${active ? " active" : ""}`} onClick={() => navigate(t.to)}><Icon size={22} /><span>{t.label}</span></button>;
         })}
       </nav>
-      <div className="desktop-account"><Avatar text={name.slice(0, 2).toUpperCase()} size={40} /><span><strong>{name}</strong><small>Пациент</small></span></div>
+      <div className="desktop-account"><Avatar text={initials(name)} size={40} /><span><strong>{name}</strong><small>Пациент</small></span></div>
     </aside>
   );
 }

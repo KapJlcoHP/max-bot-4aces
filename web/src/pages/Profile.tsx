@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { initials } from "../format";
 import type { RouteDto, UserDto } from "../types";
+import { useApp } from "../App";
 import { Button, Avatar, TabHeader, Toggle, useToast } from "../components/ui";
 import { I } from "../icons";
 
@@ -13,21 +14,19 @@ const ABOUT_TEXT =
 
 export default function Profile() {
   const nav = useNavigate();
+  const { user, updateUser } = useApp();
   const [toast, showToast] = useToast();
-  const [user, setUser] = useState<UserDto | null>(null);
   const [routeTitle, setRouteTitle] = useState("Не выбрана");
   const [modal, setModal] = useState<"about" | "privacy" | "region" | null>(null);
 
   useEffect(() => {
-    api.get<UserDto>("/api/v1/me").then(setUser).catch(() => setUser(null));
     api.get<RouteDto | null>("/api/v1/route").then((route) => setRouteTitle(route?.title ?? "Не выбрана")).catch(() => setRouteTitle("Не выбрана"));
   }, []);
 
   const toggleNotifications = async () => {
-    if (!user) return;
     try {
       const updated = await api.patch<UserDto>("/api/v1/me/settings", { notifications_on: !user.notifications_on });
-      setUser(updated);
+      updateUser(updated);
       showToast(updated.notifications_on ? "Уведомления включены" : "Уведомления выключены");
     } catch {
       showToast("Не удалось изменить настройку");
@@ -39,14 +38,14 @@ export default function Profile() {
       <TabHeader />
       <div className="screen-body nopad">
         <div className="profile-head">
-          <Avatar text={user ? initials(`${user.first_name} ${user.last_name}`) : "…"} size={88} fontSize={30} />
-          <h2>{user ? `${user.first_name} ${user.last_name}`.trim() : "Загрузка…"}</h2>
-          <p>{user?.email.endsWith("@demo.local") ? "Профиль MAX" : user?.email}</p>
+          <Avatar text={initials(`${user.first_name} ${user.last_name}`)} size={88} fontSize={30} />
+          <h2>{`${user.first_name} ${user.last_name}`.trim()}</h2>
+          <p>{user.email.endsWith("@demo.local") ? "Профиль MAX" : user.email}</p>
         </div>
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
           <div className="set-row">
             <span className="lbl">Уведомления</span>
-            <Toggle on={user?.notifications_on ?? false} onChange={toggleNotifications} />
+            <Toggle on={user.notifications_on} onChange={toggleNotifications} />
           </div>
           <button className="set-row" onClick={() => nav("/family")}>
             <span className="lbl">Семейный доступ</span>

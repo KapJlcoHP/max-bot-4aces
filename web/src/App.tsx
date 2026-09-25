@@ -9,6 +9,7 @@ import { I, Logo } from "./icons";
 interface AppCtx {
   user: UserDto;
   refreshUser: () => void;
+  updateUser: (user: UserDto) => void;
 }
 const Ctx = createContext<AppCtx | null>(null);
 export const useApp = () => useContext(Ctx)!;
@@ -78,7 +79,7 @@ export default function App() {
   const showNav = TAB_PATHS.includes(location.pathname);
 
   return (
-    <Ctx.Provider value={{ user, refreshUser: load }}>
+    <Ctx.Provider value={{ user, refreshUser: load, updateUser: setUser }}>
       <div className="app-layout">
         <DesktopNav name={`${user.first_name} ${user.last_name}`.trim()} />
         <div className="app">

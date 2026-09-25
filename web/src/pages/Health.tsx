@@ -94,7 +94,7 @@ export default function Health() {
         {status === "ready" && rows !== null && (
           <>
             <div className="card">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div className="health-chart-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <h3 className="h3">Давление за 14 дней</h3>
                 <div className="legend">
                   <span><i style={{ background: "#2563EB" }} />Сис.</span>
@@ -107,7 +107,7 @@ export default function Health() {
             {showForm && (
               <div className="card" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <h3 className="h3">Новая запись</h3>
-                <div className="btn-row">
+                <div className="btn-row health-form-fields">
                   <div className="field"><input inputMode="numeric" placeholder="Систол." value={form.sys} onChange={(e) => setForm({ ...form, sys: e.target.value })} /></div>
                   <div className="field"><input inputMode="numeric" placeholder="Диастол." value={form.dia} onChange={(e) => setForm({ ...form, dia: e.target.value })} /></div>
                   <div className="field"><input inputMode="numeric" placeholder="Пульс" value={form.pulse} onChange={(e) => setForm({ ...form, pulse: e.target.value })} /></div>
@@ -121,7 +121,7 @@ export default function Health() {
             {rows.map((r) => {
               const normal = r.systolic < 130 && r.diastolic < 85;
               return (
-                <div key={r.id} className="card" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div key={r.id} className="card health-record" style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontSize: 13, color: "#8E8E93" }}>{fmtWhen(r.at)}</p>
                     <p style={{ fontSize: 13, color: "#8E8E93", marginTop: 2 }}>{r.pulse} уд/мин</p>

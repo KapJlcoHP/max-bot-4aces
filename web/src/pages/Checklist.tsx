@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "../api";
 import type { Checklist } from "../types";
 import { Button, StateView, TabHeader, useToast } from "../components/ui";
+import { IconButton } from "@maxhub/max-ui";
 import { I } from "../icons";
 
 function CheckRow({ title, collected, onToggle }: { title: string; collected: boolean; onToggle: () => void }) {
@@ -117,9 +118,9 @@ export default function Checklist() {
               onKeyDown={(e) => e.key === "Enter" && add()}
             />
           </div>
-          <Button className="btn btn-primary" style={{ width: 56, flex: "0 0 56px" }} onClick={add} disabled={busy} aria-label="Добавить документ">
+          <IconButton className="checklist-add-button" size="large" variant="primary" onClick={add} disabled={busy} aria-label="Добавить документ">
             <I.plus size={20} />
-          </Button>
+          </IconButton>
         </div>
       </div>}
       {toast}
