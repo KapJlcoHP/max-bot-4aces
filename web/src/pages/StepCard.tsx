@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { fmtDeadline, fmtDayMonth } from "../format";
 import type { CompleteStepResult, RouteDto } from "../types";
-import { Header, useToast } from "../components/ui";
+import { Button, Header, useToast } from "../components/ui";
 import { I } from "../icons";
 
 export default function StepCard() {
@@ -60,7 +60,7 @@ export default function StepCard() {
         <div className="state-wrap">
           <div className="alert-circle"><I.alert size={30} /></div>
           <h2>Ошибка загрузки</h2>
-          <button className="btn btn-primary" onClick={load}>Повторить</button>
+          <Button className="btn btn-primary" onClick={load}>Повторить</Button>
         </div>
       </div>
     );
@@ -93,14 +93,18 @@ export default function StepCard() {
               </div>
             )}
             {step.has_checklist && (
-              <button className="row-item" onClick={() => nav("/checklist")}>
-                <div className="row-ico"><I.doc /></div>
-                <div className="row-body">
-                  <h3>Чек-лист документов</h3>
-                  <p>Отметьте собранные документы к этому шагу</p>
-                </div>
-                <span className="row-chev"><I.chev size={20} /></span>
-              </button>
+              <>
+                <button className="row-item" onClick={() => nav("/checklist")}>
+                  <div className="row-ico"><I.doc /></div>
+                  <div className="row-body"><h3>Чек-лист документов</h3><p>Отметьте собранные документы к этому шагу</p></div>
+                  <span className="row-chev"><I.chev size={20} /></span>
+                </button>
+                <button className="row-item" onClick={() => nav("/prep")}>
+                  <div className="row-ico"><I.calCheck /></div>
+                  <div className="row-body"><h3>Подготовка к приёму</h3><p>Вещи и вопросы врачу</p></div>
+                  <span className="row-chev"><I.chev size={20} /></span>
+                </button>
+              </>
             )}
             {step.note && (
               <div className="card">
@@ -115,12 +119,12 @@ export default function StepCard() {
       {step && step.status !== "done" && (
         <div className="foot">
           <div className="btn-row">
-            <button className="btn btn-secondary" onClick={remind}>
+            <Button className="btn btn-secondary" onClick={remind}>
               <I.bell size={18} />Напомнить
-            </button>
-            <button className="btn btn-primary" onClick={() => setSheet(true)}>
+            </Button>
+            <Button className="btn btn-primary" onClick={() => setSheet(true)}>
               <I.check size={18} />Выполнено
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -143,10 +147,10 @@ export default function StepCard() {
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Заметка (опционально)…" />
             </div>
             <div className="btn-row" style={{ marginTop: 4 }}>
-              <button className="btn btn-secondary" onClick={() => setSheet(false)}>Отмена</button>
-              <button className="btn btn-primary" disabled={busy} onClick={complete}>
+              <Button className="btn btn-secondary" onClick={() => setSheet(false)}>Отмена</Button>
+              <Button className="btn btn-primary" disabled={busy} onClick={complete}>
                 {busy ? "Сохраняем…" : "Подтвердить"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

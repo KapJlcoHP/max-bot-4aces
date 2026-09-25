@@ -3,17 +3,19 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "./api";
 import { isInsideMax, startParam } from "./bridge";
 import type { UserDto } from "./types";
-import { BottomNav, ErrorView, StateView } from "./components/ui";
-import { I } from "./icons";
+import { BottomNav, DesktopNav, ErrorView, StateView } from "./components/ui";
+import { I, Logo } from "./icons";
 
 interface AppCtx {
   user: UserDto;
   refreshUser: () => void;
+  updateUser: (user: UserDto) => void;
 }
 const Ctx = createContext<AppCtx | null>(null);
 export const useApp = () => useContext(Ctx)!;
 
 const TAB_PATHS = ["/", "/checklist", "/orgs", "/reminders", "/profile"];
+const DEEP_LINK_PATHS = new Set(["route", "catalog", "checklist", "orgs", "reminders", "profile", "prep", "health", "family"]);
 
 export default function App() {
   const [user, setUser] = useState<UserDto | null>(null);
@@ -37,19 +39,15 @@ export default function App() {
   // Диплинк ?startapp=route|checklist|... → сразу открываем нужный экран
   useEffect(() => {
     const p = startParam();
-    if (p && TAB_PATHS.includes(`/${p}`)) navigate(`/${p}`);
+    if (p && DEEP_LINK_PATHS.has(p)) navigate(`/${p}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (status === "loading") {
     return (
-      <div className="app">
-        <div className="screen-body">
-          <div className="skel b" style={{ width: "55%" }} />
-          <div className="skel blk" />
-          <div className="skel blk" />
-          <div className="skel blk" />
-        </div>
+      <div className="app splash-screen">
+        <div className="splash-center"><Logo size={144} /><h1>МедМаршрут</h1><p>Ваш помощник в медицинских маршрутах</p></div>
+        <div className="splash-bottom"><div className="splash-dots"><i /><i /><i /></div><span>Загрузка…</span></div>
       </div>
     );
   }
@@ -81,15 +79,18 @@ export default function App() {
   const showNav = TAB_PATHS.includes(location.pathname);
 
   return (
-    <Ctx.Provider value={{ user, refreshUser: load }}>
-      <div className="app">
-        {!isInsideMax() && (
-          <div className="demo-banner">
-            Демо-режим (вне MAX): данные синтетические, вход по dev-доступу
-          </div>
-        )}
-        <Outlet />
-        {showNav && <BottomNav />}
+    <Ctx.Provider value={{ user, refreshUser: load, updateUser: setUser }}>
+      <div className="app-layout">
+        <DesktopNav name={`${user.first_name} ${user.last_name}`.trim()} />
+        <div className="app">
+          {!isInsideMax() && (
+            <div className="demo-banner">
+              Демо-режим (вне MAX): данные синтетические, вход по dev-доступу
+            </div>
+          )}
+          <Outlet />
+          {showNav && <BottomNav />}
+        </div>
       </div>
     </Ctx.Provider>
   );

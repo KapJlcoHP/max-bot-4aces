@@ -230,7 +230,11 @@ def add_reminder(body: dict, user: User = Depends(current_user), db: Session = D
     title = str((body or {}).get("title", "")).strip()
     if not title:
         raise HTTPException(status_code=422, detail="Название не может быть пустым")
-    at = utcnow() + timedelta(days=1)
+    raw_at = (body or {}).get("at")
+    try:
+        at = datetime.fromisoformat(raw_at) if raw_at else utcnow() + timedelta(days=1)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Некорректная дата напоминания")
     row = Reminder(user_id=user.id, title=title, place=str((body or {}).get("place", "") or ""), at=at)
     db.add(row)
     db.commit()

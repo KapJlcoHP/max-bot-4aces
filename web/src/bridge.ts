@@ -15,6 +15,7 @@ declare global {
       getLaunchContext?: () => unknown;
       requestContact?: () => unknown;
       getViewportSize?: () => unknown;
+      openLink?: (url: string) => void;
     };
   }
 }
@@ -31,7 +32,12 @@ export function maxPlatform(): string {
   return window.WebApp?.platform ?? "web";
 }
 
-/** start_param из диплинка `?startapp=<payload>` → экран, на который надо открыть приложен��е. */
+/** start_param из диплинка `?startapp=<payload>` → экран, на который надо открыть приложение. */
 export function startParam(): string | null {
   return window.WebApp?.initDataUnsafe?.start_param ?? null;
+}
+
+export function openExternalLink(url: string): void {
+  if (isInsideMax() && window.WebApp?.openLink) window.WebApp.openLink(url);
+  else window.open(url, "_blank", "noopener,noreferrer");
 }

@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "../api";
 import { initials } from "../format";
+import { useApp } from "../App";
 import type { FamilyMember } from "../types";
-import { Avatar, Header, useToast } from "../components/ui";
+import { Button, Avatar, BrandMark, Header, useToast } from "../components/ui";
 import { I } from "../icons";
 
 export default function Family() {
+  const { user } = useApp();
   const [toast, showToast] = useToast();
   const [rows, setRows] = useState<FamilyMember[] | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showForm, setShowForm] = useState(false);
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -30,6 +33,7 @@ export default function Family() {
       setRows((r) => [...(r ?? []), row]);
       setName("");
       setRole("");
+      setShowForm(false);
       showToast("Участник добавлен");
     } catch (e) {
       showToast(e instanceof ApiError ? e.message : "Не удалось добавить участника");
@@ -40,7 +44,7 @@ export default function Family() {
 
   return (
     <div className="app" style={{ display: "flex", flexDirection: "column" }}>
-      <Header title="Семейный доступ" subtitle="Управление доступом к маршрутам" back="/profile" />
+      <Header title="Семейный доступ" subtitle="Управление доступом к маршрутам" back="/profile" right={<BrandMark />} />
       <div className="screen-body">
         {status === "loading" && (
           <>
@@ -51,10 +55,10 @@ export default function Family() {
         {status === "ready" && rows !== null && (
           <>
             <div className="card" style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <Avatar text="Ан" size={52} fontSize={17} />
+              <Avatar text={initials(`${user.first_name} ${user.last_name}`)} size={52} fontSize={17} />
               <div className="row-body">
-                <h3 style={{ fontSize: 16, fontWeight: 700 }}>Вы — владелец аккаунта</h3>
-                <p>Ваши маршруты видны участникам ниже</p>
+                <h3 style={{ fontSize: 16, fontWeight: 700 }}>{`${user.first_name} ${user.last_name}`.trim()}</h3>
+                <p>Владелец аккаунта · демонстрационный список</p>
               </div>
             </div>
             <div className="section-label">Участники семьи</div>
@@ -71,21 +75,21 @@ export default function Family() {
             <div className="card">
               <h3 className="h3">Управление правами</h3>
               <p className="muted" style={{ marginTop: 8 }}>
-                Добавленные участники смогут просматривать ваши медицинские маршруты,
-                делиться своими и получать общие напоминания о визитах к врачу.
+                Здесь можно составить список участников семьи. Совместный доступ к маршрутам
+                и общим напоминаниям пока не подключён.
               </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+              {showForm && <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
                 <div className="field"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Имя и фамилия" /></div>
                 <div className="field"><input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Кем приходится (например: Отец)" /></div>
-              </div>
+              </div>}
             </div>
           </>
         )}
       </div>
       <div className="foot">
-        <button className="btn btn-primary" onClick={add} disabled={busy || !name.trim()}>
-          {busy ? "Добавляем…" : "Добавить участника"}
-        </button>
+        <Button className="btn btn-primary" onClick={showForm ? add : () => setShowForm(true)} disabled={busy || (showForm && !name.trim())}>
+          {busy ? "Добавляем…" : showForm ? "Сохранить участника" : "Добавить участника"}
+        </Button>
       </div>
       {toast}
     </div>
