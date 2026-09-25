@@ -1,0 +1,5 @@
+# Домен подставляется из переменной окружения MEDROUTE_DOMAIN (compose, profile prod).
+# Caddy сам выпустит и будет перевыпускать сертификат Let's Encrypt.
+{$MEDROUTE_DOMAIN} {
+	reverse_proxy app:8000
+}
