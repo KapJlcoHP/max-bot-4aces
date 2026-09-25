@@ -16,6 +16,7 @@ COPY core/ core/
 COPY server/ server/
 COPY bot/ bot/
 COPY content/ content/
+COPY run_bot.py run_bot.py
 COPY --from=web /web/dist web/dist
 EXPOSE 8000
 CMD ["sh", "-c", "mkdir -p database && uvicorn server.main:app --host 0.0.0.0 --port 8000"]
