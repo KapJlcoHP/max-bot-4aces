@@ -5,3 +5,5 @@ __pycache__/
 case_text.txt
 *.pdf
 database/*.db
+web/node_modules/
+web/dist/
