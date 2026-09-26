@@ -547,3 +547,49 @@ body {
   .tabbar button.active { background: var(--blue-tint); }
   .toast { bottom: 92px; }
 }
+
+/* ===== аватар пользователя (фото из MAX или инициалы), удаления, подписи графика ===== */
+.uavatar {
+  border-radius: 50%;
+  object-fit: cover;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex: 0 0 auto;
+  user-select: none;
+  overflow: hidden;
+}
+.rem-del {
+  border: none;
+  background: none;
+  color: var(--muted);
+  padding: 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+}
+.rem-del:hover { color: var(--red); }
+.rem-del:active { color: var(--red); background: var(--red-tint); }
+.hdr-del {
+  border: none;
+  background: none;
+  color: var(--muted);
+  padding: 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+}
+.hdr-del:hover { color: var(--red); background: var(--red-tint); }
+.chart-dates {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}

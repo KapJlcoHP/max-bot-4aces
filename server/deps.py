@@ -84,8 +84,15 @@ def get_or_create_user(db: Session, init_data: str | None) -> User:
             first_name=user_payload.get("first_name") or "Пользователь",
             last_name=user_payload.get("last_name") or "",
             email=f"user{max_id}@demo.local",
+            avatar_url=user_payload.get("avatar_url") or user_payload.get("photo_url") or "",
         )
         db.add(user)
         db.commit()
         seed_demo_user(db, user)
+    else:
+        # фото из MAX может появиться/смениться между запусками — подтягиваем при входе
+        fresh_avatar = user_payload.get("avatar_url") or user_payload.get("photo_url") or ""
+        if fresh_avatar and fresh_avatar != user.avatar_url:
+            user.avatar_url = fresh_avatar
+            db.commit()
     return user

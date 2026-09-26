@@ -17,6 +17,7 @@ class UserDto(OrmDto):
     first_name: str
     last_name: str
     email: str
+    avatar_url: str = ""
     notifications_on: bool
     consent_at: datetime | None = None
 

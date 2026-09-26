@@ -39,6 +39,19 @@ export function fmtDayMonth(iso: string | null | undefined): string {
   return d ? `${d.getDate()} ${MONTHS[d.getMonth()]}` : "";
 }
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** Числовая дата «день.месяц.год»: 27.09.2026 */
+export function fmtDateNumeric(iso: string | Date | null | undefined): string {
+  const d = iso instanceof Date ? iso : parseDate(iso);
+  return d ? `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}` : "";
+}
+
+/** «08:30» */
+export function fmtHhmm(d: Date): string {
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).slice(0, 2);
   return parts.map((p) => p[0]?.toUpperCase() ?? "").join("");

@@ -4,6 +4,7 @@ export interface UserDto {
   first_name: string;
   last_name: string;
   email: string;
+  avatar_url: string;
   notifications_on: boolean;
   consent_at: string | null;
 }

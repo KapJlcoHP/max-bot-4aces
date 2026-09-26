@@ -24,6 +24,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(200), default="")  # демо-поле профиля
     notifications_on: Mapped[bool] = mapped_column(Boolean, default=True)
     consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 152-ФЗ: дата согласия
+    avatar_url: Mapped[str] = mapped_column(String(500), default="")  # фото из MAX, если платформа его отдала
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     routes: Mapped[list["Route"]] = relationship(back_populates="user")

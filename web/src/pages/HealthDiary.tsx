@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
-import { fmtWhen } from "../format";
+import { fmtDateNumeric, fmtWhen, parseDate } from "../format";
 import type { HealthRecord, HealthType } from "../types";
 import { Button, ErrorView, Header, LoadingView, Sheet, useToast } from "../components/ui";
 import { I } from "../icons";
@@ -11,6 +11,25 @@ const TITLES: Record<HealthType, string> = {
   weight: "Вес",
   sugar: "Сахар крови",
   mood: "Самочувствие",
+};
+
+type Period = "day" | "month" | "year" | "custom";
+
+const PERIODS: { key: Period; label: string }[] = [
+  { key: "day", label: "День" },
+  { key: "month", label: "Месяц" },
+  { key: "year", label: "Год" },
+  { key: "custom", label: "Свой срок" },
+];
+
+const toIsoDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** Дата в полночь (локальная) из «YYYY-MM-DD» */
+const fromIsoDay = (iso: string, endOfDay = false): Date | null => {
+  const d = parseDate(iso);
+  if (!d) return null;
+  return endOfDay ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59) : new Date(d.getFullYear(), d.getMonth(), d.getDate());
 };
 
 function chartPoints(values: number[], width: number, height: number, pad: number): string {
@@ -24,12 +43,6 @@ function chartPoints(values: number[], width: number, height: number, pad: numbe
     .join(" ");
 }
 
-function line(values: (number | null)[], w = 320, h = 110, pad = 10): string | null {
-  const nums = values.filter((v): v is number => v !== null);
-  if (nums.length < 2) return null;
-  return chartPoints(nums, w, h, pad);
-}
-
 export default function HealthDiary() {
   const { type: rawType } = useParams<{ type: string }>();
   const type = (rawType ?? "bp") as HealthType;
@@ -39,6 +52,10 @@ export default function HealthDiary() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [sheet, setSheet] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [period, setPeriod] = useState<Period>("month");
+  const [from, setFrom] = useState(() => toIsoDay(new Date(Date.now() - 6 * 86400000)));
+  const [to, setTo] = useState(() => toIsoDay(new Date()));
+  const [delRec, setDelRec] = useState<HealthRecord | null>(null);
 
   // форма новой записи
   const [sys, setSys] = useState("");
@@ -54,7 +71,7 @@ export default function HealthDiary() {
 
   const load = useCallback(() => {
     setStatus("loading");
-    api.get<HealthRecord[]>(`/api/v1/health/${type}/records`)
+    api.get<HealthRecord[]>(`/api/v1/health/${type}/records?limit=500`)
       .then((r) => { setRecords(r); setStatus("ready"); })
       .catch(() => setStatus("error"));
   }, [type]);
@@ -62,12 +79,52 @@ export default function HealthDiary() {
   useEffect(load, [type]);
 
   const latest = records[0];
-  const chart = useMemo(() => {
-    if (type === "bp") return line(records.slice(0, 14).map((r) => r.systolic));
-    if (type === "weight") return line([...records].slice(0, 14).reverse().map((r) => r.weight_kg));
-    if (type === "sugar") return line([...records].slice(0, 14).reverse().map((r) => r.sugar_mmol));
-    return null;
-  }, [records, type]);
+
+  const valueOf = useCallback((r: HealthRecord): number | null => {
+    if (type === "bp") return r.systolic;
+    if (type === "weight") return r.weight_kg;
+    if (type === "sugar") return r.sugar_mmol;
+    return null; // настроение — без графика
+  }, [type]);
+
+  const range = useMemo((): [Date, Date] | null => {
+    const now = new Date();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    if (period === "day") return [new Date(now.getFullYear(), now.getMonth(), now.getDate()), todayEnd];
+    if (period === "month") return [new Date(todayEnd.getTime() - 29 * 86400000), todayEnd];
+    if (period === "year") return [new Date(todayEnd.getTime() - 364 * 86400000), todayEnd];
+    const f = fromIsoDay(from);
+    const t = fromIsoDay(to, true);
+    return f && t && f <= t ? [f, t] : null;
+  }, [period, from, to]);
+
+  const chartData = useMemo(() => {
+    if (type === "mood" || !range) return null;
+    const pts = records
+      .filter((r) => {
+        const d = parseDate(r.at);
+        const v = valueOf(r);
+        return d !== null && v !== null && d >= range[0] && d <= range[1];
+      })
+      .sort((a, b) => +parseDate(a.at)! - +parseDate(b.at)!)
+      .map((r) => ({ at: parseDate(r.at)!, v: valueOf(r)! }));
+    if (pts.length === 0) return null;
+    const spanDays = (+range[1] - +range[0]) / 86400000;
+    if (spanDays > 31) {
+      // длинный период: усредняем по дням, иначе линия превращается в частокол
+      const byDay = new Map<string, { sum: number; n: number; at: Date }>();
+      for (const p of pts) {
+        const key = toIsoDay(p.at);
+        const g = byDay.get(key) ?? { sum: 0, n: 0, at: p.at };
+        g.sum += p.v;
+        g.n += 1;
+        byDay.set(key, g);
+      }
+      const merged = [...byDay.values()].map((g) => ({ at: g.at, v: g.sum / g.n }));
+      return { values: merged.map((p) => p.v), first: merged[0].at, last: merged[merged.length - 1].at };
+    }
+    return { values: pts.map((p) => p.v), first: pts[0].at, last: pts[pts.length - 1].at };
+  }, [records, type, range, valueOf]);
 
   const submit = async () => {
     setBusy(true);
@@ -87,6 +144,21 @@ export default function HealthDiary() {
       load();
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Не удалось сохранить запись");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmDelRec = async () => {
+    if (!delRec) return;
+    setBusy(true);
+    try {
+      await api.del(`/api/v1/health/${type}/${delRec.id}`);
+      setDelRec(null);
+      showToast("Запись удалена");
+      load();
+    } catch {
+      showToast("Не удалось удалить запись");
     } finally {
       setBusy(false);
     }
@@ -139,12 +211,44 @@ export default function HealthDiary() {
               </div>
             </div>
 
-            {chart && (
+            {type !== "mood" && (
               <div className="card">
                 <div className="section-h" style={{ marginBottom: 8 }}><b>Динамика</b></div>
-                <svg className="chart" viewBox="0 0 320 110" preserveAspectRatio="none" style={{ height: 100 }}>
-                  <polyline points={chart} fill="none" stroke={stroke} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <div className="pick-chips" style={{ marginBottom: 10 }}>
+                  {PERIODS.map((p) => (
+                    <button key={p.key} className={`pick${period === p.key ? " on" : ""}`} onClick={() => setPeriod(p.key)}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                {period === "custom" && (
+                  <div className="own-row" style={{ marginBottom: 10 }}>
+                    <input className="date" type="date" aria-label="С даты" value={from} onChange={(e) => setFrom(e.target.value)} />
+                    <input className="date" type="date" aria-label="По дату" value={to} onChange={(e) => setTo(e.target.value)} />
+                  </div>
+                )}
+                {chartData && chartData.values.length >= 2 ? (
+                  <>
+                    <svg className="chart" viewBox="0 0 320 110" preserveAspectRatio="none" style={{ height: 100 }}>
+                      <polyline
+                        points={chartPoints(chartData.values, 320, 110, 10)}
+                        fill="none"
+                        stroke={stroke}
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <div className="chart-dates">
+                      <span>{fmtDateNumeric(chartData.first)}</span>
+                      <span>{fmtDateNumeric(chartData.last)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="muted" style={{ padding: "10px 0 6px" }}>
+                    {period === "custom" && !range ? "Проверьте выбранный диапазон дат" : "Мало данных за выбранный период"}
+                  </div>
+                )}
                 {type === "bp" && (
                   <div className="legend">
                     <span><i style={{ background: "#006DF8" }} />Верхнее (систолическое)</span>
@@ -156,10 +260,13 @@ export default function HealthDiary() {
             <div className="section-h"><b>История</b></div>
             <div className="card" style={{ padding: "8px 16px" }}>
               {records.slice(0, 20).map((r) => {
-                const line = historyLine(r);
+                const ln = historyLine(r);
                 return (
                   <div className="rem-item" key={r.id}>
-                    <div className="what"><b>{line.b}</b><small>{line.s}</small></div>
+                    <div className="what"><b>{ln.b}</b><small>{ln.s}</small></div>
+                    <button className="rem-del" onClick={() => setDelRec(r)} aria-label="Удалить запись">
+                      <I.trash size={15} />
+                    </button>
                   </div>
                 );
               })}
@@ -237,6 +344,17 @@ export default function HealthDiary() {
         >
           {busy ? "Сохраняем…" : "Сохранить запись"}
         </Button>
+      </Sheet>
+
+      <Sheet open={!!delRec} onClose={() => setDelRec(null)}>
+        <h3>Удалить запись?</h3>
+        <div className="sub">
+          {delRec ? `${historyLine(delRec).b}, ${fmtWhen(delRec.at)}` : ""} — это нельзя отменить.
+        </div>
+        <div className="btn-row">
+          <Button variant="secondary" onClick={() => setDelRec(null)}>Отмена</Button>
+          <Button disabled={busy} onClick={confirmDelRec}>Удалить</Button>
+        </div>
       </Sheet>
       {toast}
     </div>

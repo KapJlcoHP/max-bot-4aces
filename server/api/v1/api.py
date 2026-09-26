@@ -181,6 +181,17 @@ def get_route(user: User = Depends(consented_user), db: Session = Depends(db_ses
     return route_dto(route) if route else None
 
 
+@router.delete("/route")
+def delete_route(user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    """Удалить активный маршрут целиком (шаги уходят каскадом)."""
+    route = _get_active_route(db, user.id)
+    if route is None:
+        raise HTTPException(status_code=404, detail="Активный маршрут не найден")
+    db.delete(route)
+    db.commit()
+    return {"status": "deleted"}
+
+
 @router.post("/route/start", response_model=RouteDto)
 def start_route(body: RouteStartIn, user: User = Depends(consented_user), db: Session = Depends(db_session)):
     known = {s["key"] for s in load_catalog()} | {"custom"}
@@ -249,6 +260,39 @@ def add_step(
         source=body.source,
     )
     db.add(step)
+    db.commit()
+    db.refresh(route)
+    return route_dto(route)
+
+
+@router.delete("/route/steps/{step_id}", response_model=RouteDto)
+def delete_step(step_id: int, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    """Удалить непройденный шаг; если удалили текущий — текущим становится следующий pending."""
+    route = _get_active_route(db, user.id)
+    if route is None:
+        raise HTTPException(status_code=404, detail="Активный маршрут не найден")
+    step = db.query(RouteStep).filter(RouteStep.id == step_id, RouteStep.route_id == route.id).first()
+    if step is None:
+        raise HTTPException(status_code=404, detail="Шаг не найден")
+    if step.status == "done":
+        raise HTTPException(status_code=409, detail="Пройденный шаг удалить нельзя")
+
+    was_current = step.status == "current"
+    position = step.position
+    db.delete(step)
+    db.flush()
+    db.query(RouteStep).filter(
+        RouteStep.route_id == route.id, RouteStep.position > position
+    ).update({"position": RouteStep.position - 1}, synchronize_session=False)
+    if was_current:
+        next_step = (
+            db.query(RouteStep)
+            .filter(RouteStep.route_id == route.id, RouteStep.status != "done")
+            .order_by(RouteStep.position)
+            .first()
+        )
+        if next_step is not None:
+            next_step.status = "current"
     db.commit()
     db.refresh(route)
     return route_dto(route)
@@ -469,6 +513,23 @@ def add_health_record(type: str, body: HealthAddIn, user: User = Depends(consent
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.delete("/health/{type}/{record_id}")
+def delete_health_record(type: str, record_id: int, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    """Удалить одну запись дневника (ошибочно внесённую)."""
+    if type not in HEALTH_TYPES:
+        raise HTTPException(status_code=404, detail="Неизвестный дневник")
+    row = (
+        db.query(HealthRecord)
+        .filter(HealthRecord.id == record_id, HealthRecord.user_id == user.id, HealthRecord.type == type)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    db.delete(row)
+    db.commit()
+    return {"status": "deleted"}
 
 
 @router.get("/health/report", response_model=HealthReportOut)

@@ -181,6 +181,21 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Delete Route",
+        "description": "Удалить активный маршрут целиком (шаги уходят каскадом).",
+        "operationId": "delete_route_api_v1_route_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/route/start": {
@@ -254,6 +269,46 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/route/steps/{step_id}": {
+      "delete": {
+        "summary": "Delete Step",
+        "description": "Удалить непройденный шаг; если удалили текущий — текущим становится следующий pending.",
+        "operationId": "delete_step_api_v1_route_steps__step_id__delete",
+        "parameters": [
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Step Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -761,6 +816,53 @@
                 "schema": {
                   "$ref": "#/components/schemas/HealthRecordDto"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/{type}/{record_id}": {
+      "delete": {
+        "summary": "Delete Health Record",
+        "description": "Удалить одну запись дневника (ошибочно внесённую).",
+        "operationId": "delete_health_record_api_v1_health__type___record_id__delete",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Type"
+            }
+          },
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Record Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -2178,6 +2280,11 @@
           "email": {
             "type": "string",
             "title": "Email"
+          },
+          "avatar_url": {
+            "type": "string",
+            "title": "Avatar Url",
+            "default": ""
           },
           "notifications_on": {
             "type": "boolean",

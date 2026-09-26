@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
-import { Avatar as MaxAvatar, Spinner, Switch as MaxSwitch } from "@maxhub/max-ui";
-import { I, Logo } from "../icons";
+import { Spinner, Switch as MaxSwitch } from "@maxhub/max-ui";import { I, Logo } from "../icons";
 import { initials } from "../format";
 
 export function Badge({ color = "blue", children }: { color?: "blue" | "green" | "red" | "gray"; children: ReactNode }) {
@@ -57,21 +56,12 @@ export function Header({ title, subtitle, back, right }: { title: string; subtit
 }
 
 /** Шапка корневых экранов: бренд слева, аватар-профиль справа. */
-export function RootHeader({ name, onProfile }: { name: string; onProfile: () => void }) {
+export function RootHeader({ name, url, onProfile }: { name: string; url?: string | null; onProfile: () => void }) {
   return (
     <div className="header">
       <div className="h-row">
         <BrandMark />
-        <MaxAvatar.Container
-          size={36}
-          onClick={onProfile}
-          style={{ cursor: "pointer", flex: "0 0 auto", width: 36, height: 36, background: "var(--red-tint)" }}
-          aria-label="Профиль"
-        >
-          <MaxAvatar.Text style={{ background: "none", color: "var(--red)", fontWeight: 700, fontSize: 13 }}>
-            {initials(name.trim() || "Я")}
-          </MaxAvatar.Text>
-        </MaxAvatar.Container>
+        <UserAvatar name={name} url={url} size={36} onClick={onProfile} />
       </div>
     </div>
   );
@@ -160,22 +150,27 @@ export function useToast(): [ReactNode, (msg: string) => void] {
   return [<Toast key="toast" text={text} />, show];
 }
 
-export function Avatar({ text, size = 38, color = "blue" }: { text: string; size?: number; color?: "blue" | "red" }) {
+/** Аватар пользователя: фото из MAX (если платформа его отдала), иначе инициалы на фирменном фоне. */
+export function UserAvatar({
+  name, url, size = 36, color = "red", onClick,
+}: { name: string; url?: string | null; size?: number; color?: "blue" | "red"; onClick?: () => void }) {
+  const box = { width: size, height: size, cursor: onClick ? ("pointer" as const) : undefined };
+  if (url) {
+    return <img className="uavatar" src={url} alt={name || "Аватар"} style={box} onClick={onClick} />;
+  }
   return (
-    <MaxAvatar.Container
-      size={size}
+    <span
+      className="uavatar"
       style={{
-        flex: "0 0 auto",
-        width: size,
-        height: size,
+        ...box,
         background: color === "red" ? "var(--red-tint)" : "var(--blue-tint)",
+        color: color === "red" ? "var(--red)" : "var(--blue)",
+        fontSize: Math.round(size / 2.7),
       }}
-      aria-label="Профиль"
+      onClick={onClick}
     >
-      <MaxAvatar.Text style={{ background: "none", color: color === "red" ? "var(--red)" : "var(--blue)", fontWeight: 700, fontSize: size / 2.7 }}>
-        {text}
-      </MaxAvatar.Text>
-    </MaxAvatar.Container>
+      {initials(name.trim() || "Я")}
+    </span>
   );
 }
 

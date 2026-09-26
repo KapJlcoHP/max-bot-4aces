@@ -22,6 +22,8 @@ export default function RoutePage() {
   const [newTitle, setNewTitle] = useState("");
   const [newDate, setNewDate] = useState("");
   const [busy, setBusy] = useState(false);
+  const [delStep, setDelStep] = useState<Step | null>(null);
+  const [delRoute, setDelRoute] = useState(false);
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -73,6 +75,41 @@ export default function RoutePage() {
     }
   };
 
+  const confirmDelStep = async () => {
+    if (!delStep) return;
+    setBusy(true);
+    try {
+      const updated = await api.del<RouteDto>(`/api/v1/route/steps/${delStep.id}`);
+      setDelStep(null);
+      if (updated.total_steps === 0) {
+        // последний шаг убрали — маршрут пуст, удаляем целиком
+        await api.del("/api/v1/route");
+        setRoute(null);
+      } else {
+        setRoute(updated);
+      }
+      showToast("Шаг удалён");
+    } catch {
+      showToast("Не удалось удалить шаг");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmDelRoute = async () => {
+    setBusy(true);
+    try {
+      await api.del("/api/v1/route");
+      setDelRoute(false);
+      nav("/");
+    } catch {
+      showToast("Не удалось удалить маршрут");
+      setDelRoute(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (status === "error") {
     return (
       <div className="app">
@@ -87,7 +124,15 @@ export default function RoutePage() {
 
   return (
     <div className="app">
-      <Header title="Мой маршрут" subtitle={route?.title ?? undefined} />
+      <Header
+        title="Мой маршрут"
+        subtitle={route?.title ?? undefined}
+        right={route && !finished && (
+          <button className="hdr-del" onClick={() => setDelRoute(true)} aria-label="Удалить маршрут">
+            <I.trash size={19} />
+          </button>
+        )}
+      />
       <div className="screen-body">
         {status === "loading" && <LoadingView />}
 
@@ -127,7 +172,18 @@ export default function RoutePage() {
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                         <b>{s.title}</b>
-                        <StepBadge source={s.source} />
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <StepBadge source={s.source} />
+                          {s.status !== "done" && (
+                            <button
+                              className="rem-del"
+                              onClick={(e) => { e.stopPropagation(); setDelStep(s); }}
+                              aria-label="Удалить шаг"
+                            >
+                              <I.trash size={14} />
+                            </button>
+                          )}
+                        </span>
                       </div>
                       {(s.deadline || s.status === "current") && (
                         <div className="when" style={{ marginTop: 4, display: "block" }}>
@@ -201,6 +257,24 @@ export default function RoutePage() {
         <Button style={{ marginTop: 14 }} disabled={busy || !newTitle.trim()} onClick={addStep}>
           Добавить в маршрут
         </Button>
+      </Sheet>
+
+      <Sheet open={!!delStep} onClose={() => setDelStep(null)}>
+        <h3>Удалить шаг?</h3>
+        <div className="sub">«{delStep?.title}» уберём из маршрута — это нельзя отменить.</div>
+        <div className="btn-row">
+          <Button variant="secondary" onClick={() => setDelStep(null)}>Отмена</Button>
+          <Button disabled={busy} onClick={confirmDelStep}>Удалить</Button>
+        </div>
+      </Sheet>
+
+      <Sheet open={delRoute} onClose={() => setDelRoute(false)}>
+        <h3>Удалить маршрут целиком?</h3>
+        <div className="sub">Все шаги маршрута «{route?.title}» будут удалены. Это нельзя отменить.</div>
+        <div className="btn-row">
+          <Button variant="secondary" onClick={() => setDelRoute(false)}>Отмена</Button>
+          <Button disabled={busy} onClick={confirmDelRoute}>Удалить</Button>
+        </div>
       </Sheet>
       {toast}
     </div>

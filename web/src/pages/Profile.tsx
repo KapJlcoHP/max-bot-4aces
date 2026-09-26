@@ -4,8 +4,7 @@ import { CellList, CellSimple } from "@maxhub/max-ui";
 import { api } from "../api";
 import { fmtDayMonth } from "../format";
 import { useApp } from "../App";
-import { Avatar, Header, Switch, useToast } from "../components/ui";
-import { I } from "../icons";
+import { Header, Switch, UserAvatar, useToast } from "../components/ui";import { I } from "../icons";
 
 export default function Profile() {
   const nav = useNavigate();
@@ -31,7 +30,7 @@ export default function Profile() {
       <Header title="Профиль" />
       <div className="screen-body">
         <div className="profile-head">
-          <Avatar text={`${user.first_name[0] ?? ""}${user.last_name[0] ?? ""}`.toUpperCase() || "Я"} size={64} color="red" />
+          <UserAvatar name={`${user.first_name} ${user.last_name}`.trim()} url={user.avatar_url} size={64} />
           <b>{user.first_name} {user.last_name}</b>
           <small>Профиль MAX</small>
         </div>
