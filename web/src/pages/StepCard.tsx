@@ -2,9 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { fmtDeadline, fmtDayMonth } from "../format";
-import type { CompleteStepResult, RouteDto } from "../types";
-import { Button, Header, useToast } from "../components/ui";
+import type { CompleteStepResult, RouteDto, Step } from "../types";
+import { Button, ErrorView, Header, LoadingView, Sheet, useToast } from "../components/ui";
 import { I } from "../icons";
+
+interface Picked {
+  title: string;
+  date: string; // YYYY-MM-DD или ""
+  own: boolean;
+}
+
+const CHIPS = ["Анализы", "УЗИ", "Специалист", "Процедуры", "Прививка"];
 
 export default function StepCard() {
   const { stepId } = useParams();
@@ -12,9 +20,11 @@ export default function StepCard() {
   const [toast, showToast] = useToast();
   const [route, setRoute] = useState<RouteDto | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [sheet, setSheet] = useState(false);
-  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [assignSheet, setAssignSheet] = useState(false);
+  const [picked, setPicked] = useState<Picked[]>([]);
+  const [ownName, setOwnName] = useState("");
+  const [ownDate, setOwnDate] = useState("");
 
   const load = () => {
     setStatus("loading");
@@ -24,14 +34,14 @@ export default function StepCard() {
   };
   useEffect(load, [stepId]);
 
-  const step = useMemo(() => route?.steps.find((s) => String(s.id) === stepId) ?? null, [route, stepId]);
+  const step: Step | null = useMemo(() => route?.steps.find((s) => String(s.id) === stepId) ?? null, [route, stepId]);
 
   const remind = async () => {
     if (!step) return;
     try {
       await api.post("/api/v1/reminders", { title: step.title, place: step.place });
-      showToast("Напоминание создано — смотрите раздел «Напоминания»");
-    } catch (e) {
+      showToast("Напоминание создано — бот пришлёт его в MAX");
+    } catch {
       showToast("Не удалось создать напоминание");
     }
   };
@@ -40,12 +50,8 @@ export default function StepCard() {
     if (!step) return;
     setBusy(true);
     try {
-      const res = await api.post<CompleteStepResult>(`/api/v1/route/steps/${step.id}/complete`, {
-        note: note || null,
-      });
-      setSheet(false);
-      if (res.next_step) nav("/next-step");
-      else nav("/route"); // маршрут завершён — там экран-поздравление
+      await api.post<CompleteStepResult>(`/api/v1/route/steps/${step.id}/complete`, {});
+      setAssignSheet(true); // «врач назначил — записал»: сразу предлагаем записать назначения
     } catch {
       showToast("Не удалось отметить шаг");
     } finally {
@@ -53,62 +59,98 @@ export default function StepCard() {
     }
   };
 
+  const toggleChip = (title: string) => {
+    setPicked((prev) =>
+      prev.some((p) => p.title === title && !p.own)
+        ? prev.filter((p) => !(p.title === title && !p.own))
+        : [...prev, { title, date: "", own: false }],
+    );
+  };
+
+  const addOwn = () => {
+    const name = ownName.trim();
+    if (!name) return;
+    setPicked((prev) => [{ title: name, date: ownDate, own: true }, ...prev]);
+    setOwnName("");
+    setOwnDate("");
+  };
+
+  const saveAssignments = async () => {
+    setBusy(true);
+    try {
+      let afterId = step?.id;
+      for (const p of picked) {
+        const res = await api.post<RouteDto>(
+          `/api/v1/route/steps?after_step_id=${afterId}`,
+          { title: p.title, deadline: p.date || null, source: "doctor" },
+        );
+        afterId = res.steps.find((s) => s.title === p.title)?.id ?? afterId;
+      }
+      setAssignSheet(false);
+      showToast(picked.length ? `Добавлено шагов: ${picked.length}` : "Шаг выполнен");
+      nav("/route");
+    } catch {
+      showToast("Не удалось добавить назначения");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (status === "error") {
     return (
-      <div className="app" style={{ display: "flex", flexDirection: "column" }}>
+      <div className="app">
         <Header title="Шаг" back="/route" />
-        <div className="state-wrap">
-          <div className="alert-circle"><I.alert size={30} /></div>
-          <h2>Ошибка загрузки</h2>
-          <Button className="btn btn-primary" onClick={load}>Повторить</Button>
-        </div>
+        <ErrorView onRetry={load} />
       </div>
     );
   }
 
+  const count = picked.length;
+
   return (
-    <div className="app" style={{ display: "flex", flexDirection: "column" }}>
-      <Header title={step ? `Шаг: ${step.title}` : "Шаг"} back="/route" />
+    <div className="app">
+      <Header title={step ? step.title : "Шаг"} subtitle={step ? `Шаг ${step.position} из ${route?.total_steps ?? "…"}` : undefined} back="/route" />
       <div className="screen-body">
         {status === "loading" || !step ? (
-          <>
-            <div className="skel blk" />
-            <div className="skel blk" />
-          </>
+          <LoadingView />
         ) : (
           <>
             <div className="card">
-              <h3 className="h3">Когда и где</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-                {step.deadline && (
-                  <p className="kv"><I.cal size={18} />Срок: {fmtDeadline(step.deadline, step.deadline_time)}</p>
-                )}
-                {step.place && <p className="kv"><I.pin size={18} />{step.place}</p>}
-              </div>
+              {step.deadline && (
+                <div className="kv"><I.cal size={18} />{fmtDeadline(step.deadline, step.deadline_time)}</div>
+              )}
+              {step.place && <div className="kv"><I.pin size={18} />{step.place}</div>}
+              {step.description && (
+                <div className="kv" style={{ fontWeight: 500, color: "var(--muted)", marginTop: 12 }}>{step.description}</div>
+              )}
             </div>
-            {step.description && (
-              <div className="card">
-                <h3 className="h3">Что нужно сделать</h3>
-                <p className="muted" style={{ marginTop: 10 }}>{step.description}</p>
+
+            {step.status === "done" && (
+              <div className="card tinted">
+                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--blue)" }}>Шаг выполнен</div>
+                <div className="muted" style={{ marginTop: 4 }}>
+                  {fmtDayMonth(step.completed_at ?? null) && `Отмечен ${fmtDayMonth(step.completed_at)}. `}
+                  Можно записать назначения врача — маршрут перестроится.
+                </div>
+                <Button style={{ marginTop: 12 }} variant="secondary" onClick={() => setAssignSheet(true)}>
+                  <I.plus size={16} /> Записать назначения врача
+                </Button>
               </div>
             )}
+
             {step.has_checklist && (
-              <>
-                <button className="row-item" onClick={() => nav("/checklist")}>
-                  <div className="row-ico"><I.doc /></div>
-                  <div className="row-body"><h3>Чек-лист документов</h3><p>Отметьте собранные документы к этому шагу</p></div>
-                  <span className="row-chev"><I.chev size={20} /></span>
+              <div className="card docs-card">
+                <div className="section-h" style={{ marginBottom: 6 }}><b>Что взять с собой</b></div>
+                <button className="row-item" style={{ boxShadow: "none", padding: "6px 0" }} onClick={() => nav("/route")}>
+                  <div className="row-body"><h3>Чек-лист документов</h3><p>Отметьте собранное в разделе «Маршрут»</p></div>
+                  <span className="row-chev"><I.chev size={18} /></span>
                 </button>
-                <button className="row-item" onClick={() => nav("/prep")}>
-                  <div className="row-ico"><I.calCheck /></div>
-                  <div className="row-body"><h3>Подготовка к приёму</h3><p>Вещи и вопросы врачу</p></div>
-                  <span className="row-chev"><I.chev size={20} /></span>
-                </button>
-              </>
+              </div>
             )}
+
             {step.note && (
               <div className="card">
-                <h3 className="h3">Ваша заметка</h3>
+                <h3 className="h3">Заметка</h3>
                 <p className="muted" style={{ marginTop: 8 }}>{step.note}</p>
               </div>
             )}
@@ -119,42 +161,51 @@ export default function StepCard() {
       {step && step.status !== "done" && (
         <div className="foot">
           <div className="btn-row">
-            <Button className="btn btn-secondary" onClick={remind}>
-              <I.bell size={18} />Напомнить
-            </Button>
-            <Button className="btn btn-primary" onClick={() => setSheet(true)}>
-              <I.check size={18} />Выполнено
-            </Button>
+            <Button variant="secondary" onClick={remind}><I.bell size={18} />Напомнить</Button>
+            <Button disabled={busy} onClick={complete}>{busy ? "Отмечаем…" : "Я это сделал"}</Button>
           </div>
         </div>
       )}
 
-      {sheet && (
-        <div className="sheet-overlay" onClick={(e) => { if (e.target === e.currentTarget) setSheet(false); }}>
-          <div className="sheet">
-            <div className="grab" />
-            <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
-              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#DFF5E6", display: "flex", alignItems: "center", justifyContent: "center", color: "#22C55E" }}>
-                <I.check size={28} />
-              </div>
-            </div>
-            <h2>Шаг выполнен?</h2>
-            <p className="sub">Подтвердите, что вы завершили шаг «{step?.title}». Это переведёт вас к следующему шагу маршрута.</p>
-            <div className="field" style={{ color: "#9B9B9B" }}>
-              Дата: {fmtDayMonth(new Date().toISOString())} — отметим сегодняшней
-            </div>
-            <div className="field">
-              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Заметка (опционально)…" />
-            </div>
-            <div className="btn-row" style={{ marginTop: 4 }}>
-              <Button className="btn btn-secondary" onClick={() => setSheet(false)}>Отмена</Button>
-              <Button className="btn btn-primary" disabled={busy} onClick={complete}>
-                {busy ? "Сохраняем…" : "Подтвердить"}
-              </Button>
-            </div>
-          </div>
+      <Sheet open={assignSheet} onClose={() => { setAssignSheet(false); nav("/route"); }}>
+        <h3>Что назначил врач?</h3>
+        <div className="sub">Добавим шагами в маршрут — бот напомнит о каждом</div>
+        <div className="pick-chips">
+          {CHIPS.map((c) => (
+            <button
+              key={c}
+              className={`pick${picked.some((p) => p.title === c) ? " on" : ""}`}
+              onClick={() => toggleChip(c)}
+            >
+              {c}
+            </button>
+          ))}
         </div>
-      )}
+        <div className="own-row">
+          <input placeholder="Своё: например, МРТ" aria-label="Название назначения" value={ownName} onChange={(e) => setOwnName(e.target.value)} />
+          <input className="date" type="date" aria-label="Срок" value={ownDate} onChange={(e) => setOwnDate(e.target.value)} />
+          <button className="add" onClick={addOwn} aria-label="Добавить">+</button>
+        </div>
+        {picked.length > 0 && (
+          <div className="picked">
+            {picked.map((p, i) => (
+              <div className="picked-item" key={`${p.title}-${i}`}>
+                {p.title}
+                {p.date && <small>до {fmtDayMonth(p.date)}</small>}
+                <button className="x" aria-label="Убрать" onClick={() => setPicked((prev) => prev.filter((_, j) => j !== i))}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="btn-row" style={{ marginTop: 14 }}>
+          <Button variant="secondary" onClick={() => { setAssignSheet(false); nav("/route"); }}>
+            Без назначений
+          </Button>
+          <Button disabled={busy} onClick={saveAssignments}>
+            {busy ? "Добавляем…" : count > 0 ? <>Готово — добавить {count}</> : "Готово"}
+          </Button>
+        </div>
+      </Sheet>
       {toast}
     </div>
   );

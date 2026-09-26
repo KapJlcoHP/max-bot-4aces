@@ -2,130 +2,203 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { fmtDeadline } from "../format";
-import type { RouteDto } from "../types";
-import { Button, ErrorView, Header, StateView } from "../components/ui";
+import type { Checklist, ChecklistItem, RouteDto, Step } from "../types";
+import { Button, ErrorView, Header, LoadingView, Sheet, useToast } from "../components/ui";
 import { I } from "../icons";
+
+function StepBadge({ source }: { source: Step["source"] }) {
+  if (source === "doctor") return <span className="badge-assign">Назначено</span>;
+  if (source === "user") return <span className="badge-mine">Мой шаг</span>;
+  return null;
+}
 
 export default function RoutePage() {
   const nav = useNavigate();
+  const [toast, showToast] = useToast();
   const [route, setRoute] = useState<RouteDto | null>(null);
+  const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [sheet, setSheet] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newDate, setNewDate] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
     setStatus("loading");
-    api.get<RouteDto | null>("/api/v1/route")
-      .then((r) => { setRoute(r); setStatus("ready"); })
-      .catch(() => setStatus("error"));
+    Promise.allSettled([
+      api.get<RouteDto | null>("/api/v1/route"),
+      api.get<Checklist>("/api/v1/checklist"),
+    ])
+      .then(([r, c]) => {
+        setRoute(r.status === "fulfilled" ? r.value : null);
+        setChecklist(c.status === "fulfilled" && c.value.total > 0 ? c.value : null);
+        setStatus("ready");
+      });
   }, []);
 
   useEffect(load, []);
 
+  const toggleDoc = async (item: ChecklistItem) => {
+    if (!checklist) return;
+    try {
+      const updated = await api.post<ChecklistItem>(`/api/v1/checklist/${item.id}/toggle`);
+      setChecklist({
+        ...checklist,
+        items: checklist.items.map((i) => (i.id === updated.id ? updated : i)),
+        collected: checklist.collected + (updated.collected ? 1 : -1),
+      });
+    } catch {
+      showToast("Не удалось отметить документ");
+    }
+  };
+
+  const addStep = async () => {
+    if (!newTitle.trim()) return;
+    setBusy(true);
+    try {
+      await api.post<RouteDto>("/api/v1/route/steps", {
+        title: newTitle.trim(),
+        deadline: newDate || null,
+        source: "user",
+      });
+      setSheet(false);
+      setNewTitle("");
+      setNewDate("");
+      showToast("Шаг добавлен в маршрут");
+      load();
+    } catch {
+      showToast("Не удалось добавить шаг");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (status === "error") {
     return (
-      <div className="app" style={{ display: "flex", flexDirection: "column" }}>
-        <Header title="��аш маршрут" back="/" />
+      <div className="app">
+        <Header title="Мой маршрут" />
         <ErrorView onRetry={load} />
       </div>
     );
   }
 
-  const finished = route !== null && route.done_steps >= route.total_steps;
+  const finished = route !== null && route.total_steps > 0 && route.done_steps >= route.total_steps;
   const current = route?.steps.find((s) => s.status === "current") ?? null;
 
   return (
-    <div className="app route-screen" style={{ display: "flex", flexDirection: "column" }}>
-      <Header title="Ваш маршрут" subtitle={route?.title ?? undefined} back="/" />
-      <div className="screen-body route-body">
-        {status === "loading" && <div className="skel blk" />}
+    <div className="app">
+      <Header title="Мой маршрут" subtitle={route?.title ?? undefined} />
+      <div className="screen-body">
+        {status === "loading" && <LoadingView />}
+
         {status === "ready" && route === null && (
-          <StateView
-            icon={<I.route size={64} />}
-            title="Маршрута пока нет"
-            text="Выберите ситуацию в каталоге — и маршрут появится здесь"
-            button="Открыть каталог"
-            onButton={() => nav("/catalog")}
-          />
+          <>
+            <div className="empty-card" style={{ paddingTop: 40 }}>
+              <div className="empty-ico" style={{ width: 64, height: 64 }}><I.route size={30} /></div>
+              <b style={{ fontSize: 17 }}>Маршрута пока нет</b>
+              <div className="muted">Выберите свою первую ситуацию — маршрут появится здесь, шаг за шагом.</div>
+            </div>
+            <Button onClick={() => nav("/builder")}>Выбрать ситуацию</Button>
+          </>
         )}
+
         {route && finished && (
           <div className="route-complete">
-            <div className="big-check"><I.check size={46} /></div>
+            <div className="big-check"><I.check size={46} strokeWidth={2.4} /></div>
             <h2>Маршрут завершён!</h2>
-            <p>Поздравляем! Вы прошли все шаги маршрута. Все необходимые процедуры и сбор документов успешно завершены.</p>
-            <div className="card route-complete-summary">
-              <div className="tl-top"><h3>{route.title}</h3><span className="badge badge-blue">100% готово</span></div>
-              <div className="progress"><i style={{ width: "100%" }} /></div>
-              <div className="route-stats"><span>Шаги<strong>{route.total_steps}</strong></span><span>Готово<strong>{route.done_steps}</strong></span><span>Следующий<strong>0</strong></span></div>
-            </div>
-            <Button className="btn btn-primary" onClick={() => nav("/catalog")}>Выбрать новую ситуацию</Button>
+            <p>Все шаги пройдены. Можно построить маршрут для новой ситуации.</p>
+            <Button onClick={() => nav("/builder")}>Свой маршрут</Button>
           </div>
         )}
+
         {route && !finished && (
           <>
-            <div className="card route-progress">
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <span style={{ fontSize: 13, color: "#8E8E93" }}>Прогресс маршрута</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#2563EB" }}>
-                  {route.done_steps} из {route.total_steps} выполнено
-                </span>
-              </div>
-              <div className="progress" style={{ marginTop: 12 }}>
-                <i style={{ width: `${Math.round((route.done_steps / route.total_steps) * 100)}%` }} />
-              </div>
+            <div className="tl" style={{ marginTop: 4 }}>
+              {route.steps.map((s) => (
+                <div className="tl-item" key={s.id}>
+                  <div className={`tl-dot ${s.status}`}>
+                    {s.status === "done" && <I.check size={14} strokeWidth={2.6} />}
+                    {s.status !== "done" && s.position}
+                  </div>
+                  <div
+                    className={`tl-card ${s.status === "done" ? "muted-t" : ""} ${s.status === "current" ? "current-t press" : ""}`}
+                    onClick={s.status !== "done" ? () => nav(`/step/${s.id}`) : undefined}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                      <b>{s.title}</b>
+                      <StepBadge source={s.source} />
+                    </div>
+                    {(s.deadline || s.status === "current") && (
+                      <div className="when" style={{ marginTop: 4, display: "block" }}>
+                        {s.status === "current" && s.description
+                          ? s.description
+                          : fmtDeadline(s.deadline, s.deadline_time)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
 
-            <div className="tl route-timeline" style={{ marginTop: 4 }}>
-              <h2 className="route-timeline-title">Этапы прохождения</h2>
-              {route.steps.map((s, i) => {
-                const last = i === route.steps.length - 1;
-                return (
-                  <div className="tl-item" key={s.id}>
-                    <div className="tl-left">
-                      <div className={`tl-dot ${s.status}`}>
-                        {s.status === "done" && <I.check size={15} />}
-                        {s.status === "current" && <i />}
-                      </div>
-                      {!last && <div className="tl-line" />}
+            <button className="add-dash" onClick={() => setSheet(true)}>
+              <I.plus size={18} /> Добавить шаг
+            </button>
+
+            {checklist && (
+              <>
+                <div className="section-h" style={{ marginTop: 8 }}>
+                  <b>Документы на приём</b>
+                  <span className="muted" style={{ fontSize: 13 }}>{checklist.collected} из {checklist.total}</span>
+                </div>
+                <div className="card docs-card">
+                  {checklist.items.map((item) => (
+                    <div className={`doc${item.collected ? " ok" : ""}`} key={item.id}>
+                      <button className="ck" onClick={() => toggleDoc(item)} aria-label="Отметить">
+                        {item.collected && <I.check size={12} strokeWidth={3} />}
+                      </button>
+                      {item.title}
                     </div>
-                    <div
-                      className={`tl-card ${s.status === "current" ? "current" : ""} ${s.status !== "done" ? "press" : ""}`}
-                      onClick={s.status === "current" ? () => nav(`/step/${s.id}`) : undefined}
-                    >
-                      <div className="tl-top">
-                        <h3>{s.title}</h3>
-                        {s.status === "done" ? (
-                          <span className="ok">Выполнено</span>
-                        ) : (
-                          <span>{fmtDeadline(s.deadline, s.deadline_time)}</span>
-                        )}
-                      </div>
-                      {s.status === "current" && s.description && <p>{s.description}</p>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {current && <div className="card route-current-detail">
-              <span className="badge badge-blue">ТЕКУЩИЙ ЭТАП</span>
-              <h2>{current.title}</h2>
-              {current.deadline && <p className="kv"><I.cal size={18} />Срок: {fmtDeadline(current.deadline, current.deadline_time)}</p>}
-              {current.place && <p className="kv"><I.pin size={18} />{current.place}</p>}
-              <h3>Что нужно сделать</h3>
-              <p className="muted">{current.description}</p>
-              <Button className="btn btn-primary" onClick={() => nav(`/step/${current.id}`)}>Открыть шаг</Button>
-            </div>}
+                  ))}
+                </div>
+              </>
+            )}
           </>
         )}
       </div>
+
       {route && !finished && current && (
         <div className="foot">
-          <Button className="btn btn-primary" onClick={() => nav(`/step/${current.id}`)}>
-            Перейти к следующему шагу
-          </Button>
-          <Button className="btn btn-secondary" onClick={() => nav("/catalog")}>
-            Сменить ситуацию
-          </Button>
+          <div className="btn-row">
+            <Button variant="secondary" onClick={() => nav("/builder")}>Свой маршрут</Button>
+            <Button onClick={() => nav(`/step/${current.id}`)}>Продолжить — шаг {current.position}</Button>
+          </div>
         </div>
       )}
+
+      <Sheet open={sheet} onClose={() => setSheet(false)}>
+        <h3>Добавить шаг</h3>
+        <div className="sub">Назначение врача или свой пункт — бот напомнит</div>
+        <div className="own-row">
+          <input
+            placeholder="Например, МРТ"
+            aria-label="Название шага"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+          />
+          <input
+            className="date"
+            type="date"
+            aria-label="Срок"
+            value={newDate}
+            onChange={(e) => setNewDate(e.target.value)}
+          />
+          <button className="add" onClick={addStep} disabled={busy || !newTitle.trim()} aria-label="Добавить">+</button>
+        </div>
+        <Button style={{ marginTop: 14 }} disabled={busy || !newTitle.trim()} onClick={addStep}>
+          Добавить в маршрут
+        </Button>
+      </Sheet>
+      {toast}
     </div>
   );
 }

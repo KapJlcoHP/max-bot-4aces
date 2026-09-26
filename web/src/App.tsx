@@ -1,10 +1,10 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "./api";
-import { isInsideMax, startParam } from "./bridge";
+import { isInsideMax, startParamPath } from "./bridge";
 import type { UserDto } from "./types";
-import { BottomNav, DesktopNav, ErrorView, StateView } from "./components/ui";
-import { I, Logo } from "./icons";
+import { ErrorView, StateView, TabBar } from "./components/ui";
+import { I } from "./icons";
 
 interface AppCtx {
   user: UserDto;
@@ -14,12 +14,12 @@ interface AppCtx {
 const Ctx = createContext<AppCtx | null>(null);
 export const useApp = () => useContext(Ctx)!;
 
-const TAB_PATHS = ["/", "/checklist", "/orgs", "/reminders", "/profile"];
-const DEEP_LINK_PATHS = new Set(["route", "catalog", "checklist", "orgs", "reminders", "profile", "prep", "health", "family"]);
+const TAB_PATHS = ["/", "/route", "/profile"];
 
 export default function App() {
   const [user, setUser] = useState<UserDto | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "auth-error" | "error">("loading");
+  const [splash, setSplash] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -36,18 +36,26 @@ export default function App() {
 
   useEffect(load, []);
 
-  // Диплинк ?startapp=route|checklist|... → сразу открываем нужный экран
+  // Белый сплэш с логотипом — короткая пауза, чтобы вход был не «рывком»
   useEffect(() => {
-    const p = startParam();
-    if (p && DEEP_LINK_PATHS.has(p)) navigate(`/${p}`);
+    const t = setTimeout(() => setSplash(false), 1200);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Диплинк ?startapp=<payload>: имена экранов (route|meds|health|…) и шаги step_<id>
+  useEffect(() => {
+    const path = startParamPath();
+    if (path) navigate(path, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (status === "loading") {
+  if (splash || status === "loading") {
     return (
-      <div className="app splash-screen">
-        <div className="splash-center"><Logo size={144} /><h1>МедМаршрут</h1><p>Ваш помощник в медицинских маршрутах</p></div>
-        <div className="splash-bottom"><div className="splash-dots"><i /><i /><i /></div><span>Загрузка…</span></div>
+      <div className="app white splash-screen">
+        <img className="logo-mid" src="/medroute-logo.svg" alt="Логотип МедМаршрут" />
+        <h1>МедМаршрут</h1>
+        <p>Ваш помощник в медицинских маршрутах</p>
+        <div className="dots"><i /><i /><i /></div>
       </div>
     );
   }
@@ -76,22 +84,33 @@ export default function App() {
     );
   }
 
+  // Согласие на обработку данных (152-ФЗ) — блокирующий онбординг
+  if (!user.consent_at) {
+    const Onboarding = require_onboarding();
+    return (
+      <Ctx.Provider value={{ user, refreshUser: load, updateUser: setUser }}>
+        <Onboarding />
+      </Ctx.Provider>
+    );
+  }
+
   const showNav = TAB_PATHS.includes(location.pathname);
 
   return (
     <Ctx.Provider value={{ user, refreshUser: load, updateUser: setUser }}>
-      <div className="app-layout">
-        <DesktopNav name={`${user.first_name} ${user.last_name}`.trim()} />
-        <div className="app">
-          {!isInsideMax() && (
-            <div className="demo-banner">
-              Демо-режим (вне MAX): данные синтетические, вход по dev-доступу
-            </div>
-          )}
-          <Outlet />
-          {showNav && <BottomNav />}
-        </div>
+      <div className="app">
+        {!isInsideMax() && (
+          <div className="demo-banner">Демо-режим (вне MAX): данные синтетические, вход по dev-доступу</div>
+        )}
+        <Outlet />
+        {showNav && <TabBar />}
       </div>
     </Ctx.Provider>
   );
+}
+
+// Отдельный импорт, чтобы гейт согласия не тянул страницы в критический путь
+import Onboarding from "./pages/Onboarding";
+function require_onboarding() {
+  return Onboarding;
 }

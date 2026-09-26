@@ -1,29 +1,38 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
-import { Avatar as MaxAvatar, Button as MaxButton, IconButton, Switch } from "@maxhub/max-ui";
-import type { ButtonProps } from "@maxhub/max-ui";
+import { Avatar as MaxAvatar, Spinner, Switch as MaxSwitch } from "@maxhub/max-ui";
 import { I, Logo } from "../icons";
 import { initials } from "../format";
 
-export function Badge({ color, children }: { color: "blue" | "yellow" | "green" | "gray"; children: ReactNode }) {
+export function Badge({ color = "blue", children }: { color?: "blue" | "green" | "red" | "gray"; children: ReactNode }) {
   return <span className={`badge badge-${color}`}>{children}</span>;
 }
 
 export function BrandMark() {
-  return <div className="brand-mark"><Logo size={26} /><strong>МедМаршрут</strong></div>;
+  return <div className="brand"><Logo size={30} /><strong>МедМаршрут</strong></div>;
 }
 
-export function Button({ className = "", variant, children, ...props }: ButtonProps) {
-  const resolvedVariant = variant ?? (className.includes("secondary") ? "secondary" : "primary");
-  return <MaxButton size="large" stretched variant={resolvedVariant} className={className} {...props}>
-    <span className="btn-content">{children}</span>
-  </MaxButton>;
-}
-
-export function Toggle({ on, onChange }: { on: boolean; onChange?: () => void }) {
+export function Button({
+  className = "", variant = "primary", children, ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" }) {
   return (
-    <Switch type="checkbox" checked={on} aria-label="Переключить" onClick={(e) => e.stopPropagation()} onChange={onChange} />
+    <button className={`btn ${variant} ${className}`} {...props}>
+      {children}
+    </button>
+  );
+}
+
+/** Переключатель из MAX-UI. Обёртка гасит клик, чтобы не срабатывала строка-родитель. */
+export function Switch({ on, onChange, label }: { on: boolean; onChange?: (v: boolean) => void; label?: string }) {
+  return (
+    <span className="switch-wrap" onClick={(e) => e.stopPropagation()}>
+      <MaxSwitch
+        checked={on}
+        aria-label={label ?? "Переключить"}
+        onChange={(e) => onChange?.(e.target.checked)}
+      />
+    </span>
   );
 }
 
@@ -33,13 +42,13 @@ export function Header({ title, subtitle, back, right }: { title: string; subtit
     <div className="header">
       <div className="h-row">
         {back && (
-          <IconButton className="back-btn" variant="ghost" onClick={() => navigate(back)} aria-label="Назад">
-            <I.back />
-          </IconButton>
+          <button className="hdr-back" onClick={() => navigate(back)} aria-label="Назад">
+            <I.back size={22} />
+          </button>
         )}
-        <div className="h-title">
+        <div className="hdr-title">
           <h1>{title}</h1>
-          {subtitle && <p>{subtitle}</p>}
+          {subtitle && <small>{subtitle}</small>}
         </div>
         {right}
       </div>
@@ -47,31 +56,35 @@ export function Header({ title, subtitle, back, right }: { title: string; subtit
   );
 }
 
-export function HomeHeader({ onBell }: { onBell: () => void }) {
+/** Шапка корневых экранов: бренд слева, аватар-профиль справа. */
+export function RootHeader({ name, onProfile }: { name: string; onProfile: () => void }) {
   return (
     <div className="header">
       <div className="h-row">
-        <div className="brand">
-          <div className="logo"><Logo /></div>
-          <h1>МедМаршрут</h1>
-        </div>
-        <IconButton className="icon-btn" variant="secondary" onClick={onBell} aria-label="Уведомления">
-          <I.bell size={22} />
-        </IconButton>
+        <BrandMark />
+        <MaxAvatar.Container
+          size={36}
+          onClick={onProfile}
+          style={{ cursor: "pointer", flex: "0 0 auto", width: 36, height: 36, background: "var(--red-tint)" }}
+          aria-label="Профиль"
+        >
+          <MaxAvatar.Text style={{ background: "none", color: "var(--red)", fontWeight: 700, fontSize: 13 }}>
+            {initials(name.trim() || "Я")}
+          </MaxAvatar.Text>
+        </MaxAvatar.Container>
       </div>
     </div>
   );
 }
 
 const TABS = [
-  { to: "/", label: "Дашборд", shortLabel: "Дашборд", icon: I.home },
-  { to: "/checklist", label: "Чек-лист", shortLabel: "Чек-лист", icon: I.list },
-  { to: "/orgs", label: "Организации", shortLabel: "Организ.", icon: I.building },
-  { to: "/reminders", label: "Напоминания", shortLabel: "Напомин.", icon: I.bell },
-  { to: "/profile", label: "Профиль", shortLabel: "Профиль", icon: I.person },
+  { to: "/", label: "Главная", icon: I.home },
+  { to: "/route", label: "Маршрут", icon: I.route },
+  { to: "/profile", label: "Профиль", icon: I.person },
 ];
 
-export function BottomNav() {
+/** Нижняя панель: ровно 3 вкладки на корневых экранах. */
+export function TabBar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   return (
@@ -81,9 +94,8 @@ export function BottomNav() {
         const Icon = t.icon;
         return (
           <button key={t.to} className={`tab${active ? " active" : ""}`} onClick={() => navigate(t.to)} aria-label={t.label}>
-            <Icon size={23} />
-            <span className="tab-label">{t.label}</span>
-            <span className="tab-short-label" aria-hidden="true">{t.shortLabel}</span>
+            <Icon size={22} />
+            <span>{t.label}</span>
           </button>
         );
       })}
@@ -91,15 +103,29 @@ export function BottomNav() {
   );
 }
 
+/** Нижний лист (bottom sheet) с затемнением. */
+export function Sheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  if (!open) return null;
+  return (
+    <>
+      <div className="sheet-backdrop open" onClick={onClose} />
+      <div className="sheet open">
+        <div className="grab" />
+        {children}
+      </div>
+    </>
+  );
+}
+
 export function StateView({ icon, title, text, button, onButton }: {
-  icon: ReactNode; title: string; text: string; button?: string; onButton?: () => void;
+  icon?: ReactNode; title: string; text: string; button?: string; onButton?: () => void;
 }) {
   return (
     <div className="state-wrap">
       {icon}
       <h2>{title}</h2>
       <p>{text}</p>
-      {button && <Button className="btn btn-primary" onClick={onButton}>{button}</Button>}
+      {button && <Button onClick={onButton}>{button}</Button>}
     </div>
   );
 }
@@ -134,39 +160,30 @@ export function useToast(): [ReactNode, (msg: string) => void] {
   return [<Toast key="toast" text={text} />, show];
 }
 
-export function Avatar({ text, color = "blue", size = 44, fontSize = 15 }: { text: string; color?: string; size?: number; fontSize?: number }) {
+export function Avatar({ text, size = 38, color = "blue" }: { text: string; size?: number; color?: "blue" | "red" }) {
   return (
-    <MaxAvatar.Container size={size} form="circle" className={`avatar ${color}`}>
-      <MaxAvatar.Text className="avatar-text" style={{ fontSize }}>{text}</MaxAvatar.Text>
+    <MaxAvatar.Container
+      size={size}
+      style={{
+        flex: "0 0 auto",
+        width: size,
+        height: size,
+        background: color === "red" ? "var(--red-tint)" : "var(--blue-tint)",
+      }}
+      aria-label="Профиль"
+    >
+      <MaxAvatar.Text style={{ background: "none", color: color === "red" ? "var(--red)" : "var(--blue)", fontWeight: 700, fontSize: size / 2.7 }}>
+        {text}
+      </MaxAvatar.Text>
     </MaxAvatar.Container>
   );
 }
 
-export function TabHeader({ action, actionLabel, onAction }: { action?: ReactNode; actionLabel?: string; onAction?: () => void }) {
+/** Состояние загрузки на спиннере MAX-UI. */
+export function LoadingView() {
   return (
-    <div className="header tab-header">
-      <div className="h-row">
-        <div className="brand"><div className="logo"><Logo /></div><h1>МедМаршрут</h1></div>
-        {onAction ? <IconButton className="icon-btn blue" variant="secondary" onClick={onAction} aria-label={actionLabel ?? "Действие"}>{action}</IconButton> : action}
-      </div>
+    <div className="loading-wrap">
+      <Spinner size={28} />
     </div>
-  );
-}
-
-export function DesktopNav({ name }: { name: string }) {
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
-  return (
-    <aside className="desktop-nav" aria-label="Основная навигация">
-      <div className="brand desktop-brand"><div className="logo"><Logo /></div><h1>МедМаршрут</h1></div>
-      <nav>
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          const active = t.to === "/" ? pathname === "/" : pathname.startsWith(t.to);
-          return <button key={t.to} className={`desktop-tab${active ? " active" : ""}`} onClick={() => navigate(t.to)}><Icon size={22} /><span>{t.label}</span></button>;
-        })}
-      </nav>
-      <div className="desktop-account"><Avatar text={initials(name)} size={40} /><span><strong>{name}</strong><small>Пациент</small></span></div>
-    </aside>
   );
 }

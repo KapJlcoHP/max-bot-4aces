@@ -2,7 +2,7 @@
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -23,6 +23,7 @@ class User(Base):
     last_name: Mapped[str] = mapped_column(String(120), default="")
     email: Mapped[str] = mapped_column(String(200), default="")  # демо-поле профиля
     notifications_on: Mapped[bool] = mapped_column(Boolean, default=True)
+    consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 152-ФЗ: дата согласия
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     routes: Mapped[list["Route"]] = relationship(back_populates="user")
@@ -60,6 +61,7 @@ class RouteStep(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     has_checklist: Mapped[bool] = mapped_column(Boolean, default=False)
+    source: Mapped[str] = mapped_column(String(16), default="template")  # template | user | doctor
 
     route: Mapped[Route] = relationship(back_populates="steps")
 
@@ -99,10 +101,94 @@ class Reminder(Base):
     place: Mapped[str] = mapped_column(String(200), default="")
     at: Mapped[datetime] = mapped_column(DateTime)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # момент наступления отправлен ботом
+
+
+class HealthRecord(Base):
+    """Единая запись дневника здоровья. Тип задаёт набор заполненных полей.
+
+    Правило кейса: только факты — никаких «норма/выше нормы», оценки делает врач.
+    """
+
+    __tablename__ = "health_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    type: Mapped[str] = mapped_column(String(16))  # bp | weight | sugar | mood
+    at: Mapped[datetime] = mapped_column(DateTime)
+    # bp
+    systolic: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    diastolic: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pulse: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # weight
+    weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # sugar
+    sugar_mmol: Mapped[float | None] = mapped_column(Float, nullable=True)
+    meal_tag: Mapped[str | None] = mapped_column(String(20), nullable=True)  # до еды | после еды
+    # mood
+    mood: Mapped[str | None] = mapped_column(String(20), nullable=True)  # Хорошо | Нормально | Плохо
+    pain: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1..10
+    # общий контекст
+    tag: Mapped[str | None] = mapped_column(String(20), nullable=True)  # утром | вечером | ...
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class HealthSetting(Base):
+    """Какие дневники ведёт пользователь — персонализация с первой минуты."""
+
+    __tablename__ = "health_settings"
+    __table_args__ = (UniqueConstraint("user_id", "diary", name="uq_health_settings_user_diary"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    diary: Mapped[str] = mapped_column(String(16))  # bp | weight | sugar | mood
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class MedCourse(Base):
+    """Курс лекарства: название + одно или несколько времён приёма в день."""
+
+    __tablename__ = "med_courses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    times: Mapped[list] = mapped_column(JSON, default=list)  # ["09:00", "13:00"]
+    until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class MedIntake(Base):
+    """Отметка приёма: курс × день × время. taken_at — когда пользователь нажал «принято»."""
+
+    __tablename__ = "med_intakes"
+    __table_args__ = (UniqueConstraint("course_id", "day", "at_time", name="uq_med_intake_slot"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("med_courses.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    at_time: Mapped[str] = mapped_column(String(20))
+    taken_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class NotificationLog(Base):
+    """Журнал пушей бота: один и тот же напоминатель не отправляем дважды (lead: day | hour | now)."""
+
+    __tablename__ = "notification_log"
+    __table_args__ = (UniqueConstraint("kind", "ref_id", "lead", name="uq_notification_kind_ref_lead"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # reminder | med
+    ref_id: Mapped[int] = mapped_column(Integer)
+    lead: Mapped[str] = mapped_column(String(16))  # day | hour | now | HH:MM (для лекарств)
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class BpRecord(Base):
-    """Запись дневника здоровья: артериальное давление и пульс."""
+    """Устаревшая таблица АД — оставлена для разовой миграции в HealthRecord."""
 
     __tablename__ = "bp_records"
 

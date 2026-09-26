@@ -3,7 +3,7 @@ import { api, ApiError } from "../api";
 import { initials } from "../format";
 import { useApp } from "../App";
 import type { FamilyMember } from "../types";
-import { Button, Avatar, BrandMark, Header, useToast } from "../components/ui";
+import { Button, Avatar, BrandMark, Header, LoadingView, useToast } from "../components/ui";
 import { I } from "../icons";
 
 export default function Family() {
@@ -43,29 +43,24 @@ export default function Family() {
   };
 
   return (
-    <div className="app" style={{ display: "flex", flexDirection: "column" }}>
+    <div className="app">
       <Header title="Семейный доступ" subtitle="Управление доступом к маршрутам" back="/profile" right={<BrandMark />} />
       <div className="screen-body">
-        {status === "loading" && (
-          <>
-            <div className="skel blk" />
-            <div className="skel blk" />
-          </>
-        )}
+        {status === "loading" && <LoadingView />}
         {status === "ready" && rows !== null && (
           <>
             <div className="card" style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <Avatar text={initials(`${user.first_name} ${user.last_name}`)} size={52} fontSize={17} />
+              <Avatar text={initials(`${user.first_name} ${user.last_name}`)} size={52} />
               <div className="row-body">
                 <h3 style={{ fontSize: 16, fontWeight: 700 }}>{`${user.first_name} ${user.last_name}`.trim()}</h3>
                 <p>Владелец аккаунта · демонстрационный список</p>
               </div>
             </div>
-            <div className="section-label">Участники семьи</div>
+            <div className="section-h"><b>Участники семьи</b></div>
             {rows.length === 0 && <div className="card muted">Пока никого не добавлено.</div>}
             {rows.map((m) => (
               <div key={m.id} className="row-item" style={{ cursor: "default" }}>
-                <Avatar text={initials(m.name)} color={m.color} />
+                <Avatar text={initials(m.name)} color={m.color === "pink" ? "red" : "blue"} />
                 <div className="row-body">
                   <h3>{m.name}</h3>
                   <p>{m.role}</p>
@@ -87,7 +82,7 @@ export default function Family() {
         )}
       </div>
       <div className="foot">
-        <Button className="btn btn-primary" onClick={showForm ? add : () => setShowForm(true)} disabled={busy || (showForm && !name.trim())}>
+        <Button onClick={showForm ? add : () => setShowForm(true)} disabled={busy || (showForm && !name.trim())}>
           {busy ? "Добавляем…" : showForm ? "Сохранить участника" : "Добавить участника"}
         </Button>
       </div>

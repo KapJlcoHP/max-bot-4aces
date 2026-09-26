@@ -4,7 +4,7 @@ import { api } from "../api";
 import { openExternalLink } from "../bridge";
 import type { Organization } from "../types";
 import { Input } from "@maxhub/max-ui";
-import { Button, Badge, TabHeader } from "../components/ui";
+import { Button, Badge, Header, LoadingView } from "../components/ui";
 import { I } from "../icons";
 
 const CHIPS = ["Все", "Поликлиники", "Диспансеры", "Центры"];
@@ -35,14 +35,14 @@ export default function Orgs() {
   }, [load, q]);
 
   return (
-    <div className="app" style={{ display: "flex", flexDirection: "column" }}>
-      <div className="top">
-        <TabHeader action={<Badge color="blue">ДЕМО-ДАННЫЕ</Badge>} />
+    <div className="app">
+      <div>
+        <Header title="Организации" subtitle="Демо-данные" back="/" />
         <div className="org-search">
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск поликлиники, больницы…" iconBefore={<I.search size={18} />} aria-label="Поиск организаций" />
           <div className="chips" style={{ marginTop: 12 }}>
             {CHIPS.map((c) => (
-              <button key={c} className={`chip${type === c ? " active" : ""}`} onClick={() => setType(c)}>{c}</button>
+              <button key={c} className={`chip${type === c ? " on" : ""}`} onClick={() => setType(c)}>{c}</button>
             ))}
           </div>
         </div>
@@ -52,21 +52,18 @@ export default function Orgs() {
           <div className="state-wrap">
             <div className="alert-circle"><I.alert size={30} /></div>
             <h2>Не удалось загрузить организации</h2>
-            <Button className="btn btn-primary" style={{ marginTop: 14 }} onClick={load}>Повторить</Button>
+            <Button style={{ marginTop: 14 }} onClick={load}>Повторить</Button>
           </div>
         )}
         {!error && orgs === null && (
-          <>
-            <div className="skel blk" />
-            <div className="skel blk" />
-          </>
+          <LoadingView />
         )}
         {orgs !== null && orgs.length === 0 && !error && (
           <div className="state-wrap">
             <I.building size={64} />
             <h2>Организации не найдены</h2>
             <p>Попробуйте изменить запрос или фильтр</p>
-            <Button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => { setQ(""); setType("Все"); }}>
+            <Button style={{ marginTop: 14 }} onClick={() => { setQ(""); setType("Все"); }}>
               Сбросить фильтры
             </Button>
           </div>
@@ -79,11 +76,11 @@ export default function Orgs() {
               {o.address}
             </p>
             <div className="btn-row" style={{ marginTop: 12 }}>
-              <a className="btn btn-secondary" style={{ height: 42, fontSize: 14, textDecoration: "none" }} href={`tel:${o.phone.replace(/[^+\d]/g, "")}`} onClick={(e) => e.stopPropagation()}>
+              <a className="btn secondary" style={{ height: 42, fontSize: 14, textDecoration: "none" }} href={`tel:${o.phone.replace(/[^+\d]/g, "")}`} onClick={(e) => e.stopPropagation()}>
                 <I.phone size={16} />Позвонить
               </a>
               <Button
-                className="btn btn-primary"
+                variant="primary"
                 style={{ height: 42, fontSize: 14 }}
                 onClick={(e) => {
                   e.stopPropagation();

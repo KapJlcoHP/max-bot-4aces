@@ -5,6 +5,7 @@ export interface UserDto {
   last_name: string;
   email: string;
   notifications_on: boolean;
+  consent_at: string | null;
 }
 
 export interface Situation {
@@ -13,6 +14,8 @@ export interface Situation {
   description: string;
   icon: string;
 }
+
+export type StepSource = "template" | "user" | "doctor";
 
 export interface Step {
   id: number;
@@ -25,6 +28,8 @@ export interface Step {
   status: "pending" | "current" | "done";
   has_checklist: boolean;
   note: string | null;
+  source: StepSource;
+  completed_at?: string | null;
 }
 
 export interface RouteDto {
@@ -42,6 +47,12 @@ export interface CompleteStepResult {
   step: Step;
   route: RouteDto;
   next_step: Step | null;
+}
+
+export interface CustomStepIn {
+  title: string;
+  deadline?: string | null;
+  deadline_time?: string | null;
 }
 
 export interface ChecklistItem {
@@ -74,12 +85,74 @@ export interface Reminder {
   enabled: boolean;
 }
 
-export interface BpRecord {
+export type HealthType = "bp" | "weight" | "sugar" | "mood";
+
+export interface HealthRecord {
   id: number;
+  type: HealthType;
   at: string;
-  systolic: number;
-  diastolic: number;
-  pulse: number;
+  systolic: number | null;
+  diastolic: number | null;
+  pulse: number | null;
+  weight_kg: number | null;
+  sugar_mmol: number | null;
+  meal_tag: string | null;
+  mood: string | null;
+  pain: number | null;
+  tag: string | null;
+  note: string | null;
+}
+
+export interface HealthSetting {
+  diary: HealthType;
+  enabled: boolean;
+}
+
+export interface MedSlot {
+  course_id: number;
+  name: string;
+  at_time: string;
+  taken: boolean;
+  taken_at: string | null;
+}
+
+export interface MedCourse {
+  id: number;
+  name: string;
+  times: string[];
+  until: string | null;
+  enabled: boolean;
+}
+
+export interface MedsOut {
+  courses: MedCourse[];
+  today: MedSlot[];
+}
+
+export interface ReportMedsRow {
+  name: string;
+  taken: number;
+  planned: number;
+  pct: number;
+}
+
+export interface ReportNote {
+  at: string;
+  note: string;
+}
+
+export interface HealthReport {
+  period_days: number;
+  bp_count: number;
+  bp_avg: string | null;
+  pulse_avg: number | null;
+  weight_latest: number | null;
+  weight_delta: number | null;
+  weight_count: number;
+  sugar_avg: number | null;
+  sugar_count: number;
+  meds: ReportMedsRow[];
+  notes: ReportNote[];
 }
 
 export interface FamilyMember {

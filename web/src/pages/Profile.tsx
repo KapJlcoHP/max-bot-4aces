@@ -1,96 +1,90 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { CellList, CellSimple } from "@maxhub/max-ui";
 import { api } from "../api";
-import { initials } from "../format";
-import type { RouteDto, UserDto } from "../types";
+import { fmtDayMonth } from "../format";
 import { useApp } from "../App";
-import { Button, Avatar, TabHeader, Toggle, useToast } from "../components/ui";
+import { Avatar, Header, Switch, useToast } from "../components/ui";
 import { I } from "../icons";
-
-const ABOUT_TEXT =
-  "МедМаршрут — мини-ап для платформы MAX: помогает пройти медицинский маршрут — " +
-  "от записи к врачу до получения результатов. Команда 4Aces, хакатон MAX. " +
-  "Справочник организаций и стартовые записи содержат демонстрационные данные.";
 
 export default function Profile() {
   const nav = useNavigate();
-  const { user, updateUser } = useApp();
+  const { user, refreshUser } = useApp();
   const [toast, showToast] = useToast();
-  const [routeTitle, setRouteTitle] = useState("Не выбрана");
-  const [modal, setModal] = useState<"about" | "privacy" | "region" | null>(null);
+  const [notif, setNotif] = useState(user.notifications_on);
 
-  useEffect(() => {
-    api.get<RouteDto | null>("/api/v1/route").then((route) => setRouteTitle(route?.title ?? "Не выбрана")).catch(() => setRouteTitle("Не выбрана"));
-  }, []);
-
-  const toggleNotifications = async () => {
+  const toggleNotif = async (on: boolean) => {
+    setNotif(on);
     try {
-      const updated = await api.patch<UserDto>("/api/v1/me/settings", { notifications_on: !user.notifications_on });
-      updateUser(updated);
-      showToast(updated.notifications_on ? "Уведомления включены" : "Уведомления выключены");
+      await api.patch("/api/v1/me/settings", { notifications_on: on });
+      refreshUser();
     } catch {
+      setNotif(!on);
       showToast("Не удалось изменить настройку");
     }
   };
 
-  return (
-    <div className="app" style={{ display: "flex", flexDirection: "column" }}>
-      <TabHeader />
-      <div className="screen-body nopad">
-        <div className="profile-head">
-          <Avatar text={initials(`${user.first_name} ${user.last_name}`)} size={88} fontSize={30} />
-          <h2>{`${user.first_name} ${user.last_name}`.trim()}</h2>
-          <p>{user.email.endsWith("@demo.local") ? "Профиль MAX" : user.email}</p>
-        </div>
-        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-          <div className="set-row">
-            <span className="lbl">Уведомления</span>
-            <Toggle on={user.notifications_on} onChange={toggleNotifications} />
-          </div>
-          <button className="set-row" onClick={() => nav("/family")}>
-            <span className="lbl">Семейный доступ</span>
-            <span className="val">Управление</span>
-            <span className="row-chev"><I.chev size={20} /></span>
-          </button>
-          <button className="set-row" onClick={() => nav("/health")}>
-            <span className="lbl">Дневник здоровья</span>
-            <span className="val">Давление и пульс</span>
-            <span className="row-chev"><I.chev size={20} /></span>
-          </button>
-          <button className="set-row" onClick={() => setModal("region")}>
-            <span className="lbl">Регион</span><span className="val">Москва</span><span className="row-chev"><I.chev size={20} /></span>
-          </button>
-          <button className="set-row" onClick={() => nav("/catalog")}>
-            <span className="lbl">Ситуация</span><span className="val">{routeTitle}</span><span className="row-chev"><I.chev size={20} /></span>
-          </button>
-          <button className="set-row" onClick={() => setModal("about")}>
-            <span className="lbl">О приложении</span>
-            <span className="row-chev"><I.chev size={20} /></span>
-          </button>
-          <button className="set-row" onClick={() => setModal("privacy")}>
-            <span className="lbl">Политика конфиденциальности</span>
-            <span className="row-chev"><I.chev size={20} /></span>
-          </button>
-        </div>
-      </div>
+  const consentDate = fmtDayMonth(user.consent_at);
 
-      {modal && (
-        <div className="sheet-overlay" onClick={(e) => { if (e.target === e.currentTarget) setModal(null); }}>
-          <div className="sheet">
-            <div className="grab" />
-            <h2>{modal === "about" ? "О приложении" : modal === "region" ? "Регион поиска" : "Политика конфиденциальности"}</h2>
-            <p className="sub" style={{ textAlign: "left" }}>
-              {modal === "about" ? ABOUT_TEXT : modal === "region" ? "В демонстрационном справочнике сейчас доступны организации Москвы." : (
-                "Приложение работает с минимально необходимыми данными: идентификатор и имя из MAX " +
-                "используются для входа. Медицинские показатели дневника хранятся только в демо-базе " +
-                "приложения. Данные не передаются третьим лицам, интеграции с внешними системами — " +
-                "модельные. Полная версия политики будет опубликована перед продуктивным запуском."
-              )}
-            </p>
-            <Button className="btn btn-primary" onClick={() => setModal(null)}>Понятно</Button>
-          </div>
+  return (
+    <div className="app">
+      <Header title="Профиль" />
+      <div className="screen-body">
+        <div className="profile-head">
+          <Avatar text={`${user.first_name[0] ?? ""}${user.last_name[0] ?? ""}`.toUpperCase() || "Я"} size={64} color="red" />
+          <b>{user.first_name} {user.last_name}</b>
+          <small>Профиль MAX</small>
         </div>
-      )}
+
+        <CellList mode="island">
+            <CellSimple
+              before={<div className="ic"><I.bell size={18} /></div>}
+              title="Уведомления"
+              subtitle="Напоминания приходят в чат MAX"
+              after={<Switch on={notif} onChange={toggleNotif} label="Уведомления" />}
+            />
+          </CellList>
+          <CellList mode="island">
+            <CellSimple
+              className="press"
+              before={<div className="ic"><I.users size={18} /></div>}
+              title="Семейный доступ"
+              after={<span className="cell-note">Управление</span>}
+              showChevron
+              onClick={() => nav("/family")}
+            />
+          </CellList>
+          <CellList mode="island">
+            <CellSimple
+              className="press"
+              before={<div className="ic g"><I.pulse size={18} /></div>}
+              title="Здоровье"
+              subtitle="Давление · вес · сахар · самочувствие"
+              showChevron
+              onClick={() => nav("/health")}
+            />
+          </CellList>
+          <CellList mode="island">
+            <CellSimple
+              className="press"
+              before={<div className="ic r"><I.pill size={18} /></div>}
+              title="Приём лекарств"
+              subtitle="Курсы и напоминания"
+              showChevron
+              onClick={() => nav("/meds")}
+            />
+          </CellList>
+          <CellList mode="island">
+            <CellSimple
+              className="press"
+              before={<div className="ic"><I.info size={18} /></div>}
+              title="О приложении"
+              subtitle={`Данные и приватность${consentDate ? ` · согласие от ${consentDate}` : ""}`}
+              showChevron
+              onClick={() => nav("/about")}
+            />
+          </CellList>
+      </div>
       {toast}
     </div>
   );

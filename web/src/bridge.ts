@@ -32,9 +32,34 @@ export function maxPlatform(): string {
   return window.WebApp?.platform ?? "web";
 }
 
-/** start_param из диплинка `?startapp=<payload>` → экран, на который надо открыть приложение. */
+/** start_param из диплинка `?startapp=<payload>` → экран, на который надо открыть приложение.
+ * Payload без двоеточий: имена экранов (route, meds, …) и шаги вида step_123. */
 export function startParam(): string | null {
   return window.WebApp?.initDataUnsafe?.start_param ?? null;
+}
+
+/** start_param → путь внутри мини-апа. step_123 → /step/123. */
+export function startParamPath(): string | null {
+  const p = startParam();
+  if (!p) return null;
+  const stepMatch = /^step_(\d+)$/.exec(p);
+  if (stepMatch) return `/step/${stepMatch[1]}`;
+  const map: Record<string, string> = {
+    home: "/",
+    route: "/route",
+    health: "/health",
+    meds: "/meds",
+    orgs: "/orgs",
+    reminders: "/reminders",
+    profile: "/profile",
+    builder: "/builder",
+    // легаси-пейлоады прежней версии
+    catalog: "/builder",
+    checklist: "/route",
+    prep: "/route",
+    family: "/family",
+  };
+  return map[p] ?? null;
 }
 
 export function openExternalLink(url: string): void {

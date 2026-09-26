@@ -24,3 +24,49 @@ def init_db() -> None:
     from core.db.models import Base  # noqa: PLC0415 — импорт в функции, чтобы таблицы видели все модели
 
     Base.metadata.create_all(engine)
+    _migrate_sqlite()
+    _migrate_bp_records()
+
+
+def _migrate_sqlite() -> None:
+    """create_all не ALTER-ит существующие таблицы — досоздаём колонки, появившиеся после релиза."""
+    from sqlalchemy import inspect, text  # noqa: PLC0415
+
+    if not _settings.database_url.startswith("sqlite"):
+        return
+    inspector = inspect(engine)
+    plans: dict[str, list[tuple[str, str]]] = {
+        "users": [("consent_at", "DATETIME NULL")],
+        "route_steps": [("source", "VARCHAR(16) NOT NULL DEFAULT 'template'")],
+        "reminders": [("sent_at", "DATETIME NULL")],
+    }
+    with engine.begin() as conn:
+        for table, columns in plans.items():
+            if table not in inspector.get_table_names():
+                continue
+            existing = {c["name"] for c in inspector.get_columns(table)}
+            for name, ddl in columns:
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+            inspector.clear_cache()
+
+
+def _migrate_bp_records() -> None:
+    """Разовый перенос старого дневника АД в единую таблицу health_records."""
+    from sqlalchemy import inspect, text  # noqa: PLC0415
+
+    from core.db.models import HealthRecord  # noqa: PLC0415
+
+    inspector = inspect(engine)
+    if "bp_records" not in inspector.get_table_names() or "health_records" not in inspector.get_table_names():
+        return
+    with engine.begin() as conn:
+        already = conn.execute(text("SELECT COUNT(*) FROM health_records")).scalar_one()
+        if already > 0:
+            return
+        conn.execute(
+            text(
+                "INSERT INTO health_records (user_id, type, at, systolic, diastolic, pulse) "
+                "SELECT user_id, 'bp', at, systolic, diastolic, pulse FROM bp_records"
+            )
+        )
