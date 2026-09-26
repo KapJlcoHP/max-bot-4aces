@@ -98,7 +98,7 @@ export default function StepCard() {
 
   if (status === "error") {
     return (
-      <div className="app">
+      <div className="app narrow">
         <Header title="Шаг" back="/route" />
         <ErrorView onRetry={load} />
       </div>
@@ -108,7 +108,7 @@ export default function StepCard() {
   const count = picked.length;
 
   return (
-    <div className="app">
+    <div className="app narrow">
       <Header title={step ? step.title : "Шаг"} subtitle={step ? `Шаг ${step.position} из ${route?.total_steps ?? "…"}` : undefined} back="/route" />
       <div className="screen-body">
         {status === "loading" || !step ? (

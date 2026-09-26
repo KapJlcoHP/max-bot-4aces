@@ -92,60 +92,64 @@ export default function HealthHub() {
       <div className="screen-body">
         {status === "loading" && <LoadingView />}
         {status === "ready" && (
-          <>
-            <CellHeader
-              titleStyle="normal"
-              after={<button className="cell-h-btn" onClick={() => setSheet(true)}>Настроить</button>}
-            >
-              Мои дневники
-            </CellHeader>
-            {(Object.keys(DIARY_META) as HealthType[]).filter(enabled).map((t) => {
-              const meta = DIARY_META[t];
-              const Icon = meta.icon;
-              return (
-                <CellList mode="island" key={t}>
-                  <CellSimple
-                    className="press"
-                    before={<div className={`ic ${meta.cls}`}><Icon size={18} /></div>}
-                    title={meta.title}
-                    after={<span className="cell-note">{lastValueSummary(t, lasts[t])}</span>}
-                    showChevron
-                    onClick={() => nav(`/health/${t}`)}
-                  />
-                </CellList>
-              );
-            })}
-            {!anyEnabled && (
-              <div className="card empty-card">
-                <b style={{ fontSize: 14.5 }}>Дневники не выбраны</b>
-                <div className="muted">Нажмите «Настроить» — включите то, что нужно именно вам.</div>
-              </div>
-            )}
-            <button className="add-dash" onClick={() => setSheet(true)}>
-              <I.plus size={18} /> Добавить дневник
-            </button>
+          <div className="split">
+            <div className="col">
+              <CellHeader
+                titleStyle="normal"
+                after={<button className="cell-h-btn" onClick={() => setSheet(true)}>Настроить</button>}
+              >
+                Мои дневники
+              </CellHeader>
+              {(Object.keys(DIARY_META) as HealthType[]).filter(enabled).map((t) => {
+                const meta = DIARY_META[t];
+                const Icon = meta.icon;
+                return (
+                  <CellList mode="island" key={t}>
+                    <CellSimple
+                      className="press"
+                      before={<div className={`ic ${meta.cls}`}><Icon size={18} /></div>}
+                      title={meta.title}
+                      after={<span className="cell-note">{lastValueSummary(t, lasts[t])}</span>}
+                      showChevron
+                      onClick={() => nav(`/health/${t}`)}
+                    />
+                  </CellList>
+                );
+              })}
+              {!anyEnabled && (
+                <div className="card empty-card">
+                  <b style={{ fontSize: 14.5 }}>Дневники не выбраны</b>
+                  <div className="muted">Нажмите «Настроить» — включите то, что нужно именно вам.</div>
+                </div>
+              )}
+              <button className="add-dash" onClick={() => setSheet(true)}>
+                <I.plus size={18} /> Добавить дневник
+              </button>
+            </div>
 
-            <CellList mode="island" style={{ marginTop: 12 }}>
-              <CellSimple
-                className="press"
-                before={<div className="ic"><I.pill size={18} /></div>}
-                title="Приём лекарств"
-                after={<span className="cell-note">
-                  {nextMed ? `${meds!.courses.length} ${meds!.courses.length === 1 ? "курс" : meds!.courses.length < 5 ? "курса" : "курсов"} · в ${nextMed.at_time}` : "добавить курс"}
-                </span>}
-                showChevron
-                onClick={() => nav("/meds")}
-              />
-            </CellList>
+            <div className="col">
+              <CellList mode="island">
+                <CellSimple
+                  className="press"
+                  before={<div className="ic"><I.pill size={18} /></div>}
+                  title="Приём лекарств"
+                  after={<span className="cell-note">
+                    {nextMed ? `${meds!.courses.length} ${meds!.courses.length === 1 ? "курс" : meds!.courses.length < 5 ? "курса" : "курсов"} · в ${nextMed.at_time}` : "добавить курс"}
+                  </span>}
+                  showChevron
+                  onClick={() => nav("/meds")}
+                />
+              </CellList>
 
-            <CellHeader titleStyle="normal" style={{ marginTop: 12 }}>Отчёты</CellHeader>
-            <div className="card tinted press" onClick={() => nav("/health/report")}>
-              <b style={{ color: "var(--blue)" }}>Сводка для врача</b>
-              <div className="muted" style={{ marginTop: 5 }}>
-                Давление, вес, приёмы лекарств за 30 дней — покажите на приёме вместо слов.
+              <CellHeader titleStyle="normal">Отчёты</CellHeader>
+              <div className="card tinted press" onClick={() => nav("/health/report")}>
+                <b style={{ color: "var(--blue)" }}>Сводка для врача</b>
+                <div className="muted" style={{ marginTop: 5 }}>
+                  Давление, вес, приёмы лекарств за 30 дней — покажите на приёме вместо слов.
+                </div>
               </div>
             </div>
-          </>
+          </div>
         )}
       </div>
 

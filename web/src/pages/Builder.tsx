@@ -91,80 +91,91 @@ export default function Builder() {
       <div className="screen-body">
         {status === "loading" && <LoadingView />}
         {status === "ready" && (
-          <>
-            <div className="section-h"><b>Основа</b></div>
-            <div className="card" style={{ padding: "8px 16px" }}>
-              {situations.map((s) => (
+          <div className="split">
+            <div className="col">
+              <div className="section-h"><b>Основа</b></div>
+              <div className="card" style={{ padding: "8px 16px" }}>
+                {situations.map((s) => (
+                  <div
+                    className="rem-item press"
+                    key={s.key}
+                    style={selected === s.key ? { outline: "2px solid var(--blue)", outlineOffset: -2, borderRadius: 10, padding: "11px 8px" } : undefined}
+                    onClick={() => pick(s.key)}
+                  >
+                    <div className="what">
+                      <b>{s.title}</b>
+                      <small>{s.description}</small>
+                    </div>
+                    <Radio checked={selected === s.key} readOnly aria-label={s.title} />
+                  </div>
+                ))}
                 <div
                   className="rem-item press"
-                  key={s.key}
-                  style={selected === s.key ? { outline: "2px solid var(--blue)", outlineOffset: -2, borderRadius: 10, padding: "11px 8px" } : undefined}
-                  onClick={() => pick(s.key)}
+                  style={selected === "custom" ? { outline: "2px solid var(--blue)", outlineOffset: -2, borderRadius: 10, padding: "11px 8px" } : undefined}
+                  onClick={() => pick("custom")}
                 >
-                  <div className="what">
-                    <b>{s.title}</b>
-                    <small>{s.description}</small>
-                  </div>
-                  <Radio checked={selected === s.key} readOnly aria-label={s.title} />
+                  <div className="what"><b>С нуля</b><small>Без шаблона — только свои шаги</small></div>
+                  <Radio checked={selected === "custom"} readOnly aria-label="С нуля" />
                 </div>
-              ))}
-              <div
-                className="rem-item press"
-                style={selected === "custom" ? { outline: "2px solid var(--blue)", outlineOffset: -2, borderRadius: 10, padding: "11px 8px" } : undefined}
-                onClick={() => pick("custom")}
-              >
-                <div className="what"><b>С нуля</b><small>Без шаблона — только свои шаги</small></div>
-                <Radio checked={selected === "custom"} readOnly aria-label="С нуля" />
               </div>
             </div>
 
-            {selected && selected !== "custom" && templateSteps.length > 0 && (
-              <>
-                <div className="section-h"><b>Шаги маршрута</b><span className="muted" style={{ fontSize: 13 }}>можно выключить</span></div>
-                <div className="card" style={{ padding: "8px 16px" }}>
-                  {templateSteps.map((s) => (
-                    <div className="rem-item" key={s.position}>
-                      <div className="what"><b>{s.title}</b><small>из шаблона</small></div>
-                      <Switch
-                        on={!off.has(s.position)}
-                        onChange={(v) => setOff((prev) => {
-                          const next = new Set(prev);
-                          if (v) next.delete(s.position);
-                          else next.add(s.position);
-                          return next;
-                        })}
-                        label={s.title}
-                      />
-                    </div>
-                  ))}
+            <div className="col">
+              {!selected && (
+                <div className="card empty-card" style={{ marginTop: 34 }}>
+                  <div className="empty-ico"><I.route size={20} /></div>
+                  <b style={{ fontSize: 14.5 }}>Шаги появятся здесь</b>
+                  <div className="muted">Выберите шаблон слева — его шаги можно будет выключить, а свои добавить ниже.</div>
                 </div>
-              </>
-            )}
-
-            {selected && (
-              <>
-                <div className="section-h"><b>Свои шаги</b></div>
-                <div className="card" style={{ padding: "8px 16px" }}>
-                  {custom.map((c, i) => (
-                    <div className="rem-item" key={`${c.title}-${i}`}>
-                      <div className="what"><b>{c.title}</b><small>мой шаг</small></div>
-                      <button className="picked-item-x" aria-label="Убрать" onClick={() => setCustom((prev) => prev.filter((_, j) => j !== i))}>✕</button>
-                    </div>
-                  ))}
-                  {custom.length === 0 && (
-                    <div className="rem-item"><div className="what"><b className="muted" style={{ fontWeight: 500 }}>Пока пусто</b><small>например, «Договориться о замене справки»</small></div></div>
-                  )}
-                </div>
-                <div className="card">
-                  <div className="own-row">
-                    <input placeholder="Свой шаг" aria-label="Название шага" value={ownName} onChange={(e) => setOwnName(e.target.value)} />
-                    <input className="date" type="date" aria-label="Срок" value={ownDate} onChange={(e) => setOwnDate(e.target.value)} />
-                    <button className="add" onClick={addOwn} disabled={!ownName.trim()} aria-label="Добавить">+</button>
+              )}
+              {selected && selected !== "custom" && templateSteps.length > 0 && (
+                <>
+                  <div className="section-h"><b>Шаги маршрута</b><span className="muted" style={{ fontSize: 13 }}>можно выключить</span></div>
+                  <div className="card" style={{ padding: "8px 16px" }}>
+                    {templateSteps.map((s) => (
+                      <div className="rem-item" key={s.position}>
+                        <div className="what"><b>{s.title}</b><small>из шаблона</small></div>
+                        <Switch
+                          on={!off.has(s.position)}
+                          onChange={(v) => setOff((prev) => {
+                            const next = new Set(prev);
+                            if (v) next.delete(s.position);
+                            else next.add(s.position);
+                            return next;
+                          })}
+                          label={s.title}
+                        />
+                      </div>
+                    ))}
                   </div>
-                </div>
-              </>
-            )}
-          </>
+                </>
+              )}
+
+              {selected && (
+                <>
+                  <div className="section-h"><b>Свои шаги</b></div>
+                  <div className="card" style={{ padding: "8px 16px" }}>
+                    {custom.map((c, i) => (
+                      <div className="rem-item" key={`${c.title}-${i}`}>
+                        <div className="what"><b>{c.title}</b><small>мой шаг</small></div>
+                        <button className="picked-item-x" aria-label="Убрать" onClick={() => setCustom((prev) => prev.filter((_, j) => j !== i))}>✕</button>
+                      </div>
+                    ))}
+                    {custom.length === 0 && (
+                      <div className="rem-item"><div className="what"><b className="muted" style={{ fontWeight: 500 }}>Пока пусто</b><small>например, «Договориться о замене справки»</small></div></div>
+                    )}
+                  </div>
+                  <div className="card">
+                    <div className="own-row">
+                      <input placeholder="Свой шаг" aria-label="Название шага" value={ownName} onChange={(e) => setOwnName(e.target.value)} />
+                      <input className="date" type="date" aria-label="Срок" value={ownDate} onChange={(e) => setOwnDate(e.target.value)} />
+                      <button className="add" onClick={addOwn} disabled={!ownName.trim()} aria-label="Добавить">+</button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

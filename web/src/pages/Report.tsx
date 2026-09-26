@@ -43,7 +43,7 @@ export default function Report() {
 
   if (status === "error") {
     return (
-      <div className="app">
+      <div className="app narrow">
         <Header title="Сводка для врача" back="/health" />
         <ErrorView onRetry={load} />
       </div>
@@ -51,7 +51,7 @@ export default function Report() {
   }
 
   return (
-    <div className="app">
+    <div className="app narrow">
       <Header title="Сводка для врача" subtitle="Только факты за 30 дней" back="/health" />
       <div className="screen-body">
         {status === "loading" && <LoadingView />}

@@ -47,7 +47,7 @@ export default function Orgs() {
           </div>
         </div>
       </div>
-      <div className="screen-body">
+      <div className="screen-body cards-2">
         {error && (
           <div className="state-wrap">
             <div className="alert-circle"><I.alert size={30} /></div>

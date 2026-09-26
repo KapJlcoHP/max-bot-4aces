@@ -43,7 +43,7 @@ export default function Family() {
   };
 
   return (
-    <div className="app">
+    <div className="app narrow">
       <Header title="Семейный доступ" subtitle="Управление доступом к маршрутам" back="/profile" right={<BrandMark />} />
       <div className="screen-body">
         {status === "loading" && <LoadingView />}

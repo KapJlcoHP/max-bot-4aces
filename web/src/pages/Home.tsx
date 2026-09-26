@@ -60,90 +60,92 @@ export default function Home() {
     <div className="app">
       <RootHeader name={`${user.first_name} ${user.last_name}`} onProfile={() => nav("/profile")} />
       <div className="screen-body">
-        <div className="greeting">
-          <h2>Здравствуйте, {user.first_name}</h2>
-          <p>{dateLine}</p>
-        </div>
-
         {status === "loading" && (
           <LoadingView />
         )}
 
-        {status === "ready" && empty && (
-          <>
-            <div className="card hero tinted press" onClick={() => nav("/builder")}>
-              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                <div className="cta-ic"><I.plus size={22} /></div>
-                <div>
-                  <b style={{ color: "var(--blue)", fontSize: 16 }}>Выберите свою первую ситуацию</b>
-                  <div className="muted" style={{ marginTop: 4 }}>
-                    Например, «Подготовка к приёму у врача» — и маршрут появится здесь, шаг за шагом.
+        {status === "ready" && (
+          <div className="split">
+            <div className="col">
+              <div className="greeting">
+                <h2>Здравствуйте, {user.first_name}</h2>
+                <p>{dateLine}</p>
+              </div>
+              {empty ? (
+                <div className="card hero tinted press" onClick={() => nav("/builder")}>
+                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    <div className="cta-ic"><I.plus size={22} /></div>
+                    <div>
+                      <b style={{ color: "var(--blue)", fontSize: 16 }}>Выберите свою первую ситуацию</b>
+                      <div className="muted" style={{ marginTop: 4 }}>
+                        Например, «Подготовка к приёму у врача» — и маршрут появится здесь, шаг за шагом.
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {status === "ready" && !empty && (
-          <div className="card hero route-status press" onClick={() => nav("/route")}>
-            <div className="label"><span>{route!.title}</span></div>
-            <div className="big-nums">
-              <span className="n">{route!.done_steps}</span>
-              <span className="of">из {route!.total_steps} шагов</span>
-            </div>
-            <div className="progress"><i style={{ width: `${Math.round((route!.done_steps / route!.total_steps) * 100)}%` }} /></div>
-            {nextStep && (
-              <div className="next">
-                <span className="dot" />
-                Дальше: {nextStep.title.toLowerCase()}
-                {nextStep.deadline && <small>· {fmtDeadline(nextStep.deadline, nextStep.deadline_time)}</small>}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="section-h">
-          <b>Напоминания</b>
-          {!empty && <button onClick={() => nav("/reminders")}>Все</button>}
-        </div>
-
-        {status === "ready" && upcoming.length === 0 ? (
-          <div className="card empty-card">
-            <div className="empty-ico"><I.bell size={20} /></div>
-            <b style={{ fontSize: 14.5 }}>Пока тихо</b>
-            <div className="muted">
-              {empty
-                ? "Напоминания появятся после первого шага маршрута — бот пришлёт их прямо в MAX."
-                : "Все напоминания выключены или уже прошли."}
-            </div>
-          </div>
-        ) : (
-          <div className="card" style={{ padding: "8px 16px" }}>
-            {upcoming.map((r) => {
-              const d = new Date(r.at);
-              const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-              const sameDay = d.toDateString() === now.toDateString();
-              return (
-                <div className="rem-item" key={r.id}>
-                  <div className="when">
-                    {sameDay ? (
-                      hhmm
-                    ) : (
-                      <>
-                        {d.getDate()} {MONTHS[d.getMonth()]}
-                        <br />
-                        {hhmm}
-                      </>
-                    )}
+              ) : (
+                <div className="card hero route-status press" onClick={() => nav("/route")}>
+                  <div className="label"><span>{route!.title}</span></div>
+                  <div className="big-nums">
+                    <span className="n">{route!.done_steps}</span>
+                    <span className="of">из {route!.total_steps} шагов</span>
                   </div>
-                  <div className="what">
-                    <b>{r.title}</b>
-                    <small>{r.place || fmtWhen(r.at)}</small>
+                  <div className="progress"><i style={{ width: `${Math.round((route!.done_steps / route!.total_steps) * 100)}%` }} /></div>
+                  {nextStep && (
+                    <div className="next">
+                      <span className="dot" />
+                      Дальше: {nextStep.title.toLowerCase()}
+                      {nextStep.deadline && <small>· {fmtDeadline(nextStep.deadline, nextStep.deadline_time)}</small>}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="col">
+              <div className="section-h">
+                <b>Напоминания</b>
+                {!empty && <button onClick={() => nav("/reminders")}>Все</button>}
+              </div>
+              {upcoming.length === 0 ? (
+                <div className="card empty-card">
+                  <div className="empty-ico"><I.bell size={20} /></div>
+                  <b style={{ fontSize: 14.5 }}>Пока тихо</b>
+                  <div className="muted">
+                    {empty
+                      ? "Напоминания появятся после первого шага маршрута — бот пришлёт их прямо в MAX."
+                      : "Все напоминания выключены или уже прошли."}
                   </div>
                 </div>
-              );
-            })}
+              ) : (
+                <div className="card" style={{ padding: "8px 16px" }}>
+                  {upcoming.map((r) => {
+                    const d = new Date(r.at);
+                    const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+                    const sameDay = d.toDateString() === now.toDateString();
+                    return (
+                      <div className="rem-item" key={r.id}>
+                        <div className="when">
+                          {sameDay ? (
+                            hhmm
+                          ) : (
+                            <>
+                              {d.getDate()} {MONTHS[d.getMonth()]}
+                              <br />
+                              {hhmm}
+                            </>
+                          )}
+                        </div>
+                        <div className="what">
+                          <b>{r.title}</b>
+                          <small>{r.place || fmtWhen(r.at)}</small>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

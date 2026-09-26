@@ -58,7 +58,7 @@ export default function Reminders() {
   const nextStep = route?.steps.find((s) => s.status === "current");
 
   return (
-    <div className="app">
+    <div className="app narrow">
       <Header title="Напоминания" subtitle="Ближайшие события маршрута" back="/" right={<button className="avatar" onClick={() => setAdding(true)} aria-label="Добавить"><I.plus size={18} /></button>} />
       <div className="screen-body">
         

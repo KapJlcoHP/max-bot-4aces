@@ -27,7 +27,7 @@ export default function Profile() {
   const consentDate = fmtDayMonth(user.consent_at);
 
   return (
-    <div className="app">
+    <div className="app narrow">
       <Header title="Профиль" />
       <div className="screen-body">
         <div className="profile-head">

@@ -112,57 +112,61 @@ export default function RoutePage() {
         )}
 
         {route && !finished && (
-          <>
-            <div className="tl" style={{ marginTop: 4 }}>
-              {route.steps.map((s) => (
-                <div className="tl-item" key={s.id}>
-                  <div className={`tl-dot ${s.status}`}>
-                    {s.status === "done" && <I.check size={14} strokeWidth={2.6} />}
-                    {s.status !== "done" && s.position}
-                  </div>
-                  <div
-                    className={`tl-card ${s.status === "done" ? "muted-t" : ""} ${s.status === "current" ? "current-t press" : ""}`}
-                    onClick={s.status !== "done" ? () => nav(`/step/${s.id}`) : undefined}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                      <b>{s.title}</b>
-                      <StepBadge source={s.source} />
+          <div className="split">
+            <div className="col">
+              <div className="tl" style={{ marginTop: 4 }}>
+                {route.steps.map((s) => (
+                  <div className="tl-item" key={s.id}>
+                    <div className={`tl-dot ${s.status}`}>
+                      {s.status === "done" && <I.check size={14} strokeWidth={2.6} />}
+                      {s.status !== "done" && s.position}
                     </div>
-                    {(s.deadline || s.status === "current") && (
-                      <div className="when" style={{ marginTop: 4, display: "block" }}>
-                        {s.status === "current" && s.description
-                          ? s.description
-                          : fmtDeadline(s.deadline, s.deadline_time)}
+                    <div
+                      className={`tl-card ${s.status === "done" ? "muted-t" : ""} ${s.status === "current" ? "current-t press" : ""}`}
+                      onClick={s.status !== "done" ? () => nav(`/step/${s.id}`) : undefined}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                        <b>{s.title}</b>
+                        <StepBadge source={s.source} />
                       </div>
-                    )}
+                      {(s.deadline || s.status === "current") && (
+                        <div className="when" style={{ marginTop: 4, display: "block" }}>
+                          {s.status === "current" && s.description
+                            ? s.description
+                            : fmtDeadline(s.deadline, s.deadline_time)}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
 
-            <button className="add-dash" onClick={() => setSheet(true)}>
-              <I.plus size={18} /> Добавить шаг
-            </button>
+            <div className="col">
+              <button className="add-dash" onClick={() => setSheet(true)}>
+                <I.plus size={18} /> Добавить шаг
+              </button>
 
-            {checklist && (
-              <>
-                <div className="section-h" style={{ marginTop: 8 }}>
-                  <b>Документы на приём</b>
-                  <span className="muted" style={{ fontSize: 13 }}>{checklist.collected} из {checklist.total}</span>
-                </div>
-                <div className="card docs-card">
-                  {checklist.items.map((item) => (
-                    <div className={`doc${item.collected ? " ok" : ""}`} key={item.id}>
-                      <button className="ck" onClick={() => toggleDoc(item)} aria-label="Отметить">
-                        {item.collected && <I.check size={12} strokeWidth={3} />}
-                      </button>
-                      {item.title}
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </>
+              {checklist && (
+                <>
+                  <div className="section-h" style={{ marginTop: 4 }}>
+                    <b>Документы на приём</b>
+                    <span className="muted" style={{ fontSize: 13 }}>{checklist.collected} из {checklist.total}</span>
+                  </div>
+                  <div className="card docs-card">
+                    {checklist.items.map((item) => (
+                      <div className={`doc${item.collected ? " ok" : ""}`} key={item.id}>
+                        <button className="ck" onClick={() => toggleDoc(item)} aria-label="Отметить">
+                          {item.collected && <I.check size={12} strokeWidth={3} />}
+                        </button>
+                        {item.title}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

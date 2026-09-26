@@ -110,7 +110,7 @@ export default function HealthDiary() {
   const stroke = type === "weight" ? "#22C55E" : type === "sugar" ? "#DE2129" : "#006DF8";
 
   return (
-    <div className="app">
+    <div className="app narrow">
       <Header title={TITLES[type] ?? "Дневник"} subtitle={type === "mood" ? "Как вы себя чувствуете" : "Последние записи"} back="/health" />
       <div className="screen-body">
         {status === "loading" && <LoadingView />}

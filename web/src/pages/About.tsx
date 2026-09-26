@@ -28,7 +28,7 @@ export default function About() {
   };
 
   return (
-    <div className="app">
+    <div className="app narrow">
       <Header title="О приложении" back="/profile" />
       <div className="screen-body">
         <div className="card">
