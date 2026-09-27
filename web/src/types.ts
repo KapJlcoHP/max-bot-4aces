@@ -6,7 +6,14 @@ export interface UserDto {
   email: string;
   avatar_url: string;
   notifications_on: boolean;
+  region: string;
   consent_at: string | null;
+}
+
+export interface Region {
+  key: string;
+  title: string;
+  pilot: boolean;
 }
 
 export interface Situation {
@@ -72,6 +79,7 @@ export interface Organization {
   id: number;
   title: string;
   org_type: string;
+  region: string;
   address: string;
   phone: string;
   hours: string;

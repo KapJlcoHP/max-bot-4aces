@@ -66,6 +66,39 @@ def complete_route_step(
     return step
 
 
+def uncomplete_route_step(db: Session, user_id: int, step_id: int) -> RouteStep:
+    """Отменить выполнение: шаг снова pending. Если текущего нет (маршрут был завершён),
+    текущим становится самый ранний невыполненный."""
+    route = active_route(db, user_id)
+    if route is None:
+        raise ServiceError("Активный маршрут не найден", 404)
+    step = db.query(RouteStep).filter(RouteStep.id == step_id, RouteStep.route_id == route.id).first()
+    if step is None:
+        raise ServiceError("Шаг не найден", 404)
+    if step.status != "done":
+        raise ServiceError("Шаг ещё не выполнен", 409)
+
+    step.status = "pending"
+    step.completed_at = None
+    has_current = (
+        db.query(RouteStep)
+        .filter(RouteStep.route_id == route.id, RouteStep.status == "current")
+        .first()
+    )
+    if has_current is None:
+        earliest = (
+            db.query(RouteStep)
+            .filter(RouteStep.route_id == route.id, RouteStep.status != "done")
+            .order_by(RouteStep.position)
+            .first()
+        )
+        if earliest is not None:
+            earliest.status = "current"
+    db.commit()
+    db.refresh(step)
+    return step
+
+
 # ---------- лекарства ----------
 
 

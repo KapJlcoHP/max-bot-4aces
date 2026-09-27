@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from core.config import get_settings
 from core.db.models import User
-from core.db.seed import seed_demo_user
+from core.db.seed import pilot_region
 
 HEADER = "X-Max-Init-Data"
 DEV_USER_MAX_ID = 0
@@ -85,10 +85,11 @@ def get_or_create_user(db: Session, init_data: str | None) -> User:
             last_name=user_payload.get("last_name") or "",
             email=f"user{max_id}@demo.local",
             avatar_url=user_payload.get("avatar_url") or user_payload.get("photo_url") or "",
+            region=pilot_region(),  # регион пилотного запуска — потом выбирается в профиле
         )
+        # чистый аккаунт: маршрут и дневники пользователь заводит сам
         db.add(user)
         db.commit()
-        seed_demo_user(db, user)
     else:
         # фото из MAX может появиться/смениться между запусками — подтягиваем при входе
         fresh_avatar = user_payload.get("avatar_url") or user_payload.get("photo_url") or ""

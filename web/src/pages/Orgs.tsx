@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { openExternalLink } from "../bridge";
+import { useApp } from "../App";
 import type { Organization } from "../types";
 import { Input } from "@maxhub/max-ui";
 import { Button, Badge, Header, LoadingView } from "../components/ui";
@@ -11,6 +12,7 @@ const CHIPS = ["Все", "Поликлиники", "Диспансеры", "Це
 
 export default function Orgs() {
   const nav = useNavigate();
+  const { user } = useApp();
   const [q, setQ] = useState("");
   const [type, setType] = useState("Все");
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
@@ -37,7 +39,7 @@ export default function Orgs() {
   return (
     <div className="app">
       <div>
-        <Header title="Организации" subtitle="Демо-данные" back="/" />
+        <Header title="Организации" subtitle={user.region ? `Ваш регион: ${user.region}` : "Регион не выбран — показаны все"} back="/" />
         <div className="org-search">
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск поликлиники, больницы…" iconBefore={<I.search size={18} />} aria-label="Поиск организаций" />
           <div className="chips" style={{ marginTop: 12 }}>
@@ -70,7 +72,10 @@ export default function Orgs() {
         )}
         {orgs?.map((o) => (
           <div key={o.id} className="card press" onClick={() => nav(`/orgs/${o.id}`)}>
-            <h3 style={{ fontSize: 16, fontWeight: 700 }}>{o.title}</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 700 }}>
+              {o.title}
+              {!user.region && o.region && <span className="badge-mine" style={{ marginLeft: 8 }}>{o.region}</span>}
+            </h3>
             <p className="kv" style={{ marginTop: 8, color: "#8E8E93" }}>
               <I.pin size={16} />
               {o.address}

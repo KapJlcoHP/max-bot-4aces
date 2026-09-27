@@ -167,8 +167,8 @@ export default function RoutePage() {
                       {s.status !== "done" && s.position}
                     </div>
                     <div
-                      className={`tl-card ${s.status === "done" ? "muted-t" : ""} ${s.status === "current" ? "current-t press" : ""}`}
-                      onClick={s.status !== "done" ? () => nav(`/step/${s.id}`) : undefined}
+                      className={`tl-card ${s.status === "done" ? "muted-t" : ""} ${s.status === "current" ? "current-t press" : ""} press`}
+                      onClick={() => nav(`/step/${s.id}`)}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                         <b>{s.title}</b>

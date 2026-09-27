@@ -26,7 +26,7 @@ from core.db.models import (
     User,
     utcnow,
 )
-from core.db.seed import build_route_for, load_catalog, load_scenarios
+from core.db.seed import build_route_for, load_catalog, load_regions, load_scenarios
 from core.schemas import (
     ChecklistAddIn,
     ChecklistItemDto,
@@ -51,11 +51,13 @@ from core.schemas import (
     ReportNote,
     ReminderDto,
     RouteDto,
+    RegionDto,
     RouteStartIn,
     SettingsIn,
     SituationDto,
     StepAddIn,
     StepDto,
+    StepUpdateIn,
     UserDto,
 )
 from server.deps import AuthError, get_or_create_user
@@ -66,6 +68,7 @@ from core.services import (
     add_health_record as create_health_record,
     complete_route_step,
     take_med,
+    uncomplete_route_step,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -136,7 +139,11 @@ def give_consent(body: ConsentIn | None = None, user: User = Depends(current_use
 
 @router.delete("/me/data")
 def delete_my_data(user: User = Depends(current_user), db: Session = Depends(db_session)):
-    """Право на удаление (152-ФЗ, ст. 21): стираем всё содержимое, аккаунт остаётся пустым."""
+    """Право на удаление (152-ФЗ, ст. 21): стираем аккаунт целиком — при следующем входе
+    пользователь зарегистрируется заново (согласие + демо-данные)."""
+    route_ids = db.query(Route.id).filter(Route.user_id == user.id)
+    # bulk-удаление маршрутов обходит ORM-каскад — шаги стираем явно (user_id у них нет)
+    db.query(RouteStep).filter(RouteStep.route_id.in_(route_ids)).delete(synchronize_session=False)
     for model, field in (
         (Route, "user_id"),
         (ChecklistItem, "user_id"),
@@ -147,8 +154,10 @@ def delete_my_data(user: User = Depends(current_user), db: Session = Depends(db_
         (MedCourse, "user_id"),
         (FamilyMember, "owner_id"),
         (NotificationLog, "user_id"),
+        (ExportRequest, "user_id"),
     ):
         db.query(model).filter(getattr(model, field) == user.id).delete(synchronize_session=False)
+    db.delete(user)
     db.commit()
     return {"status": "deleted"}
 
@@ -159,9 +168,23 @@ def update_settings(body: SettingsIn, user: User = Depends(consented_user), db: 
         user.notifications_on = body.notifications_on
     if body.email is not None:
         user.email = body.email
+    if body.region is not None:
+        known = {r["title"] for r in load_regions()}
+        if body.region not in known:
+            raise HTTPException(status_code=422, detail="Неизвестный регион")
+        user.region = body.region
     db.commit()
     db.refresh(user)
     return user
+
+
+# ---------- регионы ----------
+
+
+@router.get("/regions", response_model=list[RegionDto])
+def regions(user: User = Depends(consented_user)):
+    """Справочник регионов из content/regions.json — источник и организаций (сид-синк на старте)."""
+    return [RegionDto(key=r["key"], title=r["title"], pilot=r.get("pilot", False)) for r in load_regions()]
 
 
 # ---------- каталог ситуаций ----------
@@ -334,6 +357,34 @@ def complete_step(step_id: int, body: CompleteStepIn | None = None, user: User =
     )
 
 
+@router.post("/route/steps/{step_id}/uncomplete", response_model=RouteDto)
+def uncomplete_step(step_id: int, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    """Отменить выполнение шага (отметили случайно — можно снять)."""
+    try:
+        uncomplete_route_step(db, user.id, step_id)
+    except ServiceError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+    route = _get_active_route(db, user.id)
+    return route_dto(route)
+
+
+@router.patch("/route/steps/{step_id}", response_model=StepDto)
+def update_step(step_id: int, body: StepUpdateIn, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    """Изменить срок шага (в том числе шаблонного) — выполняенный не меняем."""
+    route = _get_active_route(db, user.id)
+    if route is None:
+        raise HTTPException(status_code=404, detail="Активный маршрут не найден")
+    step = db.query(RouteStep).filter(RouteStep.id == step_id, RouteStep.route_id == route.id).first()
+    if step is None:
+        raise HTTPException(status_code=404, detail="Шаг не найден")
+    if step.status == "done":
+        raise HTTPException(status_code=409, detail="Пройденный шаг изменить нельзя")
+    step.deadline = body.deadline
+    db.commit()
+    db.refresh(step)
+    return StepDto.model_validate(step)
+
+
 # ---------- чек-лист ----------
 
 
@@ -379,6 +430,9 @@ def orgs(
     db: Session = Depends(db_session),
 ):
     query = db.query(Organization)
+    if user.region:
+        # организации выбранного региона; регион не выбран — показываем все
+        query = query.filter(Organization.region == user.region)
     if org_type and org_type != "Все":
         query = query.filter(Organization.org_type == org_type)
     if q:

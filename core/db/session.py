@@ -50,8 +50,10 @@ def _migrate_sqlite() -> None:
             ("consent_at", "DATETIME NULL"),
             ("avatar_url", "VARCHAR(500) NULL DEFAULT ''"),
             ("tz", "VARCHAR(64) NOT NULL DEFAULT 'Europe/Moscow'"),
+            ("region", "VARCHAR(100) NOT NULL DEFAULT ''"),
         ],
         "route_steps": [("source", "VARCHAR(16) NOT NULL DEFAULT 'template'")],
+        "organizations": [("region", "VARCHAR(100) NOT NULL DEFAULT ''")],
         "reminders": [("sent_at", "DATETIME NULL"), ("done_at", "DATETIME NULL")],
         "health_settings": [("push_time", "VARCHAR(5) NULL")],
     }

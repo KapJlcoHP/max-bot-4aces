@@ -20,7 +20,16 @@ class UserDto(OrmDto):
     avatar_url: str = ""
     notifications_on: bool
     tz: str = "Europe/Moscow"
+    region: str = ""
     consent_at: datetime | None = None
+
+
+class RegionDto(OrmDto):
+    """Регион из content/regions.json: добавление региона — правка файла, без кода."""
+
+    key: str
+    title: str
+    pilot: bool = False
 
 
 class ConsentIn(OrmDto):
@@ -72,6 +81,12 @@ class CompleteStepOut(OrmDto):
     next_step: StepDto | None = None
 
 
+class StepUpdateIn(OrmDto):
+    """Изменение срока шага; null — срока нет."""
+
+    deadline: Date | None = None
+
+
 class StepAddIn(OrmDto):
     """Новый шаг маршрута: назначение врача (source=doctor) или свой пункт (source=user)."""
 
@@ -116,6 +131,7 @@ class OrganizationDto(OrmDto):
     id: int
     title: str
     org_type: str
+    region: str = ""
     address: str
     phone: str
     hours: str
@@ -244,6 +260,7 @@ class FamilyAddIn(OrmDto):
 class SettingsIn(OrmDto):
     notifications_on: bool | None = None
     email: str | None = None
+    region: str | None = None
 
 
 RouteDto.model_rebuild()

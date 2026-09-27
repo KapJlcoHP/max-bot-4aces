@@ -62,6 +62,14 @@ export default function Builder() {
     setOwnAttempted(false);
   };
 
+  const toggleStep = (position: number, on: boolean) =>
+    setOff((prev) => {
+      const next = new Set(prev);
+      if (on) next.delete(position);
+      else next.add(position);
+      return next;
+    });
+
   const create = async () => {
     if (!selected) return;
     setBusy(true);
@@ -139,16 +147,15 @@ export default function Builder() {
                   <div className="section-h"><b>Шаги маршрута</b><span className="muted" style={{ fontSize: 13 }}>можно выключить</span></div>
                   <div className="card" style={{ padding: "8px 16px" }}>
                     {templateSteps.map((s) => (
-                      <div className="rem-item" key={s.position}>
+                      <div
+                        className="rem-item press"
+                        key={s.position}
+                        onClick={() => toggleStep(s.position, off.has(s.position))}
+                      >
                         <div className="what"><b>{s.title}</b><small>из шаблона</small></div>
                         <Switch
                           on={!off.has(s.position)}
-                          onChange={(v) => setOff((prev) => {
-                            const next = new Set(prev);
-                            if (v) next.delete(s.position);
-                            else next.add(s.position);
-                            return next;
-                          })}
+                          onChange={(v) => toggleStep(s.position, v)}
                           label={s.title}
                         />
                       </div>

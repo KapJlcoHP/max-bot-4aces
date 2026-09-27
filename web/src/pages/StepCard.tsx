@@ -60,6 +60,31 @@ export default function StepCard() {
     }
   };
 
+  const uncomplete = async () => {
+    if (!step) return;
+    setBusy(true);
+    try {
+      await api.post<RouteDto>(`/api/v1/route/steps/${step.id}/uncomplete`);
+      showToast("Выполнение отменено");
+      nav("/route");
+    } catch {
+      showToast("Не удалось отменить выполнение");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveDeadline = async (value: string | null) => {
+    if (!step) return;
+    try {
+      await api.patch<Step>(`/api/v1/route/steps/${step.id}`, { deadline: value });
+      showToast(value ? "Срок обновлён" : "Срок убран");
+      load();
+    } catch {
+      showToast("Не удалось изменить срок");
+    }
+  };
+
   const toggleChip = (title: string) => {
     setPicked((prev) =>
       prev.some((p) => p.title === title && !p.own)
@@ -122,8 +147,21 @@ export default function StepCard() {
         ) : (
           <>
             <div className="card">
-              {step.deadline && (
-                <div className="kv"><I.cal size={18} />{fmtDeadline(step.deadline, step.deadline_time)}</div>
+              {step.status !== "done" ? (
+                <div className="kv" style={{ gap: 10 }}>
+                  <I.cal size={18} />
+                  <input
+                    className="step-date"
+                    type="date"
+                    aria-label="Срок шага"
+                    value={step.deadline ?? ""}
+                    onChange={(e) => saveDeadline(e.target.value || null)}
+                  />
+                </div>
+              ) : (
+                step.deadline && (
+                  <div className="kv"><I.cal size={18} />{fmtDeadline(step.deadline, step.deadline_time)}</div>
+                )
               )}
               {step.place && <div className="kv"><I.pin size={18} />{step.place}</div>}
               {step.description && (
@@ -140,6 +178,9 @@ export default function StepCard() {
                 </div>
                 <Button style={{ marginTop: 12 }} variant="secondary" onClick={() => setAssignSheet(true)}>
                   <I.plus size={16} /> Записать назначения врача
+                </Button>
+                <Button style={{ marginTop: 8 }} variant="secondary" disabled={busy} onClick={uncomplete}>
+                  {busy ? "Отменяем…" : "Отменить выполнение"}
                 </Button>
               </div>
             )}

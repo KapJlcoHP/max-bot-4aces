@@ -1,16 +1,26 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CellList, CellSimple } from "@maxhub/max-ui";
+import { CellList, CellSimple, Radio } from "@maxhub/max-ui";
 import { api } from "../api";
 import { fmtDayMonth } from "../format";
 import { useApp } from "../App";
-import { Header, Switch, UserAvatar, useToast } from "../components/ui";import { I } from "../icons";
+import type { Region } from "../types";
+import { Button, Header, Sheet, Switch, UserAvatar, useToast } from "../components/ui";
+import { I } from "../icons";
 
 export default function Profile() {
   const nav = useNavigate();
   const { user, refreshUser } = useApp();
   const [toast, showToast] = useToast();
   const [notif, setNotif] = useState(user.notifications_on);
+  const [regionSheet, setRegionSheet] = useState(false);
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!regionSheet || regions.length > 0) return;
+    api.get<Region[]>("/api/v1/regions").then(setRegions).catch(() => setRegions([]));
+  }, [regionSheet, regions.length]);
 
   const toggleNotif = async (on: boolean) => {
     setNotif(on);
@@ -20,6 +30,24 @@ export default function Profile() {
     } catch {
       setNotif(!on);
       showToast("Не удалось изменить настройку");
+    }
+  };
+
+  const pickRegion = async (title: string) => {
+    if (busy || title === user.region) {
+      setRegionSheet(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.patch("/api/v1/me/settings", { region: title });
+      refreshUser();
+      setRegionSheet(false);
+      showToast("Регион сохранён");
+    } catch {
+      showToast("Не удалось сохранить регион");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -66,6 +94,17 @@ export default function Profile() {
           <CellList mode="island">
             <CellSimple
               className="press"
+              before={<div className="ic"><I.pin size={18} /></div>}
+              title="Регион"
+              subtitle={user.region || "Не выбран"}
+              after={<span className="cell-note">Изменить</span>}
+              showChevron
+              onClick={() => setRegionSheet(true)}
+            />
+          </CellList>
+          <CellList mode="island">
+            <CellSimple
+              className="press"
               before={<div className="ic r"><I.pill size={18} /></div>}
               title="Приём лекарств"
               subtitle="Курсы и напоминания"
@@ -84,6 +123,26 @@ export default function Profile() {
             />
           </CellList>
       </div>
+
+      <Sheet open={regionSheet} onClose={() => setRegionSheet(false)}>
+        <h3>Ваш регион</h3>
+        <div className="sub">Пока организуются приёмы в выбранном регионе</div>
+        <div style={{ display: "grid", gap: 4, margin: "10px 0 14px" }}>
+          {regions.map((r) => (
+            <button
+              key={r.key}
+              className="rem-item press"
+              style={{ textAlign: "left", border: "none", background: "none", cursor: "pointer" }}
+              onClick={() => pickRegion(r.title)}
+            >
+              <div className="what"><b>{r.title}</b>{r.pilot && <small>регион пилота</small>}</div>
+              <Radio checked={user.region === r.title} readOnly aria-label={r.title} />
+            </button>
+          ))}
+          {regions.length === 0 && <div className="muted" style={{ padding: "8px 0" }}>Список регионов недоступен</div>}
+        </div>
+        <Button variant="secondary" onClick={() => setRegionSheet(false)}>Закрыть</Button>
+      </Sheet>
       {toast}
     </div>
   );

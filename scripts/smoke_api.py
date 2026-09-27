@@ -50,6 +50,11 @@ def main() -> None:
         check("маршрут запущен", r.status_code == 200, r.text)
         route = r.json()
         step = next(s for s in route["steps"] if s["status"] == "current")
+        check(
+            "новый маршрут без выполненных шагов",
+            route["done_steps"] == 0 and route["steps"][0]["status"] == "current",
+            r.text,
+        )
 
         r = client.post(f"/api/v1/route/steps/{step['id']}/complete")
         check("complete шага", r.status_code == 200, r.text)
@@ -58,6 +63,16 @@ def main() -> None:
         r = client.post(f"/api/v1/route/steps/{step['id']}/complete")
         check("повтор complete → 409", r.status_code == 409, r.text)
 
+        r = client.post(f"/api/v1/route/steps/{step['id']}/uncomplete")
+        step_after = next((s for s in r.json()["steps"] if s["id"] == step["id"]), None)
+        check("uncomplete снимает выполнение", r.status_code == 200 and step_after and step_after["status"] == "pending", r.text)
+        r = client.post(f"/api/v1/route/steps/{step['id']}/uncomplete")
+        check("uncomplete невыполненного → 409", r.status_code == 409, r.text)
+
+        r = client.patch(f"/api/v1/route/steps/{step['id']}", json={"deadline": "2026-10-15"})
+        check("срок шага изменён", r.status_code == 200 and r.json()["deadline"] == "2026-10-15", r.text)
+        r = client.patch(f"/api/v1/route/steps/{step['id']}", json={"deadline": None})
+        check("срок шага сброшен", r.status_code == 200 and r.json()["deadline"] is None, r.text)
         r = client.post("/api/v1/reminders", json={"title": "Тест", "at": "2026-10-01T14:00:00"})
         check("напоминание создано", r.status_code == 200, r.text)
         rid = r.json()["id"]
@@ -69,6 +84,14 @@ def main() -> None:
         r = client.post("/api/v1/health/bp", json={"systolic": 999, "diastolic": 81})
         check("невалидное АД → 422", r.status_code == 422, r.text)
 
+        r = client.get("/api/v1/health/settings")
+        check(
+            "health/settings без онбординга: дефолт все выключены",
+            r.status_code == 200 and len(r.json()["diaries"]) == 4 and all(not d["enabled"] for d in r.json()["diaries"]),
+            r.text,
+        )
+        r = client.put("/api/v1/health/settings", json={"diaries": [{"diary": "bp", "enabled": True, "push_time": "08:30"}]})
+        check("health/settings PUT", r.status_code == 200 and r.json()["diaries"][0]["diary"] == "bp", r.text)
         r = client.get("/api/v1/health/settings")
         check("health/settings GET", r.status_code == 200 and "push_time" in r.json()["diaries"][0], r.text)
         r = client.put("/api/v1/health/settings", json={"diaries": [{"diary": "bp", "enabled": True, "push_time": "08:30"}]})
@@ -88,6 +111,24 @@ def main() -> None:
 
         r = client.get("/api/v1/health/report")
         check("сводка", r.status_code == 200 and r.json()["bp_count"] >= 1, r.text)
+
+        r = client.get("/api/v1/regions")
+        check(
+            "список регионов (пилот первый)",
+            r.status_code == 200 and len(r.json()) == 3 and r.json()[0]["pilot"],
+            r.text,
+        )
+        r = client.patch("/api/v1/me/settings", json={"region": "Ярославская область"})
+        check("регион сохранён", r.status_code == 200 and r.json()["region"] == "Ярославская область", r.text)
+        r = client.get("/api/v1/orgs")
+        org_titles = [o["title"] for o in r.json()]
+        check(
+            "организации по региону",
+            r.status_code == 200 and len(org_titles) == 1 and "диагностический" in org_titles[0].lower(),
+            r.text,
+        )
+        r = client.patch("/api/v1/me/settings", json={"region": "Москва"})
+        check("неизвестный регион → 422", r.status_code == 422, r.text)
 
         # экспорт PDF: initData-путь и путь токена
         r = client.get("/api/v1/health/export")
@@ -113,6 +154,32 @@ def main() -> None:
         with SessionLocal() as s:
             pending = s.query(ExportRequest).filter(ExportRequest.sent_at.is_(None)).count()
         check("заявка в очереди", pending >= 1, str(pending))
+
+        # удаление данных = повторная регистрация: аккаунт стирается целиком и
+        # пересоздаётся при следующем запросе (онбординг + демо-данные заново)
+        old_id = client.get("/api/v1/me").json()["id"]
+        r = client.delete("/api/v1/me/data")
+        check("удаление данных", r.status_code == 200, r.text)
+        r = client.get("/api/v1/me")
+        # id в SQLite может переиспользоваться — свежесть аккаунта проверяем по сбросу согласия
+        check(
+            "пользователь пересоздан, согласия нет",
+            r.status_code == 200 and r.json()["consent_at"] is None,
+            r.text,
+        )
+        check("регион по умолчанию — пилотный", r.json()["region"] == "Ивановская область", r.text)
+        r = client.get("/api/v1/route")
+        check("данные без согласия → 403", r.status_code == 403, str(r.status_code))
+        r = client.post("/api/v1/me/consent", json={})
+        check("повторное согласие", r.status_code == 200, r.text)
+        r = client.get("/api/v1/route")
+        check("аккаунт чистый: маршрута нет", r.status_code == 200 and r.json() is None, r.text)
+        r = client.get("/api/v1/meds")
+        check("аккаунт чистый: курсов лекарств нет", r.status_code == 200 and r.json()["courses"] == [], r.text)
+        r = client.get("/api/v1/health/report")
+        check("аккаунт чистый: записи дневников нет", r.status_code == 200 and r.json()["bp_count"] == 0, r.text)
+        r = client.post("/api/v1/route/start", json={"situation_key": "custom"})
+        check("новый маршрут создаётся", r.status_code == 200 and r.json()["done_steps"] == 0, r.text)
 
     print(f"\nВсе проверки пройдены: {PASS}")
 

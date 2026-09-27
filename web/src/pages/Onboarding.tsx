@@ -107,7 +107,7 @@ export default function Onboarding() {
               <div className="rem-item"><div className="what"><b>Шаги маршрута и заметки</b><small>Ситуации, назначения врача, ваши пункты</small></div></div>
               <div className="rem-item"><div className="what"><b>Записи дневников здоровья</b><small>То, что введёте вы сами: давление, вес и другое</small></div></div>
               <div className="rem-item"><div className="what"><b>Где хранится</b><small>На нашем сервере по защищённому соединению; доступ — только из вашего приложения</small></div></div>
-              <div className="rem-item"><div className="what"><b>Демо-режим</b><small>Показанные сейчас данные синтетические — ничего реального</small></div></div>
+              <div className="rem-item"><div className="what"><b>Чистый старт</b><small>Аккаунт начинается с нуля — маршрут и дневники вы заведёте сами, ничего чужого не появится</small></div></div>
             </div>
             <label className="consent">
               <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
@@ -146,12 +146,14 @@ export default function Onboarding() {
                 </div>
               ))}
             </div>
-            <div className="card" style={{ padding: "12px 16px" }}>
-              <div className="what">
-                <b>Часовой пояс</b>
-                <small>Определили с вашего телефона — по нему бот будет будить вовремя</small>
+            <div className="card" style={{ padding: "8px 16px" }}>
+              <div className="rem-item" style={{ paddingTop: 10, paddingBottom: 10 }}>
+                <div className="what">
+                  <b>Часовой пояс</b>
+                  <small>Определили с вашего телефона — по нему бот будет будить вовремя</small>
+                </div>
               </div>
-              <select className="tz-select" value={tz} onChange={(e) => setTz(e.target.value)} aria-label="Часовой пояс">
+              <select className="tz-select" style={{ marginTop: 0, marginBottom: 10 }} value={tz} onChange={(e) => setTz(e.target.value)} aria-label="Часовой пояс">
                 {!TZ_OPTIONS.some((o) => o.tz === tz) && <option value={tz}>{tz}</option>}
                 {TZ_OPTIONS.map((o) => (
                   <option key={o.tz} value={o.tz}>{o.label}</option>

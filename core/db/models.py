@@ -26,6 +26,7 @@ class User(Base):
     consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 152-ФЗ: дата согласия
     avatar_url: Mapped[str] = mapped_column(String(500), default="")  # фото из MAX, если платформа его отдала
     tz: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")  # IANA-зона с телефона — «настенные» времена пушей
+    region: Mapped[str] = mapped_column(String(100), default="")  # регион из content/regions.json
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     routes: Mapped[list["Route"]] = relationship(back_populates="user")
@@ -86,6 +87,7 @@ class Organization(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
     org_type: Mapped[str] = mapped_column(String(40), default="Поликлиники")
+    region: Mapped[str] = mapped_column(String(100), default="")  # регион из content/regions.json
     address: Mapped[str] = mapped_column(String(300))
     phone: Mapped[str] = mapped_column(String(40))
     hours: Mapped[str] = mapped_column(String(200))
