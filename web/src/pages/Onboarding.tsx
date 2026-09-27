@@ -25,7 +25,8 @@ export default function Onboarding() {
     try {
       await api.post("/api/v1/me/consent");
       const enabled = diaries.filter((d) => d.on).map((d) => d.key);
-      const payload: HealthSetting[] = DIARY_META.map((d) => ({ diary: d.key, enabled: enabled.includes(d.key) }));
+      // push_time не передаём (null): онбординг не должен сбрасывать настроенное время пуша
+      const payload: HealthSetting[] = DIARY_META.map((d) => ({ diary: d.key, enabled: enabled.includes(d.key), push_time: null }));
       await api.put("/api/v1/health/settings", { diaries: payload });
       window.location.reload(); // refreshUser + сброс гейта
     } catch {

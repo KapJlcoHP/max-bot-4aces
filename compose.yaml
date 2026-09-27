@@ -16,6 +16,9 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      # «настенные» времена (напоминания, приёмы лекарств) — локальные, не UTC
+      TZ: Europe/Moscow
     volumes:
       - ./database:/srv/database
     ports:
@@ -46,6 +49,8 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      TZ: Europe/Moscow
     volumes:
       # общая БД с app: планировщик напоминаний читает reminders/med_courses,
       # пишет notification_log. DSN по умолчанию sqlite:///./database/app.db

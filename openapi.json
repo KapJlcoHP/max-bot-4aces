@@ -785,7 +785,6 @@
     "/api/v1/health/{type}": {
       "post": {
         "summary": "Add Health Record",
-        "description": "Только факты: сервер хранит значения и контекст, никакой интерпретации «норма/не норма».",
         "operationId": "add_health_record_api_v1_health__type__post",
         "parameters": [
           {
@@ -1704,6 +1703,17 @@
           "enabled": {
             "type": "boolean",
             "title": "Enabled"
+          },
+          "push_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Time"
           }
         },
         "type": "object",
@@ -1954,6 +1964,18 @@
           "enabled": {
             "type": "boolean",
             "title": "Enabled"
+          },
+          "done_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done At"
           }
         },
         "type": "object",

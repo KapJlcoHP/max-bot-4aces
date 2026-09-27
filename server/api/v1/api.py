@@ -58,6 +58,12 @@ from core.schemas import (
 from server.deps import AuthError, get_or_create_user
 from server.health_pdf import build_health_pdf
 from core.db.session import SessionLocal
+from core.services import (
+    ServiceError,
+    add_health_record as create_health_record,
+    complete_route_step,
+    take_med,
+)
 
 router = APIRouter(prefix="/api/v1")
 
@@ -301,31 +307,17 @@ def delete_step(step_id: int, user: User = Depends(consented_user), db: Session 
 
 @router.post("/route/steps/{step_id}/complete", response_model=CompleteStepOut)
 def complete_step(step_id: int, body: CompleteStepIn | None = None, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    try:
+        step = complete_route_step(db, user.id, step_id, note=(body.note if body else None), done_date=(body.date if body else None))
+    except ServiceError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
     route = _get_active_route(db, user.id)
-    if route is None:
-        raise HTTPException(status_code=404, detail="Активный маршрут не найден")
-    step = db.query(RouteStep).filter(RouteStep.id == step_id, RouteStep.route_id == route.id).first()
-    if step is None:
-        raise HTTPException(status_code=404, detail="Шаг не найден")
-    if step.status == "done":
-        raise HTTPException(status_code=409, detail="Шаг уже выполнен")
-
-    step.status = "done"
-    step.completed_at = utcnow()
-    step.note = (body.note if body else None) or None
-    if body and body.date:
-        step.completed_at = datetime.combine(body.date, dtime(12, 0))
-
     next_step = (
         db.query(RouteStep)
         .filter(RouteStep.route_id == route.id, RouteStep.status != "done")
         .order_by(RouteStep.position)
         .first()
     )
-    if next_step is not None:
-        next_step.status = "current"
-    db.commit()
-
     return CompleteStepOut(
         step=StepDto.model_validate(step),
         route=route_dto(route),
@@ -398,7 +390,12 @@ def org_detail(org_id: int, user: User = Depends(consented_user), db: Session = 
 
 @router.get("/reminders", response_model=list[ReminderDto])
 def reminders(user: User = Depends(consented_user), db: Session = Depends(db_session)):
-    rows = db.query(Reminder).filter(Reminder.user_id == user.id).order_by(Reminder.at).all()
+    rows = (
+        db.query(Reminder)
+        .filter(Reminder.user_id == user.id, Reminder.done_at.is_(None))
+        .order_by(Reminder.at)
+        .all()
+    )
     return [ReminderDto.model_validate(r) for r in rows]
 
 
@@ -440,10 +437,18 @@ def _get_diary_settings(db: Session, user_id: int) -> dict[str, bool]:
 
 @router.get("/health/settings", response_model=HealthSettingsOut)
 def health_settings(user: User = Depends(consented_user), db: Session = Depends(db_session)):
-    enabled_map = _get_diary_settings(db, user.id)
-    return HealthSettingsOut(
-        diaries=[HealthSettingDto(diary=d, enabled=enabled_map.get(d, False)) for d in ("bp", "weight", "sugar", "mood")]
-    )
+    rows = {r.diary: r for r in db.query(HealthSetting).filter(HealthSetting.user_id == user.id).all()}
+    out = []
+    for d in ("bp", "weight", "sugar", "mood"):
+        row = rows.get(d)
+        out.append(
+            HealthSettingDto(
+                diary=d,
+                enabled=row.enabled if row else False,
+                push_time=row.push_time if row else None,
+            )
+        )
+    return HealthSettingsOut(diaries=out)
 
 
 @router.put("/health/settings", response_model=HealthSettingsOut)
@@ -451,15 +456,24 @@ def update_health_settings(body: HealthSettingsIn, user: User = Depends(consente
     for item in body.diaries:
         if item.diary not in HEALTH_TYPES:
             raise HTTPException(status_code=422, detail=f"Неизвестный дневник: {item.diary}")
+        push_time = (item.push_time or "").strip()
+        if push_time:
+            try:
+                dtime.fromisoformat(push_time)
+            except ValueError:
+                raise HTTPException(status_code=422, detail=f"Некорректное время: {push_time}")
+        else:
+            push_time = None
         row = (
             db.query(HealthSetting)
             .filter(HealthSetting.user_id == user.id, HealthSetting.diary == item.diary)
             .first()
         )
         if row is None:
-            db.add(HealthSetting(user_id=user.id, diary=item.diary, enabled=item.enabled))
+            db.add(HealthSetting(user_id=user.id, diary=item.diary, enabled=item.enabled, push_time=push_time))
         else:
             row.enabled = item.enabled
+            row.push_time = push_time
     db.commit()
     return health_settings(user=user, db=db)
 
@@ -480,40 +494,10 @@ def health_records(type: str, limit: int = Query(default=100, le=500), user: Use
 
 @router.post("/health/{type}", response_model=HealthRecordDto)
 def add_health_record(type: str, body: HealthAddIn, user: User = Depends(consented_user), db: Session = Depends(db_session)):
-    """Только факты: сервер хранит значения и контекст, никакой интерпретации «норма/не норма»."""
-    if type not in HEALTH_TYPES:
-        raise HTTPException(status_code=404, detail="Неизвестный дневник")
-
-    row = HealthRecord(user_id=user.id, type=type, at=utcnow(), tag=body.tag, note=body.note)
-    if type == "bp":
-        if body.systolic is None or body.diastolic is None:
-            raise HTTPException(status_code=422, detail="Укажите верхнее и нижнее давление")
-        if not (70 <= body.systolic <= 250 and 40 <= body.diastolic <= 150):
-            raise HTTPException(status_code=422, detail="Показатели вне допустимого диапазона")
-        if body.pulse is not None and not (30 <= body.pulse <= 220):
-            raise HTTPException(status_code=422, detail="Пульс вне допустимого диапазона")
-        if body.diastolic >= body.systolic:
-            raise HTTPException(status_code=422, detail="Нижнее давление не может быть выше верхнего")
-        row.systolic, row.diastolic, row.pulse = body.systolic, body.diastolic, body.pulse
-    elif type == "weight":
-        if body.weight_kg is None or not (20 <= body.weight_kg <= 300):
-            raise HTTPException(status_code=422, detail="Вес вне допустимого диапазона")
-        row.weight_kg = body.weight_kg
-    elif type == "sugar":
-        if body.sugar_mmol is None or not (1.1 <= body.sugar_mmol <= 35.0):
-            raise HTTPException(status_code=422, detail="Показатель вне допустимого диапазона")
-        row.sugar_mmol = body.sugar_mmol
-        row.meal_tag = body.meal_tag
-    elif type == "mood":
-        if body.mood not in ("Хорошо", "Нормально", "Плохо"):
-            raise HTTPException(status_code=422, detail="Отметьте самочувствие")
-        if body.pain is not None and not (1 <= body.pain <= 10):
-            raise HTTPException(status_code=422, detail="Боль оценивается от 1 до 10")
-        row.mood, row.pain = body.mood, body.pain
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return row
+    try:
+        return create_health_record(db, user.id, type, **body.model_dump())
+    except ServiceError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
 
 
 @router.delete("/health/{type}/{record_id}")
@@ -678,20 +662,20 @@ def toggle_intake(course_id: int, body: dict, user: User = Depends(consented_use
     course = db.query(MedCourse).filter(MedCourse.id == course_id, MedCourse.user_id == user.id).first()
     if course is None or at_time not in course.times:
         raise HTTPException(status_code=404, detail="Курс или время приёма не найдены")
-    today = date.today()
     intake = (
         db.query(MedIntake)
-        .filter(MedIntake.course_id == course.id, MedIntake.day == today, MedIntake.at_time == at_time)
+        .filter(MedIntake.course_id == course.id, MedIntake.day == date.today(), MedIntake.at_time == at_time)
         .first()
     )
-    if intake is None:
-        intake = MedIntake(course_id=course.id, user_id=user.id, day=today, at_time=at_time, taken_at=utcnow())
-        db.add(intake)
-    elif intake.taken_at is None:
-        intake.taken_at = utcnow()
-    else:
+    undo = intake is not None and intake.taken_at is not None
+    if undo:
         intake.taken_at = None
-    db.commit()
+        db.commit()
+    else:
+        try:
+            intake = take_med(db, user.id, course_id, at_time)
+        except ServiceError as e:
+            raise HTTPException(status_code=e.status, detail=str(e)) from e
     return MedSlotDto(course_id=course.id, name=course.name, at_time=at_time, taken=intake.taken_at is not None, taken_at=intake.taken_at)
 
 

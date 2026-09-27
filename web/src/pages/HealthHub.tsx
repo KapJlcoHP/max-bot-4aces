@@ -32,6 +32,7 @@ export default function HealthHub() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [sheet, setSheet] = useState(false);
   const [draft, setDraft] = useState<Record<HealthType, boolean>>({ bp: true, weight: true, sugar: false, mood: true });
+  const [draftTimes, setDraftTimes] = useState<Partial<Record<HealthType, string>>>({});
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -47,6 +48,11 @@ export default function HealthHub() {
         if (s.status === "fulfilled") {
           setSettings(s.value.diaries);
           setDraft(Object.fromEntries(s.value.diaries.map((d) => [d.diary, d.enabled])) as Record<HealthType, boolean>);
+          setDraftTimes(
+            Object.fromEntries(
+              s.value.diaries.filter((d) => d.push_time).map((d) => [d.diary, d.push_time as string]),
+            ) as Partial<Record<HealthType, string>>,
+          );
         }
         setLasts({
           bp: bp.status === "fulfilled" && bp.value.length ? bp.value[0] : undefined,
@@ -64,7 +70,11 @@ export default function HealthHub() {
   const saveSettings = async () => {
     try {
       const res = await api.put<{ diaries: HealthSetting[] }>("/api/v1/health/settings", {
-        diaries: (Object.keys(draft) as HealthType[]).map((d) => ({ diary: d, enabled: draft[d] })),
+        diaries: (Object.keys(draft) as HealthType[]).map((d) => ({
+          diary: d,
+          enabled: draft[d],
+          push_time: draft[d] ? draftTimes[d] || null : null,
+        })),
       });
       setSettings(res.diaries);
       setSheet(false);
@@ -161,8 +171,21 @@ export default function HealthHub() {
             <div className="rem-item" key={t}>
               <div className="what"><b>{DIARY_META[t].title}</b><small>{DIARY_META[t].hint}</small></div>
               <Switch on={draft[t]} onChange={(v) => setDraft((prev) => ({ ...prev, [t]: v }))} label={DIARY_META[t].title} />
+              {draft[t] && (
+                <label className="push-time">
+                  <small>Бот напомнит в</small>
+                  <input
+                    type="time"
+                    value={draftTimes[t] ?? "09:00"}
+                    onChange={(e) => setDraftTimes((prev) => ({ ...prev, [t]: e.target.value }))}
+                  />
+                </label>
+              )}
             </div>
           ))}
+        </div>
+        <div className="sub" style={{ marginTop: 8 }}>
+          В назначенное время бот напишет в чат — записать показатели можно прямо там, без открытия приложения
         </div>
         <Button style={{ marginTop: 14 }} onClick={saveSettings}>Готово</Button>
       </Sheet>

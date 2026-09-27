@@ -103,6 +103,7 @@ class Reminder(Base):
     at: Mapped[datetime] = mapped_column(DateTime)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # момент наступления отправлен ботом
+    done_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # «Выполнено» из бота
 
 
 class HealthRecord(Base):
@@ -144,6 +145,7 @@ class HealthSetting(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     diary: Mapped[str] = mapped_column(String(16))  # bp | weight | sugar | mood
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    push_time: Mapped[str | None] = mapped_column(String(5), nullable=True)  # "HH:MM" — пуш от бота, None = выключен
 
 
 class MedCourse(Base):

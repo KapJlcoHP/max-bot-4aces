@@ -107,6 +107,8 @@ export interface HealthRecord {
 export interface HealthSetting {
   diary: HealthType;
   enabled: boolean;
+  /** "HH:MM" — время напоминания от бота; null — напоминание выключено */
+  push_time: string | null;
 }
 
 export interface MedSlot {

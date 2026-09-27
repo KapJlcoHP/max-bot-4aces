@@ -17,6 +17,16 @@ if _settings.database_url.startswith("sqlite:///./"):
 # autoflush оставляем включённым (по умолчанию): иначе незакоммиченные мутации
 # не видны собственным запросам сессии (ловили на этом баг «шаг не завершается»).
 engine = create_engine(_settings.database_url, connect_args=connect_args, future=True)
+
+# WAL: API и бот пишут в одну базу из разных процессов — журнал делает блокировки мягче
+if _settings.database_url.startswith("sqlite"):
+    from sqlalchemy import event  # noqa: PLC0415
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_wal(dbapi_conn, _record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.close()
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, future=True)
 
 
@@ -38,7 +48,8 @@ def _migrate_sqlite() -> None:
     plans: dict[str, list[tuple[str, str]]] = {
         "users": [("consent_at", "DATETIME NULL"), ("avatar_url", "VARCHAR(500) NULL DEFAULT ''")],
         "route_steps": [("source", "VARCHAR(16) NOT NULL DEFAULT 'template'")],
-        "reminders": [("sent_at", "DATETIME NULL")],
+        "reminders": [("sent_at", "DATETIME NULL"), ("done_at", "DATETIME NULL")],
+        "health_settings": [("push_time", "VARCHAR(5) NULL")],
     }
     with engine.begin() as conn:
         for table, columns in plans.items():

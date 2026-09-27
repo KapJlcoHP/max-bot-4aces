@@ -121,6 +121,7 @@ class ReminderDto(OrmDto):
     place: str
     at: datetime
     enabled: bool
+    done_at: datetime | None = None
 
 
 class HealthRecordDto(OrmDto):
@@ -157,6 +158,7 @@ class HealthAddIn(OrmDto):
 class HealthSettingDto(OrmDto):
     diary: str
     enabled: bool
+    push_time: str | None = None  # "HH:MM" — время пуша бота; None = напоминание выключено
 
 
 class HealthSettingsOut(OrmDto):
