@@ -19,7 +19,14 @@ class UserDto(OrmDto):
     email: str
     avatar_url: str = ""
     notifications_on: bool
+    tz: str = "Europe/Moscow"
     consent_at: datetime | None = None
+
+
+class ConsentIn(OrmDto):
+    """Согласие на обработку данных + часовой пояс с телефона (для времени пушей)."""
+
+    tz: str | None = None
 
 
 class SituationDto(OrmDto):

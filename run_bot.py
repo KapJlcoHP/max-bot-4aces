@@ -16,6 +16,7 @@ from maxapi.enums.parse_mode import ParseMode
 
 from bot.handlers import actions as actions_handler
 from bot.handlers import start as start_handler
+from bot.exporter import export_watcher_loop
 from bot.scheduler import scheduler_loop
 
 
@@ -37,10 +38,12 @@ async def main() -> None:
     print("Long polling запущен. Ctrl+C — остановить.")
 
     scheduler = asyncio.create_task(scheduler_loop(bot, username))
+    exporter = asyncio.create_task(export_watcher_loop(bot))
     try:
         await dp.start_polling(bot)
     finally:
         scheduler.cancel()
+        exporter.cancel()
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ export default function StepCard() {
   const [picked, setPicked] = useState<Picked[]>([]);
   const [ownName, setOwnName] = useState("");
   const [ownDate, setOwnDate] = useState("");
+  const [ownAttempted, setOwnAttempted] = useState(false);
 
   const load = () => {
     setStatus("loading");
@@ -69,10 +70,15 @@ export default function StepCard() {
 
   const addOwn = () => {
     const name = ownName.trim();
-    if (!name) return;
+    if (!name) {
+      setOwnAttempted(true);
+      showToast("Напишите название назначения — оно подсвечено красным");
+      return;
+    }
     setPicked((prev) => [{ title: name, date: ownDate, own: true }, ...prev]);
     setOwnName("");
     setOwnDate("");
+    setOwnAttempted(false);
   };
 
   const saveAssignments = async () => {
@@ -182,7 +188,13 @@ export default function StepCard() {
           ))}
         </div>
         <div className="own-row">
-          <input placeholder="Своё: например, МРТ" aria-label="Название назначения" value={ownName} onChange={(e) => setOwnName(e.target.value)} />
+          <input
+            placeholder="Своё: например, МРТ"
+            aria-label="Название назначения"
+            value={ownName}
+            className={ownAttempted && !ownName.trim() ? "invalid" : undefined}
+            onChange={(e) => setOwnName(e.target.value)}
+          />
           <input className="date" type="date" aria-label="Срок" value={ownDate} onChange={(e) => setOwnDate(e.target.value)} />
           <button className="add" onClick={addOwn} aria-label="Добавить">+</button>
         </div>

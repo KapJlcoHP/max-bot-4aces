@@ -26,8 +26,25 @@
     "/api/v1/me/consent": {
       "post": {
         "summary": "Give Consent",
-        "description": "Фиксируем согласие на обработку персональных данных.",
+        "description": "Фиксируем согласие на обработку персональных данных (+ часовой пояс с телефона).",
         "operationId": "give_consent_api_v1_me_consent_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ConsentIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -35,6 +52,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/UserDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -782,6 +809,84 @@
         }
       }
     },
+    "/api/v1/health/export-token": {
+      "post": {
+        "summary": "Create Export Token",
+        "operationId": "create_export_token_api_v1_health_export_token_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/send-to-bot": {
+      "post": {
+        "summary": "Request Pdf In Chat",
+        "description": "Попросить бота прислать PDF-сводку в чат (на телефонах вебвью MAX не умеет скачивать).",
+        "operationId": "request_pdf_in_chat_api_v1_health_send_to_bot_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/export": {
+      "get": {
+        "summary": "Export Health Pdf",
+        "description": "PDF-сводка дневников для врача. Авторизация: initData-заголовок ИЛИ ?t=<токен из /health/export-token>.",
+        "operationId": "export_health_pdf_api_v1_health_export_get",
+        "parameters": [
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "T"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health/{type}": {
       "post": {
         "summary": "Add Health Record",
@@ -891,23 +996,6 @@
                 "schema": {
                   "$ref": "#/components/schemas/HealthReportOut"
                 }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/health/export": {
-      "get": {
-        "summary": "Export Health Pdf",
-        "description": "PDF-сводка дневников для врача: агрегаты, графики и таблицы измерений за 30 дней.",
-        "operationId": "export_health_pdf_api_v1_health_export_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
               }
             }
           }
@@ -1251,6 +1339,24 @@
           "route"
         ],
         "title": "CompleteStepOut"
+      },
+      "ConsentIn": {
+        "properties": {
+          "tz": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          }
+        },
+        "type": "object",
+        "title": "ConsentIn",
+        "description": "Согласие на обработку данных + часовой пояс с телефона (для времени пушей)."
       },
       "CustomStepIn": {
         "properties": {
@@ -2328,6 +2434,11 @@
           "notifications_on": {
             "type": "boolean",
             "title": "Notifications On"
+          },
+          "tz": {
+            "type": "string",
+            "title": "Tz",
+            "default": "Europe/Moscow"
           },
           "consent_at": {
             "anyOf": [

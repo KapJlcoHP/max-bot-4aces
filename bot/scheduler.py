@@ -3,15 +3,16 @@
 Каждые 60 с собирает список «пора отправить», отправляет и только после успешной
 отправки пишет дедуп в notification_log — упавший пуш повторится на следующем тике.
 
-Время: все «настенные» значения (deadline/time, Reminder.at, MedCourse.times,
-HealthSetting.push_time) считаются локальным временем сервера (в контейнере
-задаётся TZ=Europe/Moscow). Наивные datetime из БД трактуем как локальные.
+Время: «настенные» значения (deadline/time, Reminder.at, MedCourse.times,
+HealthSetting.push_time) трактуются в поясе ПОЛЬЗОВАТЕЛЯ (users.tz, IANA-имя с
+его телефона): для каждого пользователя свой «сейчас» через zoneinfo.
 """
 
 import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, time as dtime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
@@ -48,10 +49,18 @@ class Push:
     reminder_id: int | None = None  # reminder: пометить sent_at при lead='now'
 
 
-def _local_naive(dt: datetime) -> datetime:
+def _local_naive(dt: datetime, tz: ZoneInfo | None) -> datetime:
     if dt.tzinfo is None:
         return dt
-    return dt.astimezone().replace(tzinfo=None)
+    return dt.astimezone(tz).replace(tzinfo=None) if tz else dt.astimezone().replace(tzinfo=None)
+
+
+def _user_now(user: User) -> datetime:
+    """«Сейчас» в поясе пользователя (наивное настенное время)."""
+    try:
+        return datetime.now(ZoneInfo(user.tz or "Europe/Moscow")).replace(tzinfo=None)
+    except Exception:
+        return datetime.now()
 
 
 def _when_desc(due: datetime, now: datetime, has_time: bool) -> str:
@@ -72,9 +81,11 @@ def _parse_time(value: str) -> dtime | None:
         return None
 
 
-def collect_due(db: Session, now: datetime) -> list[Push]:
-    """Что пора отправить прямо сейчас. Чистая по отношению к отправке — тестируемая."""
-    today = now.date()
+def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
+    """Что пора отправить прямо сейчас. Чистая по отношению к отправке — тестируемая.
+
+    now — опционально для тестов; в проде считается per-user в поясе пользователя.
+    """
     pushes: list[Push] = []
 
     def logged(kind: str, ref_id: int, lead: str) -> bool:
@@ -92,6 +103,13 @@ def collect_due(db: Session, now: datetime) -> list[Push]:
     for user in db.query(User).all():
         if not user.notifications_on:
             continue
+        zone: ZoneInfo | None = None
+        try:
+            zone = ZoneInfo(user.tz or "Europe/Moscow")
+        except Exception:
+            zone = None
+        now = now or _user_now(user)
+        today = now.date()
 
         # --- шаг маршрута: дедлайн текущего шага ---
         route = active_route(db, user.id)
@@ -143,7 +161,7 @@ def collect_due(db: Session, now: datetime) -> list[Push]:
             .filter(Reminder.user_id == user.id, Reminder.enabled.is_(True), Reminder.done_at.is_(None))
             .all()
         ):
-            at = _local_naive(r.at)
+            at = _local_naive(r.at, zone)
             where = f" · {r.place}" if r.place else ""
             for lead, delta in (("day", timedelta(days=1)), ("hour", timedelta(hours=1)), ("now", timedelta(0))):
                 if lead == "now" and at.date() != today:
@@ -266,7 +284,7 @@ async def scheduler_loop(bot, bot_username: str | None) -> None:
     while True:
         try:
             with SessionLocal() as db:
-                due = collect_due(db, datetime.now())
+                due = collect_due(db)
             for push in due:
                 kb = push_keyboard(bot_username, push.actions, push.app_payload)
                 try:

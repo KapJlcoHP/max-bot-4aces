@@ -29,6 +29,7 @@ from core.services import (
     complete_route_step,
     take_med,
 )
+from bot.exporter import send_health_pdf
 
 log = logging.getLogger("bot.actions")
 
@@ -135,6 +136,22 @@ async def diary_command(event: MessageCreated):
         "Какой дневник заполняем?",
         attachments=[diary_choice_keyboard(diaries).as_markup()],
     )
+
+
+@router.message_created(Command("svodka"))
+async def svodka_command(event: MessageCreated):
+    """PDF-сводка для врача прямо в чат — без открытия мини-апа."""
+    await event.message.answer("Собираю сводку за 30 дней…")
+    with SessionLocal() as db:
+        user = _user(db, _sender_id(event) or 0)
+        if user is None or user.consent_at is None:
+            await event.message.answer("Сначала откройте «МедМаршрут» — сводка строится из ваших дневников.")
+            return
+        try:
+            await send_health_pdf(event.bot, db, user)
+        except Exception:
+            log.exception("/svodka не удалась")
+            await event.message.answer("Не удалось собрать сводку — попробуйте позже.")
 
 
 # ---------- диалог ввода дневника ----------

@@ -11,11 +11,33 @@ const DIARY_META: { key: HealthType; title: string; hint: string; on: boolean }[
   { key: "mood", title: "Самочувствие", hint: "без приборов", on: true },
 ];
 
+const TZ_OPTIONS: { tz: string; label: string }[] = [
+  { tz: "Europe/Kaliningrad", label: "Калининград (МСК−1)" },
+  { tz: "Europe/Moscow", label: "Москва (МСК)" },
+  { tz: "Europe/Samara", label: "Самара (МСК+1)" },
+  { tz: "Asia/Yekaterinburg", label: "Екатеринбург (МСК+2)" },
+  { tz: "Asia/Omsk", label: "Омск (МСК+3)" },
+  { tz: "Asia/Krasnoyarsk", label: "Красноярск (МСК+4)" },
+  { tz: "Asia/Irkutsk", label: "Иркутск (МСК+5)" },
+  { tz: "Asia/Yakutsk", label: "Якутск (МСК+6)" },
+  { tz: "Asia/Vladivostok", label: "Владивосток (МСК+7)" },
+];
+
+/** Пояс с телефона (IANA-имя); если он не из списка — всё равно предложим его первым вариантом. */
+function detectTz(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Moscow";
+  } catch {
+    return "Europe/Moscow";
+  }
+}
+
 export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [agreed, setAgreed] = useState(false);
   const [diaries, setDiaries] = useState(DIARY_META);
   const [busy, setBusy] = useState(false);
+  const [tz, setTz] = useState(detectTz);
 
   const toggleDiary = (key: HealthType, on: boolean) =>
     setDiaries((prev) => prev.map((d) => (d.key === key ? { ...d, on } : d)));
@@ -23,7 +45,7 @@ export default function Onboarding() {
   const finish = async () => {
     setBusy(true);
     try {
-      await api.post("/api/v1/me/consent");
+      await api.post("/api/v1/me/consent", { tz });
       const enabled = diaries.filter((d) => d.on).map((d) => d.key);
       // push_time не передаём (null): онбординг не должен сбрасывать настроенное время пуша
       const payload: HealthSetting[] = DIARY_META.map((d) => ({ diary: d.key, enabled: enabled.includes(d.key), push_time: null }));
@@ -123,6 +145,18 @@ export default function Onboarding() {
                   <Switch on={d.on} onChange={(v) => toggleDiary(d.key, v)} label={d.title} />
                 </div>
               ))}
+            </div>
+            <div className="card" style={{ padding: "12px 16px" }}>
+              <div className="what">
+                <b>Часовой пояс</b>
+                <small>Определили с вашего телефона — по нему бот будет будить вовремя</small>
+              </div>
+              <select className="tz-select" value={tz} onChange={(e) => setTz(e.target.value)} aria-label="Часовой пояс">
+                {!TZ_OPTIONS.some((o) => o.tz === tz) && <option value={tz}>{tz}</option>}
+                {TZ_OPTIONS.map((o) => (
+                  <option key={o.tz} value={o.tz}>{o.label}</option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="steps"><i /><i /><i className="on" /></div>

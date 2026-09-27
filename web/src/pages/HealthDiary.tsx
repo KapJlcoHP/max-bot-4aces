@@ -73,6 +73,7 @@ export default function HealthDiary() {
   const [pulse, setPulse] = useState("");
   const [weight, setWeight] = useState("");
   const [sugar, setSugar] = useState("");
+  const [attempted, setAttempted] = useState(false);
   const [mealTag, setMealTag] = useState("до еды");
   const [mood, setMood] = useState("Хорошо");
   const [pain, setPain] = useState(2);
@@ -361,7 +362,7 @@ export default function HealthDiary() {
       </div>
 
       {status === "ready" && (
-        <div className="foot"><Button onClick={() => setSheet(true)}>Новая запись</Button></div>
+        <div className="foot"><Button onClick={() => { setAttempted(false); setSheet(true); }}>Новая запись</Button></div>
       )}
 
       <Sheet open={sheet} onClose={() => setSheet(false)}>
@@ -370,14 +371,14 @@ export default function HealthDiary() {
 
         {type === "bp" && (
           <div className="own-row" style={{ marginBottom: 10 }}>
-            <input inputMode="numeric" placeholder="Верхнее" value={sys} onChange={(e) => setSys(e.target.value)} />
-            <input inputMode="numeric" placeholder="Нижнее" value={dia} onChange={(e) => setDia(e.target.value)} />
+            <input inputMode="numeric" placeholder="Верхнее" value={sys} className={attempted && !sys ? "invalid" : undefined} onChange={(e) => setSys(e.target.value)} />
+            <input inputMode="numeric" placeholder="Нижнее" value={dia} className={attempted && !dia ? "invalid" : undefined} onChange={(e) => setDia(e.target.value)} />
             <input inputMode="numeric" placeholder="Пульс" value={pulse} onChange={(e) => setPulse(e.target.value)} />
           </div>
         )}
         {type === "weight" && (
           <div className="own-row" style={{ marginBottom: 10 }}>
-            <input inputMode="decimal" placeholder="Вес, кг" value={weight} onChange={(e) => setWeight(e.target.value)} />
+            <input inputMode="decimal" placeholder="Вес, кг" value={weight} className={attempted && !weight ? "invalid" : undefined} onChange={(e) => setWeight(e.target.value)} />
           </div>
         )}
         {type === "sugar" && (
@@ -389,7 +390,7 @@ export default function HealthDiary() {
         )}
         {type === "sugar" && (
           <div className="own-row" style={{ marginBottom: 10 }}>
-            <input inputMode="decimal" placeholder="ммоль/л" value={sugar} onChange={(e) => setSugar(e.target.value)} />
+            <input inputMode="decimal" placeholder="ммоль/л" value={sugar} className={attempted && !sugar ? "invalid" : undefined} onChange={(e) => setSugar(e.target.value)} />
           </div>
         )}
         {type === "mood" && (
@@ -419,13 +420,16 @@ export default function HealthDiary() {
 
         <Button
           style={{ marginTop: 14 }}
-          disabled={
-            busy ||
-            (type === "bp" && (!sys || !dia)) ||
-            (type === "weight" && !weight) ||
-            (type === "sugar" && !sugar)
-          }
-          onClick={submit}
+          disabled={busy}
+          onClick={() => {
+            setAttempted(true);
+            const missing = (type === "bp" && (!sys || !dia)) || (type === "weight" && !weight) || (type === "sugar" && !sugar);
+            if (missing) {
+              showToast("Заполните обязательные поля — они подсвечены красным");
+              return;
+            }
+            submit();
+          }}
         >
           {busy ? "Сохраняем…" : "Сохранить запись"}
         </Button>

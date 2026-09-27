@@ -25,28 +25,70 @@ export default function Report() {
 
   useEffect(load, []);
 
+  /** Запасной путь (используется только если бот недоступен): каскад share → a.download → ссылка с токеном. */
+  const downloadInWebview = async () => {
+    const initData = getInitData();
+    const resp = await fetch("/api/v1/health/export", {
+      headers: initData ? { "X-Max-Init-Data": initData } : undefined,
+    });
+    if (!resp.ok) throw new Error(String(resp.status));
+    const blob = await resp.blob();
+    const today = new Date();
+    const stamp = `${String(today.getDate()).padStart(2, "0")}.${String(today.getMonth() + 1).padStart(2, "0")}.${today.getFullYear()}`;
+    const filename = `medroute-svodka-${stamp}.pdf`;
+
+    const file = new File([blob], filename, { type: "application/pdf" });
+    const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+    if (typeof nav.canShare === "function" && nav.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "Сводка для врача" });
+        showToast("Готово — PDF отправлен");
+        return true;
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return true; // закрыли шер сами
+        // шаринг не прошёл — пробуем скачать как обычно
+      }
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast("PDF скачан");
+    return true;
+  };
+
+  /** Фолбэк для вебвью: одноразовая ссылка с токеном → открыть в обычном браузере. */
+  const copyExportLink = async () => {
+    const tok = await api.post<{ token: string }>("/api/v1/health/export-token", {});
+    const link = `${window.location.origin}/api/v1/health/export?t=${tok.token}`;
+    await navigator.clipboard.writeText(link);
+    showToast("Ссылка на PDF скопирована — откройте её в обычном браузере");
+  };
+
   const downloadPdf = async () => {
     setBusy(true);
     try {
-      const initData = getInitData();
-      const resp = await fetch("/api/v1/health/export", {
-        headers: initData ? { "X-Max-Init-Data": initData } : undefined,
-      });
-      if (!resp.ok) throw new Error(String(resp.status));
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const today = new Date();
-      const stamp = `${String(today.getDate()).padStart(2, "0")}.${String(today.getMonth() + 1).padStart(2, "0")}.${today.getFullYear()}`;
-      a.download = `medroute-svodka-${stamp}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      showToast("PDF скачан");
+      // единый путь для всех устройств: файл доставляет бот в чат
+      await api.post("/api/v1/health/send-to-bot", {});
+      showToast("Собираю — PDF придёт в чат бота через несколько секунд");
+      return;
     } catch {
-      showToast("Не удалось скачать PDF");
+      showToast("Не удалось отправить в чат — пробуем скачать…");
+    }
+    // запасной путь (только если бот недоступен): скачивание из браузера
+    try {
+      await downloadInWebview();
+    } catch {
+      try {
+        await copyExportLink();
+      } catch {
+        showToast("Не удалось подготовить PDF");
+      }
     } finally {
       setBusy(false);
     }
@@ -133,7 +175,9 @@ export default function Report() {
       <div className="foot">
         <div className="btn-row">
           <Button variant="secondary" onClick={() => nav("/health")}><I.back size={18} />Назад</Button>
-          <Button disabled={busy} onClick={downloadPdf}><I.doc size={18} />{busy ? "Готовим…" : "Скачать PDF"}</Button>
+          <Button disabled={busy} onClick={downloadPdf}>
+            <I.doc size={18} />{busy ? "Готовим…" : "PDF в чат"}
+          </Button>
         </div>
       </div>
       {toast}

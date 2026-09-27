@@ -32,7 +32,8 @@ export default function HealthHub() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [sheet, setSheet] = useState(false);
   const [draft, setDraft] = useState<Record<HealthType, boolean>>({ bp: true, weight: true, sugar: false, mood: true });
-  const [draftTimes, setDraftTimes] = useState<Partial<Record<HealthType, string>>>({});
+  // время пуша: всегда валидное, пока дневник включён — иначе сохранился бы null при «не трогал поле»
+  const [draftTimes, setDraftTimes] = useState<Record<HealthType, string>>({ bp: "09:00", weight: "09:00", sugar: "09:00", mood: "09:00" });
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -50,8 +51,8 @@ export default function HealthHub() {
           setDraft(Object.fromEntries(s.value.diaries.map((d) => [d.diary, d.enabled])) as Record<HealthType, boolean>);
           setDraftTimes(
             Object.fromEntries(
-              s.value.diaries.filter((d) => d.push_time).map((d) => [d.diary, d.push_time as string]),
-            ) as Partial<Record<HealthType, string>>,
+              s.value.diaries.map((d) => [d.diary, d.push_time || "09:00"]),
+            ) as Record<HealthType, string>,
           );
         }
         setLasts({
@@ -73,7 +74,7 @@ export default function HealthHub() {
         diaries: (Object.keys(draft) as HealthType[]).map((d) => ({
           diary: d,
           enabled: draft[d],
-          push_time: draft[d] ? draftTimes[d] || null : null,
+          push_time: draft[d] ? draftTimes[d] : null,
         })),
       });
       setSettings(res.diaries);
@@ -176,7 +177,7 @@ export default function HealthHub() {
                   <small>Бот напомнит в</small>
                   <input
                     type="time"
-                    value={draftTimes[t] ?? "09:00"}
+                    value={draftTimes[t]}
                     onChange={(e) => setDraftTimes((prev) => ({ ...prev, [t]: e.target.value }))}
                   />
                 </label>

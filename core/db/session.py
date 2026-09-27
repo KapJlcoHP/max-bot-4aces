@@ -46,7 +46,11 @@ def _migrate_sqlite() -> None:
         return
     inspector = inspect(engine)
     plans: dict[str, list[tuple[str, str]]] = {
-        "users": [("consent_at", "DATETIME NULL"), ("avatar_url", "VARCHAR(500) NULL DEFAULT ''")],
+        "users": [
+            ("consent_at", "DATETIME NULL"),
+            ("avatar_url", "VARCHAR(500) NULL DEFAULT ''"),
+            ("tz", "VARCHAR(64) NOT NULL DEFAULT 'Europe/Moscow'"),
+        ],
         "route_steps": [("source", "VARCHAR(16) NOT NULL DEFAULT 'template'")],
         "reminders": [("sent_at", "DATETIME NULL"), ("done_at", "DATETIME NULL")],
         "health_settings": [("push_time", "VARCHAR(5) NULL")],

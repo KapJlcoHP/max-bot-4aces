@@ -25,6 +25,7 @@ class User(Base):
     notifications_on: Mapped[bool] = mapped_column(Boolean, default=True)
     consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 152-ФЗ: дата согласия
     avatar_url: Mapped[str] = mapped_column(String(500), default="")  # фото из MAX, если платформа его отдала
+    tz: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")  # IANA-зона с телефона — «настенные» времена пушей
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     routes: Mapped[list["Route"]] = relationship(back_populates="user")
@@ -188,6 +189,21 @@ class NotificationLog(Base):
     ref_id: Mapped[int] = mapped_column(Integer)
     lead: Mapped[str] = mapped_column(String(16))  # day | hour | now | HH:MM (для лекарств)
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ExportRequest(Base):
+    """Заявка мини-апа «прислать PDF-сводку в чат бота»: API кладёт, ��от-вотчер отправляет.
+
+    Обходной путь для телефонов — вебвью MAX блокирует скачивание файлов.
+    """
+
+    __tablename__ = "export_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class BpRecord(Base):

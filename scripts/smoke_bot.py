@@ -178,6 +178,17 @@ def main() -> None:
 
     # --- дедуп после отправки: mark_sent проверен выше по ходу сценария ---
 
+    # --- сборка PDF для бота (та же функция, что в веб-экспорте) ---
+    from bot.exporter import _build_pdf
+
+    with SessionLocal() as db:
+        ids = seed(db, max_user_id=4004)
+        user = db.query(User).filter(User.max_user_id == 4004).first()
+        add_health_record(db, user.id, "bp", systolic=126, diastolic=84, pulse=72)
+        data, filename = _build_pdf(db, user)
+        check("PDF для бота собирается", data[:4] == b"%PDF" and len(data) > 1000, f"{len(data)} байт")
+        check("имя файла с датой", filename.startswith("medroute-svodka-") and filename.endswith(".pdf"), filename)
+
     with SessionLocal() as db:
         ids = seed(db, max_user_id=3003)
         user = db.query(User).filter(User.max_user_id == 3003).first()
@@ -185,10 +196,10 @@ def main() -> None:
         due_at = datetime.combine(step.deadline, dtime(14, 0))
         now = due_at - timedelta(days=1) + timedelta(minutes=5)
         pushes = collect_due(db, now)
-        step_push = next(p for p in pushes if p.kind == "step")
+        step_push = next(p for p in pushes if p.kind == "step" and p.user_id == user.id)
         mark_sent(db, step_push)
         pushes2 = collect_due(db, now)
-        check("mark_sent убирает повтор", all(p.kind != "step" for p in pushes2))
+        check("mark_sent убирает повтор", all(not (p.kind == "step" and p.user_id == user.id) for p in pushes2))
 
     print(f"\nВсе проверки пройдены: {PASS}")
     print("(временная БД database/_smoke_bot.db остаётся для инспекции, в прод не попадает)")

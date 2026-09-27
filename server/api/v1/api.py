@@ -5,12 +5,14 @@
 """
 
 from datetime import date, datetime, time as dtime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from core.db.models import (
     ChecklistItem,
+    ExportRequest,
     FamilyMember,
     HealthRecord,
     HealthSetting,
@@ -31,6 +33,7 @@ from core.schemas import (
     ChecklistOut,
     CompleteStepIn,
     CompleteStepOut,
+    ConsentIn,
     FamilyAddIn,
     FamilyMemberDto,
     HealthAddIn,
@@ -116,12 +119,18 @@ def me(user: User = Depends(current_user)):
 
 
 @router.post("/me/consent", response_model=UserDto)
-def give_consent(user: User = Depends(current_user), db: Session = Depends(db_session)):
-    """Фиксируем согласие на обработку персональных данных."""
+def give_consent(body: ConsentIn | None = None, user: User = Depends(current_user), db: Session = Depends(db_session)):
+    """Фиксируем согласие на обработку персональных данных (+ часовой пояс с телефона)."""
     if user.consent_at is None:
         user.consent_at = utcnow()
-        db.commit()
-        db.refresh(user)
+    if body and body.tz:
+        try:
+            ZoneInfo(body.tz)
+            user.tz = body.tz
+        except Exception:
+            pass  # незнакомую зону не сохраняем — остаётся дефолт
+    db.commit()
+    db.refresh(user)
     return user
 
 
@@ -492,6 +501,64 @@ def health_records(type: str, limit: int = Query(default=100, le=500), user: Use
     return [HealthRecordDto.model_validate(r) for r in rows]
 
 
+# Кратковременные токены экспорта PDF: единственный надёжный путь скачать файл из
+# вебвью MAX, где a.download/blob и шаринг могут быть заблокированы — ссылку с токеном
+# открывают в обычном браузере. В памяти процесса, TTL 5 минут, даёт доступ только к PDF.
+_EXPORT_TOKENS: dict[str, tuple[int, datetime]] = {}  # token -> (user_id, expires_at)
+_EXPORT_TTL = timedelta(minutes=5)
+
+
+@router.post("/health/export-token")
+def create_export_token(user: User = Depends(consented_user)):
+    import uuid
+
+    token = uuid.uuid4().hex
+    _EXPORT_TOKENS[token] = (user.id, utcnow() + _EXPORT_TTL)
+    for t, (_, exp) in list(_EXPORT_TOKENS.items()):
+        if exp < utcnow():
+            _EXPORT_TOKENS.pop(t, None)
+    return {"token": token, "ttl_seconds": int(_EXPORT_TTL.total_seconds())}
+
+
+@router.post("/health/send-to-bot")
+def request_pdf_in_chat(user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    """Попросить бота прислать PDF-сводку в чат (на телефонах вебвью MAX не умеет скачивать)."""
+    row = ExportRequest(user_id=user.id)
+    db.add(row)
+    db.commit()
+    return {"status": "queued", "hint": "PDF придёт в чат бота через несколько секунд"}
+
+
+@router.get("/health/export")
+def export_health_pdf(request: Request, t: str | None = Query(default=None), db: Session = Depends(db_session)):
+    """PDF-сводка дневников для врача. Авторизация: initData-заголовок ИЛИ ?t=<токен из /health/export-token>."""
+    user: User | None = None
+    if t is not None:
+        entry = _EXPORT_TOKENS.pop(t, None)
+        if entry is None or entry[1] < utcnow():
+            raise HTTPException(status_code=401, detail="Ссылка недействительна или устарела")
+        user = db.get(User, entry[0])
+    else:
+        try:
+            user = get_or_create_user(db, request.headers.get("X-Max-Init-Data"))
+        except AuthError as e:
+            raise HTTPException(status_code=401, detail=str(e)) from e
+    if user is None:
+        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    if user.consent_at is None:
+        raise HTTPException(status_code=403, detail="consent_required")
+
+    report = health_report(user=user, db=db)
+    enabled = _get_diary_settings(db, user.id)
+    data = build_health_pdf(db, user, report, enabled)
+    stamp = utcnow().strftime("%d.%m.%Y")
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="medroute-svodka-{stamp}.pdf"'},
+    )
+
+
 @router.post("/health/{type}", response_model=HealthRecordDto)
 def add_health_record(type: str, body: HealthAddIn, user: User = Depends(consented_user), db: Session = Depends(db_session)):
     try:
@@ -592,18 +659,7 @@ def health_report(user: User = Depends(consented_user), db: Session = Depends(db
     return out
 
 
-@router.get("/health/export")
-def export_health_pdf(user: User = Depends(consented_user), db: Session = Depends(db_session)):
-    """PDF-сводка дневников для врача: агрегаты, графики и таблицы измерений за 30 дней."""
-    report = health_report(user=user, db=db)
-    enabled = _get_diary_settings(db, user.id)
-    data = build_health_pdf(db, user, report, enabled)
-    stamp = utcnow().strftime("%d.%m.%Y")
-    return Response(
-        content=data,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="medroute-svodka-{stamp}.pdf"'},
-    )
+
 
 
 # ---------- лекарства ----------

@@ -35,8 +35,10 @@ def main() -> None:
     init_db()
 
     with TestClient(app) as client:
-        r = client.post("/api/v1/me/consent")
-        check("consent 200", r.status_code == 200, r.text)
+        r = client.post("/api/v1/me/consent", json={"tz": "Asia/Irkutsk"})
+        check("consent 200 + tz сохранён", r.status_code == 200 and r.json()["tz"] == "Asia/Irkutsk", r.text)
+        r = client.post("/api/v1/me/consent", json={"tz": "Mars/Olympus"})
+        check("незнакомая зона не сохраняется", r.json()["tz"] == "Asia/Irkutsk", r.text)
 
         r = client.post("/api/v1/route/start", json={"situation_key": "dispanserizaciya"})
         if r.status_code != 200:
@@ -86,6 +88,31 @@ def main() -> None:
 
         r = client.get("/api/v1/health/report")
         check("сводка", r.status_code == 200 and r.json()["bp_count"] >= 1, r.text)
+
+        # экспорт PDF: initData-путь и путь токена
+        r = client.get("/api/v1/health/export")
+        check("PDF по initData", r.status_code == 200 and r.headers["content-type"] == "application/pdf", str(r.status_code))
+        r = client.post("/api/v1/health/export-token")
+        check("токен экспорта выдан", r.status_code == 200 and r.json().get("token"), r.text)
+        token = r.json()["token"]
+        r = client.get(f"/api/v1/health/export?t={token}")
+        check("PDF по токену", r.status_code == 200 and r.content[:4] == b"%PDF", str(r.status_code))
+        r = client.get(f"/api/v1/health/export?t={token}")
+        check("токен одноразовый → 401", r.status_code == 401, str(r.status_code))
+        r = client.get("/api/v1/health/export?t=deadbeef")
+        check("мусорный токен → 401", r.status_code == 401, str(r.status_code))
+
+        # PDF через бота: заявка кладётся в export_requests, бот-вотчер её заберёт
+        r = client.post("/api/v1/health/send-to-bot")
+        check("заявка PDF в чат принята", r.status_code == 200 and r.json()["status"] == "queued", r.text)
+        from core.db.models import ExportRequest
+
+        with_session = None
+        from core.db.session import SessionLocal
+
+        with SessionLocal() as s:
+            pending = s.query(ExportRequest).filter(ExportRequest.sent_at.is_(None)).count()
+        check("заявка в очереди", pending >= 1, str(pending))
 
     print(f"\nВсе проверки пройдены: {PASS}")
 

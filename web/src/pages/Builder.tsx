@@ -22,6 +22,7 @@ export default function Builder() {
   const [custom, setCustom] = useState<CustomStepIn[]>([]);
   const [ownName, setOwnName] = useState("");
   const [ownDate, setOwnDate] = useState("");
+  const [ownAttempted, setOwnAttempted] = useState(false);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
 
@@ -50,10 +51,15 @@ export default function Builder() {
 
   const addOwn = () => {
     const name = ownName.trim();
-    if (!name) return;
+    if (!name) {
+      setOwnAttempted(true);
+      showToast("Напишите название шага — оно подсвечено красным");
+      return;
+    }
     setCustom((prev) => [...prev, { title: name, deadline: ownDate || null }]);
     setOwnName("");
     setOwnDate("");
+    setOwnAttempted(false);
   };
 
   const create = async () => {
@@ -167,9 +173,15 @@ export default function Builder() {
                   </div>
                   <div className="card">
                     <div className="own-row">
-                      <input placeholder="Свой шаг" aria-label="Название шага" value={ownName} onChange={(e) => setOwnName(e.target.value)} />
+                      <input
+                        placeholder="Свой шаг"
+                        aria-label="Название шага"
+                        value={ownName}
+                        className={ownAttempted && !ownName.trim() ? "invalid" : undefined}
+                        onChange={(e) => setOwnName(e.target.value)}
+                      />
                       <input className="date" type="date" aria-label="Срок" value={ownDate} onChange={(e) => setOwnDate(e.target.value)} />
-                      <button className="add" onClick={addOwn} disabled={!ownName.trim()} aria-label="Добавить">+</button>
+                      <button className="add" onClick={addOwn} aria-label="Добавить">+</button>
                     </div>
                   </div>
                 </>

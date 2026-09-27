@@ -16,6 +16,7 @@ export default function Reminders() {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ title: "", place: "", at: "" });
   const [busy, setBusy] = useState(false);
+  const [attempted, setAttempted] = useState(false);
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -37,13 +38,15 @@ export default function Reminders() {
   };
 
   const add = async () => {
-    if (!draft.title.trim() || !draft.at || busy) { showToast("Укажите событие и время"); return; }
+    setAttempted(true);
+    if (!draft.title.trim() || !draft.at || busy) { showToast("Заполните событие и дату с временем"); return; }
     setBusy(true);
     try {
       const row = await api.post<Reminder>("/api/v1/reminders", draft);
       setRows((current) => [...(current ?? []), row].sort((a, b) => a.at.localeCompare(b.at)));
       setDraft({ title: "", place: "", at: "" });
       setAdding(false);
+      setAttempted(false);
       showToast("Напоминание добавлено");
     } catch {
       showToast("Не удалось добавить напоминание");
@@ -64,9 +67,15 @@ export default function Reminders() {
         
         {adding && <div className="card reminder-form">
           <h3 className="h3">Новое напоминание</h3>
-          <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Событие" aria-label="Событие" />
-          <Input value={draft.place} onChange={(e) => setDraft({ ...draft, place: e.target.value })} placeholder="Место" aria-label="Место" />
-          <input className="date-field" type="datetime-local" value={draft.at} onChange={(e) => setDraft({ ...draft, at: e.target.value })} aria-label="Дата и время" />
+          <Input value={draft.title} className={attempted && !draft.title.trim() ? "invalid" : undefined} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Событие" aria-label="Событие" />
+          <Input value={draft.place} onChange={(e) => setDraft({ ...draft, place: e.target.value })} placeholder="Место (необязательно)" aria-label="Место" />
+          <input
+            className={`date-field${attempted && !draft.at ? " invalid" : ""}`}
+            type="datetime-local"
+            value={draft.at}
+            onChange={(e) => setDraft({ ...draft, at: e.target.value })}
+            aria-label="Дата и время"
+          />
           <div className="btn-row"><Button variant="secondary" onClick={() => setAdding(false)}>Отмена</Button><Button onClick={add} disabled={busy}>Сохранить</Button></div>
         </div>}
         {status === "error" && (

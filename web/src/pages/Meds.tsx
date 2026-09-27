@@ -12,8 +12,10 @@ export default function Meds() {
   const [sheet, setSheet] = useState(false);
   const [name, setName] = useState("");
   const [time, setTime] = useState("");
+  const [times, setTimes] = useState<string[]>([]);
   const [until, setUntil] = useState("");
   const [busy, setBusy] = useState(false);
+  const [attempted, setAttempted] = useState(false);
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -39,20 +41,41 @@ export default function Meds() {
     }
   };
 
+  const addTimeChip = () => {
+    const t = time.trim();
+    if (!t) return;
+    if (times.includes(t)) {
+      showToast("Это время уже добавлено");
+      return;
+    }
+    setTimes((prev) => [...prev, t].sort());
+    setTime("");
+  };
+
+  const removeTimeChip = (t: string) => setTimes((prev) => prev.filter((x) => x !== t));
+
   const addCourse = async () => {
-    if (!name.trim() || !time) return;
+    const nameOk = !!name.trim();
+    const timesOk = times.length > 0;
+    setAttempted(true);
+    if (!nameOk || !timesOk || busy) {
+      showToast("Заполните название и хотя бы одно время приёма");
+      return;
+    }
     setBusy(true);
     try {
       const m = await api.post<MedsOut>("/api/v1/meds", {
         name: name.trim(),
-        times: [time],
+        times,
         until: until || null,
       });
       setMeds(m);
       setSheet(false);
       setName("");
+      setTimes([]);
       setTime("");
       setUntil("");
+      setAttempted(false);
       showToast("Курс добавлен — бот напомнит о приёме");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Не удалось добавить курс");
@@ -103,7 +126,7 @@ export default function Meds() {
                     <div className="rem-item" key={`${s.course_id}-${s.at_time}`}>
                       <div className={`when${s.taken ? " done-pill" : ""}`}>{s.at_time}</div>
                       <div className="what">
-                        <b>{s.name} — 1 приём</b>
+                        <b>{s.name}</b>
                         <small>
                           {s.taken && s.taken_at
                             ? `Принято в ${s.taken_at.slice(11, 16)}`
@@ -159,16 +182,49 @@ export default function Meds() {
 
       <Sheet open={sheet} onClose={() => setSheet(false)}>
         <h3>Новый курс</h3>
-        <div className="sub">Название, время приёма и длительность — бот напомнит о каждом приёме</div>
+        <div className="sub">Название и время приёма (можно несколько) — бот напомнит о каждом приёме</div>
         <div className="own-row" style={{ marginBottom: 10 }}>
-          <input placeholder="Например, Магний B6" value={name} onChange={(e) => setName(e.target.value)} aria-label="Название" />
+          <input
+            placeholder="Например, Магний B6"
+            value={name}
+            className={attempted && !name.trim() ? "invalid" : undefined}
+            onChange={(e) => setName(e.target.value)}
+            aria-label="Название"
+          />
         </div>
+        {times.length > 0 && (
+          <div className="chip-times" style={{ marginBottom: 10 }}>
+            {times.map((t) => (
+              <span className="chip-time" key={t}>
+                {t}
+                <button onClick={() => removeTimeChip(t)} aria-label={`Убр��ть ${t}`}>✕</button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="own-row">
-          <input className="date" type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Время приёма" />
-          <input className="date" type="date" value={until} onChange={(e) => setUntil(e.target.value)} aria-label="До какой даты" />
-          <button className="add" onClick={addCourse} disabled={busy || !name.trim() || !time} aria-label="Добавить">+</button>
+          <input
+            className="date"
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+            aria-label="Время приёма"
+          />
+          <button className="add" onClick={addTimeChip} disabled={!time} aria-label="Добавить время приёма">+</button>
+          <input
+            className="date"
+            type="date"
+            value={until}
+            onChange={(e) => setUntil(e.target.value)}
+            aria-label="До какой даты (необязательно)"
+          />
         </div>
-        <Button style={{ marginTop: 14 }} disabled={busy || !name.trim() || !time} onClick={addCourse}>
+        <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+          {attempted && times.length === 0
+            ? "Выберите время приёма и нажмите «+» — можно добавить несколько"
+            : "Время приёма + «+» — так добавляется несколько приёмов в день"}
+        </div>
+        <Button style={{ marginTop: 14 }} disabled={busy} onClick={addCourse}>
           Добавить курс
         </Button>
       </Sheet>
