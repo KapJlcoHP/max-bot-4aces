@@ -38,7 +38,8 @@ def _build_pdf(db: Session, user: User) -> tuple[bytes, str]:
 
 
 async def send_health_pdf(bot: Bot, db: Session, user: User) -> None:
-    data, filename = _build_pdf(db, user)
+    # reportlab синхронный и тяжёлый — в отдельный поток, чтобы не замораживать event loop
+    data, filename = await asyncio.to_thread(_build_pdf, db, user)
     attachment = await bot.upload_media(
         InputMediaBuffer(data, filename=filename, type=UploadType.FILE)
     )

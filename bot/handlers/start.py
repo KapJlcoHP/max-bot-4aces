@@ -8,6 +8,7 @@ from maxapi.filters.command import Command, CommandStart
 from maxapi.types import MessageCreated
 
 from bot.keyboards import open_app_keyboard
+from bot.throttle import throttled
 
 load_dotenv()
 
@@ -52,15 +53,18 @@ async def _answer_with_app_button(event: MessageCreated, text: str) -> None:
 
 
 @router.message_created(CommandStart())
+@throttled
 async def start(event: MessageCreated):
     await _answer_with_app_button(event, WELCOME)
 
 
 @router.message_created(Command("app"))
+@throttled
 async def app(event: MessageCreated):
     await _answer_with_app_button(event, "Открываю «МедМаршрут»…" + _miniapp_url_hint())
 
 
 @router.message_created(Command("help"))
+@throttled
 async def help_command(event: MessageCreated):
     await event.message.answer(HELP + _miniapp_url_hint())

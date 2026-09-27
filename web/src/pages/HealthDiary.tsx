@@ -222,7 +222,6 @@ export default function HealthDiary() {
             <div className="empty-ico" style={{ width: 64, height: 64 }}><I.pulse size={28} /></div>
             <b style={{ fontSize: 17 }}>Записей пока нет</b>
             <div className="muted">Добавьте первую запись — история и график появятся здесь.</div>
-            <Button style={{ marginTop: 8 }} onClick={() => setSheet(true)}>Новая запись</Button>
           </div>
         )}
         {status === "ready" && latest && (

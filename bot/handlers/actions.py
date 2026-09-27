@@ -30,6 +30,7 @@ from core.services import (
     take_med,
 )
 from bot.exporter import send_health_pdf
+from bot.throttle import throttled
 
 log = logging.getLogger("bot.actions")
 
@@ -76,6 +77,7 @@ def parse_bp(text: str) -> tuple[int, int, int | None]:
 
 
 @router.message_created(Command("status"))
+@throttled
 async def status_command(event: MessageCreated):
     """Текущий шаг маршрута + кнопки: выполнить в чате или открыть приложение."""
     username = _username(event)
@@ -112,6 +114,7 @@ async def status_command(event: MessageCreated):
 
 
 @router.message_created(Command("diary"))
+@throttled
 async def diary_command(event: MessageCreated):
     """Заполнить дневник здоровья прямо в чате."""
     with SessionLocal() as db:
@@ -139,6 +142,7 @@ async def diary_command(event: MessageCreated):
 
 
 @router.message_created(Command("svodka"))
+@throttled
 async def svodka_command(event: MessageCreated):
     """PDF-сводка для врача прямо в чат — без открытия мини-апа."""
     await event.message.answer("Собираю сводку за 30 дней…")
@@ -185,6 +189,7 @@ async def _edit_to_prompt(event: MessageCallback, diary: str) -> None:
 
 
 @router.message_callback(F.callback.payload.startswith("sdone_"))
+@throttled
 async def cb_step_done(event: MessageCallback):
     step_id = int(event.callback.payload.split("_")[1])
     with SessionLocal() as db:
@@ -201,6 +206,7 @@ async def cb_step_done(event: MessageCallback):
 
 
 @router.message_callback(F.callback.payload.startswith("rdone_"))
+@throttled
 async def cb_reminder_done(event: MessageCallback):
     reminder_id = int(event.callback.payload.split("_")[1])
     with SessionLocal() as db:
@@ -217,6 +223,7 @@ async def cb_reminder_done(event: MessageCallback):
 
 
 @router.message_callback(F.callback.payload.startswith("mtake_"))
+@throttled
 async def cb_med_taken(event: MessageCallback):
     _, course_id_raw, hhmm = event.callback.payload.split("_")
     at_time = f"{hhmm[:2]}:{hhmm[2:]}"
@@ -235,6 +242,7 @@ async def cb_med_taken(event: MessageCallback):
 
 
 @router.message_callback(F.callback.payload.startswith("diary_"))
+@throttled
 async def cb_diary_pick(event: MessageCallback):
     diary = event.callback.payload.removeprefix("diary_")
     if diary not in DIARY_TITLES:
@@ -244,6 +252,7 @@ async def cb_diary_pick(event: MessageCallback):
 
 
 @router.message_callback(F.callback.payload.startswith("meal_"))
+@throttled
 async def cb_meal_tag(event: MessageCallback):
     dialog = _DIALOGS.get(event.callback.user.user_id)
     if not dialog or dialog.get("diary") != "sugar":
@@ -254,6 +263,7 @@ async def cb_meal_tag(event: MessageCallback):
 
 
 @router.message_callback(F.callback.payload.startswith("mood_"))
+@throttled
 async def cb_mood_pick(event: MessageCallback):
     dialog = _DIALOGS.get(event.callback.user.user_id)
     if not dialog or dialog.get("diary") != "mood":
@@ -270,6 +280,7 @@ async def cb_mood_pick(event: MessageCallback):
 
 
 @router.message_created()
+@throttled
 async def diary_text_input(event: MessageCreated):
     """Если идёт диалог дневника — трактуем сообщение как ответ."""
     body_text = (event.message.body.text if event.message.body else "") or ""
