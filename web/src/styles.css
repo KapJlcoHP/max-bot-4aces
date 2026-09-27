@@ -593,3 +593,11 @@ body {
   font-weight: 600;
   color: var(--muted);
 }
+.chip-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: 0;
+}

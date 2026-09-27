@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { Line } from "react-chartjs-2";
+import { CategoryScale, Chart as ChartJS, LinearScale, LineElement, PointElement, Tooltip } from "chart.js";
 import { api } from "../api";
-import { fmtDateNumeric, fmtWhen, parseDate } from "../format";
+import { fmtDateNumeric, fmtHhmm, fmtWhen, parseDate } from "../format";
 import type { HealthRecord, HealthType } from "../types";
 import { Button, ErrorView, Header, LoadingView, Sheet, useToast } from "../components/ui";
 import { I } from "../icons";
+
+ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip);
 
 const TITLES: Record<HealthType, string> = {
   bp: "Давление и пульс",
@@ -12,6 +16,22 @@ const TITLES: Record<HealthType, string> = {
   sugar: "Сахар крови",
   mood: "Самочувствие",
 };
+
+const UNITS: Record<HealthType, string> = {
+  bp: "мм рт. ст.",
+  weight: "кг",
+  sugar: "ммоль/л",
+  mood: "",
+};
+
+/** Серии давления на общей шкале: цвет = фирменная палитра. */
+const BP_SERIES = [
+  { key: "sys", label: "Систолическое", color: "#006DF8", get: (r: HealthRecord) => r.systolic },
+  { key: "dia", label: "Диастолическое", color: "#DE2129", get: (r: HealthRecord) => r.diastolic },
+  { key: "pulse", label: "Пульс", color: "#22C55E", get: (r: HealthRecord) => r.pulse },
+] as const;
+
+type BpSeriesKey = (typeof BP_SERIES)[number]["key"];
 
 type Period = "day" | "month" | "year" | "custom";
 
@@ -32,17 +52,6 @@ const fromIsoDay = (iso: string, endOfDay = false): Date | null => {
   return endOfDay ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59) : new Date(d.getFullYear(), d.getMonth(), d.getDate());
 };
 
-function chartPoints(values: number[], width: number, height: number, pad: number): string {
-  if (values.length < 2) return "";
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-  const step = (width - pad * 2) / (values.length - 1);
-  return values
-    .map((v, i) => `${pad + i * step},${height - pad - ((v - min) / span) * (height - pad * 2)}`)
-    .join(" ");
-}
-
 export default function HealthDiary() {
   const { type: rawType } = useParams<{ type: string }>();
   const type = (rawType ?? "bp") as HealthType;
@@ -56,6 +65,7 @@ export default function HealthDiary() {
   const [from, setFrom] = useState(() => toIsoDay(new Date(Date.now() - 6 * 86400000)));
   const [to, setTo] = useState(() => toIsoDay(new Date()));
   const [delRec, setDelRec] = useState<HealthRecord | null>(null);
+  const [hidden, setHidden] = useState<Record<BpSeriesKey, boolean>>({ sys: false, dia: false, pulse: false });
 
   // форма новой записи
   const [sys, setSys] = useState("");
@@ -80,13 +90,6 @@ export default function HealthDiary() {
 
   const latest = records[0];
 
-  const valueOf = useCallback((r: HealthRecord): number | null => {
-    if (type === "bp") return r.systolic;
-    if (type === "weight") return r.weight_kg;
-    if (type === "sugar") return r.sugar_mmol;
-    return null; // настроение — без графика
-  }, [type]);
-
   const range = useMemo((): [Date, Date] | null => {
     const now = new Date();
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
@@ -100,31 +103,50 @@ export default function HealthDiary() {
 
   const chartData = useMemo(() => {
     if (type === "mood" || !range) return null;
-    const pts = records
+    const getters: { key: string; get: (r: HealthRecord) => number | null }[] =
+      type === "bp"
+        ? BP_SERIES.map((s) => ({ key: s.key, get: (r: HealthRecord) => s.get(r) as number | null }))
+        : [{ key: "v", get: (r: HealthRecord) => (type === "weight" ? r.weight_kg : type === "sugar" ? r.sugar_mmol : null) }];
+
+    const inRange = records
       .filter((r) => {
         const d = parseDate(r.at);
-        const v = valueOf(r);
-        return d !== null && v !== null && d >= range[0] && d <= range[1];
+        return d !== null && d >= range[0] && d <= range[1] && getters.some((g) => g.get(r) !== null);
       })
-      .sort((a, b) => +parseDate(a.at)! - +parseDate(b.at)!)
-      .map((r) => ({ at: parseDate(r.at)!, v: valueOf(r)! }));
-    if (pts.length === 0) return null;
+      .sort((a, b) => +parseDate(a.at)! - +parseDate(b.at)!);
+    if (inRange.length === 0) return null;
+
     const spanDays = (+range[1] - +range[0]) / 86400000;
+    // длинный период: усредняем по дням, иначе линия превращается в частокол
+    let groups: { at: Date; rows: HealthRecord[] }[];
     if (spanDays > 31) {
-      // длинный период: усредняем по дням, иначе линия превращается в частокол
-      const byDay = new Map<string, { sum: number; n: number; at: Date }>();
-      for (const p of pts) {
-        const key = toIsoDay(p.at);
-        const g = byDay.get(key) ?? { sum: 0, n: 0, at: p.at };
-        g.sum += p.v;
-        g.n += 1;
-        byDay.set(key, g);
+      const byDay = new Map<string, { at: Date; rows: HealthRecord[] }>();
+      for (const r of inRange) {
+        const d = parseDate(r.at)!;
+        const key = toIsoDay(d);
+        const g = byDay.get(key);
+        if (g) g.rows.push(r);
+        else byDay.set(key, { at: d, rows: [r] });
       }
-      const merged = [...byDay.values()].map((g) => ({ at: g.at, v: g.sum / g.n }));
-      return { values: merged.map((p) => p.v), first: merged[0].at, last: merged[merged.length - 1].at };
+      groups = [...byDay.values()];
+    } else {
+      groups = inRange.map((r) => ({ at: parseDate(r.at)!, rows: [r] }));
     }
-    return { values: pts.map((p) => p.v), first: pts[0].at, last: pts[pts.length - 1].at };
-  }, [records, type, range, valueOf]);
+
+    const avg = (rows: HealthRecord[], get: (r: HealthRecord) => number | null): number | null => {
+      const vals = rows.map(get).filter((v): v is number => v !== null);
+      return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+    };
+
+    return {
+      byDay: spanDays > 31,
+      labels: groups.map((g) => (spanDays <= 1 ? fmtHhmm(g.at) : fmtDateNumeric(g.at).slice(0, 5))),
+      tooltips: groups.map((g) =>
+        spanDays <= 1 ? `${fmtDateNumeric(g.at)} ${fmtHhmm(g.at)}` : fmtDateNumeric(g.at),
+      ),
+      series: Object.fromEntries(getters.map((g) => [g.key, groups.map((gr) => avg(gr.rows, g.get))])),
+    };
+  }, [records, type, range]);
 
   const submit = async () => {
     setBusy(true);
@@ -180,6 +202,13 @@ export default function HealthDiary() {
   };
 
   const stroke = type === "weight" ? "#22C55E" : type === "sugar" ? "#DE2129" : "#006DF8";
+  const unit = UNITS[type];
+
+  const activeSeries = useMemo(() => {
+    if (type === "bp") return BP_SERIES.filter((s) => !hidden[s.key]).map((s) => ({ key: s.key, label: s.label, color: s.color }));
+    if (type === "weight" || type === "sugar") return [{ key: "v", label: TITLES[type], color: stroke }];
+    return [];
+  }, [type, hidden, stroke]);
 
   return (
     <div className="app narrow">
@@ -227,31 +256,87 @@ export default function HealthDiary() {
                     <input className="date" type="date" aria-label="По дату" value={to} onChange={(e) => setTo(e.target.value)} />
                   </div>
                 )}
-                {chartData && chartData.values.length >= 2 ? (
-                  <>
-                    <svg className="chart" viewBox="0 0 320 110" preserveAspectRatio="none" style={{ height: 100 }}>
-                      <polyline
-                        points={chartPoints(chartData.values, 320, 110, 10)}
-                        fill="none"
-                        stroke={stroke}
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    <div className="chart-dates">
-                      <span>{fmtDateNumeric(chartData.first)}</span>
-                      <span>{fmtDateNumeric(chartData.last)}</span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="muted" style={{ padding: "10px 0 6px" }}>
-                    {period === "custom" && !range ? "Проверьте выбранный диапазон дат" : "Мало данных за выбранный период"}
+                {type === "bp" && (
+                  <div className="pick-chips" style={{ marginBottom: 10 }}>
+                    {BP_SERIES.map((s) => (
+                      <button
+                        key={s.key}
+                        className={`pick${hidden[s.key] ? "" : " on"}`}
+                        onClick={() => setHidden((h) => ({ ...h, [s.key]: !h[s.key] }))}
+                      >
+                        <i className="chip-dot" style={{ background: s.color }} />
+                        {s.label}
+                      </button>
+                    ))}
                   </div>
                 )}
-                {type === "bp" && (
-                  <div className="legend">
-                    <span><i style={{ background: "#006DF8" }} />Верхнее (систолическое)</span>
+                {chartData && activeSeries.length > 0 && chartData.labels.length >= 2 ? (
+                  <div style={{ height: 180 }}>
+                    <Line
+                      data={{
+                        labels: chartData.labels,
+                        datasets: activeSeries.map((s) => ({
+                          label: s.label,
+                          data: chartData.series[s.key] as (number | null)[],
+                          borderColor: s.color,
+                          backgroundColor: s.color,
+                          borderWidth: 2.5,
+                          pointRadius: 0,
+                          pointHoverRadius: 4,
+                          tension: 0.35,
+                          spanGaps: true,
+                        })),
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: "nearest", intersect: false },
+                        plugins: {
+                          legend: { display: false },
+                          tooltip: {
+                            backgroundColor: "#1B2433",
+                            padding: 10,
+                            titleFont: { family: "Figtree, sans-serif", size: 11 },
+                            bodyFont: { family: "Figtree, sans-serif", size: 11 },
+                            callbacks: {
+                              title: (items) => chartData.tooltips[items[0].dataIndex] ?? "",
+                              label: (item) => {
+                                const raw = item.raw;
+                                const v = typeof raw === "number" ? raw.toLocaleString("ru-RU", { maximumFractionDigits: 1 }) : "—";
+                                return `${item.dataset.label}: ${v}${unit ? ` ${unit}` : ""}`;
+                              },
+                            },
+                          },
+                        },
+                        scales: {
+                          x: {
+                            grid: { color: "#E5E9F2" },
+                            border: { color: "#E5E9F2" },
+                            ticks: {
+                              color: "#7A8699",
+                              font: { family: "Figtree, sans-serif", size: 10 },
+                              maxTicksLimit: 8,
+                              maxRotation: 0,
+                              autoSkip: true,
+                            },
+                          },
+                          y: {
+                            grid: { color: "#E5E9F2" },
+                            border: { display: false },
+                            ticks: { color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                            title: { display: !!unit, text: unit, color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                          },
+                        },
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="muted" style={{ padding: "10px 0 6px" }}>
+                    {chartData && activeSeries.length === 0
+                      ? "Включите хотя бы одну линию"
+                      : period === "custom" && !range
+                        ? "Проверьте выбранный диапазон дат"
+                        : "Мало данных за выбранный период"}
                   </div>
                 )}
               </div>

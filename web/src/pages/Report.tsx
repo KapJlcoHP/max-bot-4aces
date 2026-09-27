@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { fmtDayMonth, fmtWhen } from "../format";
+import { getInitData } from "../bridge";
+import { fmtWhen } from "../format";
 import type { HealthReport } from "../types";
 import { Button, ErrorView, Header, LoadingView, useToast } from "../components/ui";
 import { I } from "../icons";
@@ -13,6 +14,7 @@ export default function Report() {
   const [toast, showToast] = useToast();
   const [report, setReport] = useState<HealthReport | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -23,21 +25,30 @@ export default function Report() {
 
   useEffect(load, []);
 
-  const share = async () => {
-    const r = report;
-    if (!r) return;
-    const lines: string[] = ["Сводка «МедМаршрут» за 30 дней:"];
-    if (r.bp_avg) lines.push(`Давление: ${r.bp_avg} среднее (${r.bp_count} измерений${r.pulse_avg ? `, пульс ~${r.pulse_avg}` : ""})`);
-    if (r.weight_latest) lines.push(`Вес: ${num(r.weight_latest)} кг (${r.weight_delta !== null && r.weight_delta !== undefined ? (r.weight_delta > 0 ? "+" : "") + num(r.weight_delta) : "0"} кг за период)`);
-    if (r.sugar_avg) lines.push(`Сахар: ${num(r.sugar_avg)} ммоль/л среднее (${r.sugar_count} измерений)`);
-    if (r.meds.length) lines.push("Лекарства: " + r.meds.map((m) => `${m.name} — ${m.taken}/${m.planned} (${m.pct}%)`).join("; "));
-    if (r.notes.length) lines.push("Заметки: " + r.notes.map((n) => `«${n.note}» (${fmtDayMonth(n.at)})`).join("; "));
-    const text = lines.join("\n");
+  const downloadPdf = async () => {
+    setBusy(true);
     try {
-      await navigator.clipboard.writeText(text);
-      showToast("Сводка скопирована — можно вставить врачу в чат");
+      const initData = getInitData();
+      const resp = await fetch("/api/v1/health/export", {
+        headers: initData ? { "X-Max-Init-Data": initData } : undefined,
+      });
+      if (!resp.ok) throw new Error(String(resp.status));
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const today = new Date();
+      const stamp = `${String(today.getDate()).padStart(2, "0")}.${String(today.getMonth() + 1).padStart(2, "0")}.${today.getFullYear()}`;
+      a.download = `medroute-svodka-${stamp}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast("PDF скачан");
     } catch {
-      showToast("Не удалось скопировать");
+      showToast("Не удалось скачать PDF");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -122,7 +133,7 @@ export default function Report() {
       <div className="foot">
         <div className="btn-row">
           <Button variant="secondary" onClick={() => nav("/health")}><I.back size={18} />Назад</Button>
-          <Button onClick={share}><I.share size={18} />Показать врачу</Button>
+          <Button disabled={busy} onClick={downloadPdf}><I.doc size={18} />{busy ? "Готовим…" : "Скачать PDF"}</Button>
         </div>
       </div>
       {toast}

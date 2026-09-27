@@ -898,6 +898,23 @@
         }
       }
     },
+    "/api/v1/health/export": {
+      "get": {
+        "summary": "Export Health Pdf",
+        "description": "PDF-сводка дневников для врача: агрегаты, графики и таблицы измерений за 30 дней.",
+        "operationId": "export_health_pdf_api_v1_health_export_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/meds": {
       "get": {
         "summary": "Meds",

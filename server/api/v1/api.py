@@ -6,7 +6,7 @@
 
 from datetime import date, datetime, time as dtime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from core.db.models import (
@@ -56,6 +56,7 @@ from core.schemas import (
     UserDto,
 )
 from server.deps import AuthError, get_or_create_user
+from server.health_pdf import build_health_pdf
 from core.db.session import SessionLocal
 
 router = APIRouter(prefix="/api/v1")
@@ -605,6 +606,20 @@ def health_report(user: User = Depends(consented_user), db: Session = Depends(db
             )
         )
     return out
+
+
+@router.get("/health/export")
+def export_health_pdf(user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    """PDF-сводка дневников для врача: агрегаты, графики и таблицы измерений за 30 дней."""
+    report = health_report(user=user, db=db)
+    enabled = _get_diary_settings(db, user.id)
+    data = build_health_pdf(db, user, report, enabled)
+    stamp = utcnow().strftime("%d.%m.%Y")
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="medroute-svodka-{stamp}.pdf"'},
+    )
 
 
 # ---------- лекарства ----------
