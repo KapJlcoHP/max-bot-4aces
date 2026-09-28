@@ -33,6 +33,7 @@ from core.services import active_route
 log = logging.getLogger("bot.scheduler")
 
 TICK_SECONDS = 60
+FAIL_MARK_ATTEMPTS = 5  # после стольких неудачных тиков пуш глушим дедупом (dialog.not.found сам не вылечится)
 DIARY_TITLES = {"bp": "Давление", "weight": "Вес", "sugar": "Сахар", "mood": "Самочувствие"}
 
 
@@ -281,12 +282,15 @@ def mark_sent(db: Session, push: Push) -> None:
 async def scheduler_loop(bot, bot_username: str | None) -> None:
     from bot.keyboards import push_keyboard
 
+    fail_counts: dict[tuple[str, int, str], int] = {}
+
     while True:
         try:
             with SessionLocal() as db:
                 due = collect_due(db)
             for push in due:
                 kb = push_keyboard(bot_username, push.actions, push.app_payload)
+                key = (push.kind, push.ref_id, push.lead)
                 try:
                     await bot.send_message(
                         user_id=push.max_user_id,
@@ -295,8 +299,18 @@ async def scheduler_loop(bot, bot_username: str | None) -> None:
                         notify=True,
                     )
                 except Exception:
-                    log.exception("Пуш не отправлен: kind=%s ref=%s", push.kind, push.ref_id)
+                    fail_counts[key] = fail_counts.get(key, 0) + 1
+                    if fail_counts[key] >= FAIL_MARK_ATTEMPTS:
+                        log.warning(
+                            "Пуш не отправлен после %d попыток, глушу дедупом: kind=%s ref=%s lead=%s",
+                            fail_counts.pop(key), push.kind, push.ref_id, push.lead,
+                        )
+                        with SessionLocal() as db:
+                            mark_sent(db, push)
+                    else:
+                        log.exception("Пуш не отправлен: kind=%s ref=%s", push.kind, push.ref_id)
                     continue
+                fail_counts.pop(key, None)
                 with SessionLocal() as db:
                     mark_sent(db, push)
         except Exception:

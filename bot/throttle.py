@@ -4,6 +4,8 @@
 запросов к MAX API (риск 429, который клиент не ретраит) и забивает очередь апдейтов.
 """
 
+import functools
+import inspect
 import time
 from collections.abc import Awaitable, Callable
 
@@ -28,7 +30,19 @@ def _event_user_id(event) -> int | None:
 
 
 def throttled(fn: Callable[..., Awaitable]) -> Callable[..., Awaitable]:
+    # Диспетчер передаёт свои контекстные kwargs (args, data, state…), а обработчики
+    # принимают только event: фильтруем по сигнатуре оригинала, иначе TypeError
+    # у каждого обработчика. wraps нужен, чтобы сигнатура обёртки выглядела как fn.
+    fn_params = set(inspect.signature(fn).parameters)
+    fn_var_kw = any(
+        p.kind is inspect.Parameter.VAR_KEYWORD
+        for p in inspect.signature(fn).parameters.values()
+    )
+
+    @functools.wraps(fn)
     async def inner(event, *args, **kwargs):
+        if not fn_var_kw:
+            kwargs = {k: v for k, v in kwargs.items() if k in fn_params}
         uid = _event_user_id(event)
         now = time.monotonic()
         if uid is not None:

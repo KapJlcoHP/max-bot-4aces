@@ -278,15 +278,30 @@ async def cb_mood_pick(event: MessageCallback):
 
 # ---------- текстовый ввод дневников (регистрируется последним — ловит остаток) ----------
 
+COMMANDS_HINT = (
+    "Команды:\n"
+    "/app — открыть «МедМаршрут»\n"
+    "/status — текущий шаг маршрута\n"
+    "/diary — внести показатели в дневник здоровья\n"
+    "/svodka — сводка для врача PDF\n"
+    "/help — справка"
+)
+FALLBACK_TAIL = "\n\nПоказатели дневника (давление, вес, сахар, самочувствие) вводите после команды /diary."
+
 
 @router.message_created()
 @throttled
 async def diary_text_input(event: MessageCreated):
-    """Если идёт диалог дневника — трактуем сообщение как ответ."""
+    """Ответ диалога дневника; вне диалога — подсказка на любое «лишнее» сообщение."""
     body_text = (event.message.body.text if event.message.body else "") or ""
     max_user_id = _sender_id(event) or 0
     dialog = _DIALOGS.get(max_user_id)
     if not dialog:
+        if body_text.strip().startswith("/"):
+            head = "Такой команды я не знаю."
+        else:
+            head = "Не понял сообщение — я работаю командами и дневниками."
+        await event.message.answer(f"{head}\n\n{COMMANDS_HINT}{FALLBACK_TAIL}")
         return
     if body_text.strip().startswith("/"):
         _DIALOGS.pop(max_user_id, None)
