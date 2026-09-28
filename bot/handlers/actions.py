@@ -20,6 +20,7 @@ from bot.keyboards import (
     sugar_meal_keyboard,
 )
 from core.db.models import HealthSetting, MedCourse, RouteStep, User
+from core.db.demo import fill_demo, has_any_data, wipe_data
 from core.db.session import SessionLocal
 from core.services import (
     ServiceError,
@@ -139,6 +140,52 @@ async def diary_command(event: MessageCreated):
         "Какой дневник заполняем?",
         attachments=[diary_choice_keyboard(diaries).as_markup()],
     )
+
+
+@router.message_created(Command("demo"))
+@throttled
+async def demo_command(event: MessageCreated):
+    """Заполнить аккаунт модельными данными — для быстрой проверки сценария."""
+    with SessionLocal() as db:
+        user = _user(db, _sender_id(event) or 0)
+        if user is None or user.consent_at is None:
+            await event.message.answer("Сначала откройте «МедМаршрут» и пройдите вход — потом возвращайтесь за демо-данными.")
+            return
+        if has_any_data(db, user.id):
+            await event.message.answer("В аккаунте уже есть данные — чтобы заменить их на демо, сначала отправьте /wipe.")
+            return
+        fill_demo(db, user)
+    await event.message.answer(
+        "🎲 Аккаунт заполнен **модельными данными** для демонстрации:\n\n"
+        "• маршрут «Наблюдаться по хроническому» — первые шаги выполнены\n"
+        "• дневники за 30 дней: давление и пульс, вес, сахар, самочувствие\n"
+        "• курсы лекарств с отметками приёма\n"
+        "• два будущих визита — придут напоминания\n\n"
+        "Откройте приложение и смотрите: маршрут, графики, «Сводка для врача» — /svodka.\n"
+        "Убрать демо-данные: /wipe."
+    )
+
+
+@router.message_created(Command("wipe"))
+@throttled
+async def wipe_command(event: MessageCreated):
+    """Очистить контент аккаунта (маршрут, дневники, лекарства); согласие остаётся."""
+    max_user_id = _sender_id(event) or 0
+    _DIALOGS.pop(max_user_id, None)
+    with SessionLocal() as db:
+        user = _user(db, max_user_id)
+        if user is None:
+            await event.message.answer("Аккаунта ещё нет — очищать нечего. Начните с /start.")
+            return
+        had = has_any_data(db, user.id)
+        wipe_data(db, user)
+    if had:
+        await event.message.answer(
+            "🧹 Готово: маршрут, дневники, лекарства и напоминания удалены.\n"
+            "Аккаунт и согласие сохранены. Заполнить заново демо-данными: /demo."
+        )
+    else:
+        await event.message.answer("Данных не было — аккаунт и так чист. Заполнить демо-данными: /demo.")
 
 
 @router.message_created(Command("svodka"))
@@ -284,6 +331,8 @@ COMMANDS_HINT = (
     "/status — текущий шаг маршрута\n"
     "/diary — внести показатели в дневник здоровья\n"
     "/svodka — сводка для врача PDF\n"
+    "/demo — заполнить аккаунт модельными данными\n"
+    "/wipe — очистить маршрут, дневники, лекарства\n"
     "/help — справка"
 )
 FALLBACK_TAIL = "\n\nПоказатели дневника (давление, вес, сахар, самочувствие) вводите после команды /diary."
