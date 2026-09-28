@@ -14,12 +14,21 @@ from core.db.seed import pilot_region
 
 HEADER = "X-Max-Init-Data"
 DEV_USER_MAX_ID = 0
+TEST_USER_MAX_ID = 909_001  # тестовая учётная запись для проверки API платформой
 INIT_DATA_MAX_AGE = timedelta(hours=24)
 INIT_DATA_CLOCK_SKEW = timedelta(minutes=1)
 
 
 class AuthError(Exception):
     pass
+
+
+def test_token_ok(test_token: str | None) -> bool:
+    """X-Test-Token совпадает с настроенным TEST_API_TOKEN (пустой настроечный = выключено)."""
+    configured = get_settings().test_api_token
+    if not configured or not test_token:
+        return False
+    return hmac.compare_digest(test_token, configured)
 
 
 def _parse_init_data(raw: str) -> dict[str, str]:
@@ -71,10 +80,12 @@ def _parse_user(payload: dict) -> dict:
     return user
 
 
-def get_or_create_user(db: Session, init_data: str | None) -> User:
+def get_or_create_user(db: Session, init_data: str | None, test_token: str | None = None) -> User:
     """Валидирует initData (если передан) и заводит пользователя с демо-данными при первом входе.
 
     При dev_bypass_auth и отсутствии/невалидном initData работаем под демо-пользователем.
+    Если initData нет/невалиден, но передан верный X-Test-Token — работаем под тестовой
+    учётной записью (проверка API платформой, см. DATA-API.yaml).
     """
     settings = get_settings()
     user_payload: dict = {}
@@ -83,13 +94,16 @@ def get_or_create_user(db: Session, init_data: str | None) -> User:
         validated = validate_init_data(init_data)
         if validated is not None:
             user_payload = _parse_user(validated)
-        elif not settings.dev_bypass_auth:
+        elif not (test_token_ok(test_token) or settings.dev_bypass_auth):
             raise AuthError("Подпись initData не прошла проверку")
 
     if not user_payload:
-        if not settings.dev_bypass_auth:
+        if test_token_ok(test_token):
+            user_payload = {"id": TEST_USER_MAX_ID, "first_name": "Тестовая", "last_name": "учётная запись"}
+        elif settings.dev_bypass_auth:
+            user_payload = {"id": DEV_USER_MAX_ID, "first_name": "Анна", "last_name": "Иванова"}
+        else:
             raise AuthError("initData отсутствует")
-        user_payload = {"id": DEV_USER_MAX_ID, "first_name": "Анна", "last_name": "Иванова"}
 
     max_id = user_payload["id"]
     user = db.query(User).filter(User.max_user_id == max_id).first()

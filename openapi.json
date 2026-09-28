@@ -72,7 +72,7 @@
     "/api/v1/me/data": {
       "delete": {
         "summary": "Delete My Data",
-        "description": "Право на удаление (152-ФЗ, ст. 21): стираем всё содержимое, аккаунт остаётся пустым.",
+        "description": "Право на удаление (152-ФЗ, ст. 21): стираем аккаунт целиком — при следующем входе\nпользователь зарегистрируется заново (согласие + демо-данные).",
         "operationId": "delete_my_data_api_v1_me_data_delete",
         "responses": {
           "200": {
@@ -117,6 +117,29 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/regions": {
+      "get": {
+        "summary": "Regions",
+        "description": "Справочник регионов из content/regions.json — источник и организаций (сид-синк на старте).",
+        "operationId": "regions_api_v1_regions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RegionDto"
+                  },
+                  "type": "array",
+                  "title": "Response Regions Api V1 Regions Get"
                 }
               }
             }
@@ -358,6 +381,54 @@
             }
           }
         }
+      },
+      "patch": {
+        "summary": "Update Step",
+        "description": "Изменить срок шага (в том числе шаблонного) — выполняенный не меняем.",
+        "operationId": "update_step_api_v1_route_steps__step_id__patch",
+        "parameters": [
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Step Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepUpdateIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/route/steps/{step_id}/complete": {
@@ -399,6 +470,46 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CompleteStepOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/route/steps/{step_id}/uncomplete": {
+      "post": {
+        "summary": "Uncomplete Step",
+        "description": "Отменить выполнение шага (отметили случайно — можно снять).",
+        "operationId": "uncomplete_step_api_v1_route_steps__step_id__uncomplete_post",
+        "parameters": [
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Step Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteDto"
                 }
               }
             }
@@ -2016,6 +2127,11 @@
             "type": "string",
             "title": "Org Type"
           },
+          "region": {
+            "type": "string",
+            "title": "Region",
+            "default": ""
+          },
           "address": {
             "type": "string",
             "title": "Address"
@@ -2047,6 +2163,30 @@
           "services"
         ],
         "title": "OrganizationDto"
+      },
+      "RegionDto": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "pilot": {
+            "type": "boolean",
+            "title": "Pilot",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title"
+        ],
+        "title": "RegionDto",
+        "description": "Регион из content/regions.json: добавление региона — правка файла, без кода."
       },
       "ReminderDto": {
         "properties": {
@@ -2242,6 +2382,17 @@
               }
             ],
             "title": "Email"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
           }
         },
         "type": "object",
@@ -2404,6 +2555,25 @@
         ],
         "title": "StepDto"
       },
+      "StepUpdateIn": {
+        "properties": {
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          }
+        },
+        "type": "object",
+        "title": "StepUpdateIn",
+        "description": "Изменение срока шага; null — срока нет."
+      },
       "UserDto": {
         "properties": {
           "id": {
@@ -2439,6 +2609,11 @@
             "type": "string",
             "title": "Tz",
             "default": "Europe/Moscow"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region",
+            "default": ""
           },
           "consent_at": {
             "anyOf": [

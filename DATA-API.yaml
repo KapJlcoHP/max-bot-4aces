@@ -1,0 +1,197 @@
+# DATA-API.yaml — конфигурация обязательных проверок API решения «МедМаршрут».
+# Составлен по требованиям кейса «Забота о людях» (раздел «Только для решений
+# с собственным API»): версия конфигурации, идентификатор команды, базовый адрес,
+# перечень обязательных проверок с методами, параметрами, ролями, ожидаемыми
+# статус-кодами и форматом ответа.
+#
+# Все проверки выполняются одной тестовой учётной записью (роль `tester`),
+# запросы аутентифицируются заголовком X-Test-Token — см. TEST-DATA.json.
+# Полное машинное описание эндпоинтов: openapi.json (OpenAPI 3.1).
+
+version: "1.0"
+
+solution: "МедМаршрут"
+team: "4Aces"
+
+base_url: "https://4acesmax.duckdns.org/api/v1"
+
+# --- аутентификация ---
+auth:
+  # Реальные пользователи: подписанный HMAC-SHA256 initData платформы MAX
+  # в заголовке X-Max-Init-Data (мини-приложение). Для автоматической проверки
+  # платформой используется статический тестовый токен (роль tester).
+  modes:
+    - header: X-Max-Init-Data
+      description: "Подписанное initData из MAX (продуктовый сценарий)"
+    - header: X-Test-Token
+      description: "Тестовый доступ для проверки API (значение передаётся организаторам отдельно)"
+  roles:
+    - id: tester
+      description: "Тестовая учётная запись без привязки к MAX; создаётся при первом запросе"
+
+# --- обязательные проверки ---
+# Порядок важен: проверки 1-2 регистрируют учётную запись и согласие,
+# 3-4 — справочники, 5-8 — сценарий маршрута, 9-12 — дневники/лекарства/сводка,
+# 13 — полный сброс учётной записи (можно перезапустить проверку с чистого листа).
+checks:
+  - id: me-profile
+    title: "Профиль тестовой учётной записи (создаётся автоматически)"
+    role: tester
+    method: GET
+    path: /me
+    params: {}
+    expected_status: [200]
+    response:
+      format: application/json
+      required_fields: [id, max_user_id, first_name, consent_at]
+      notes: "consent_at = null — согласие ещё не дано"
+
+  - id: consent
+    title: "Согласие на обработку данных (152-ФЗ) — блокирующий шаг сценария"
+    role: tester
+    method: POST
+    path: /me/consent
+    params:
+      body: { tz: "Europe/Moscow" }
+    expected_status: [200]
+    response:
+      format: application/json
+      required_fields: [id, consent_at]
+      notes: "consent_at должен стать не-null; без этого шага датасервисы отвечают 403"
+
+  - id: regions
+    title: "Справочник регионов пилота"
+    role: tester
+    method: GET
+    path: /regions
+    params: {}
+    expected_status: [200]
+    response:
+      format: application/json
+      required_fields: ["[].key", "[].title", "[].pilot"]
+      notes: "3 региона: Ивановская (pilot=true), Владимирская, Ярославская"
+
+  - id: catalog
+    title: "Каталог ситуаций (шаблоны маршрутов)"
+    role: tester
+    method: GET
+    path: /catalog
+    params: {}
+    expected_status: [200]
+    response:
+      format: application/json
+      required_fields: ["[].key", "[].title"]
+
+  - id: route-start
+    title: "Создание маршрута из шаблона «Наблюдаться по хроническому»"
+    role: tester
+    method: POST
+    path: /route/start
+    params:
+      body: { situation_key: "chronic" }
+    expected_status: [200, 409]
+    response:
+      format: application/json
+      required_fields: [id, situation_key, total_steps, steps]
+      notes: "409 допустим, если активный маршрут у учётной записи уже существует"
+
+  - id: route-get
+    title: "Текущий маршрут с шагами"
+    role: tester
+    method: GET
+    path: /route
+    params: {}
+    expected_status: [200]
+    response:
+      format: application/json
+      required_fields: [id, total_steps, steps, "steps[].id", "steps[].status"]
+
+  - id: step-complete
+    title: "Отметить текущий шаг выполненным"
+    role: tester
+    method: POST
+    path: "/route/steps/{step_id}/complete"
+    params:
+      path:
+        step_id: "id текущего (status=current) шага из GET /route"
+      body: {}
+    expected_status: [200, 409]
+    response:
+      format: application/json
+      required_fields: [step, route]
+      notes: "409 = шаг уже выполнен или не является текущим"
+
+  - id: step-uncomplete
+    title: "Отменить выполнение шага (возврат в текущие)"
+    role: tester
+    method: POST
+    path: "/route/steps/{step_id}/uncomplete"
+    params:
+      path:
+        step_id: "id шага, выполненного в step-complete"
+    expected_status: [200]
+    response:
+      format: application/json
+      required_fields: [id, total_steps, steps]
+
+  - id: health-add-bp
+    title: "Внести измерение давления (дневник здоровья)"
+    role: tester
+    method: POST
+    path: /health/bp
+    params:
+      body: { systolic: 124, diastolic: 82, pulse: 71, tag: "утром" }
+    expected_status: [200, 422]
+    response:
+      format: application/json
+      required_fields: [id, type, at, systolic, diastolic]
+      notes: "422 — показатели вне допустимых диапазонов (продукт не оценивает значения)"
+
+  - id: health-records
+    title: "История измерений давления"
+    role: tester
+    method: GET
+    path: /health/bp/records
+    params:
+      query: { limit: 30 }
+    expected_status: [200]
+    response:
+      format: application/json
+      required_fields: ["[].id", "[].type", "[].at", "[].systolic"]
+
+  - id: meds-add
+    title: "Создать курс лекарства"
+    role: tester
+    method: POST
+    path: /meds
+    params:
+      body: { name: "Эналаприл 10 мг", times: ["08:00", "20:00"] }
+    expected_status: [200]
+    response:
+      format: application/json
+      required_fields: [courses]
+      notes: "courses[] содержит созданный курс с полями id, name, times, enabled"
+
+  - id: health-report
+    title: "Сводка для врача (агрегаты, данные PDF-экспорта)"
+    role: tester
+    method: GET
+    path: /health/report
+    params: {}
+    expected_status: [200]
+    response:
+      format: application/json
+      required_fields: [period_days, bp_count, meds]
+      notes: "bp_count >= 1 после health-add-bp; только факты, никаких оценок «норма/не норма»"
+
+  - id: me-data-delete
+    title: "Удаление данных учётной записи (152-ФЗ, ст. 21) — сброс к чистому состоянию"
+    role: tester
+    method: DELETE
+    path: /me/data
+    params: {}
+    expected_status: [200]
+    response:
+      format: application/json
+      required_fields: [status]
+      notes: "после этого проверку можно перезапустить: следующая проверка me-profile создаст учётную запись заново"

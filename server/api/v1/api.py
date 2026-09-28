@@ -88,7 +88,11 @@ def db_session():
 
 def current_user(request: Request, db: Session = Depends(db_session)) -> User:
     try:
-        return get_or_create_user(db, request.headers.get("X-Max-Init-Data"))
+        return get_or_create_user(
+            db,
+            request.headers.get("X-Max-Init-Data"),
+            test_token=request.headers.get("X-Test-Token"),
+        )
     except AuthError as e:
         raise HTTPException(status_code=401, detail=str(e)) from e
 

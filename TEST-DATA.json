@@ -1,0 +1,52 @@
+{
+  "description": "Тестовые данные для автоматической проверки API «МедМаршрут» (кейс «Забота о людях», команда 4Aces). Формат — JSON по требованию кейса.",
+  "solution": "МедМаршрут",
+  "team": "4Aces",
+  "base_url": "https://4acesmax.duckdns.org/api/v1",
+  "openapi": "https://4acesmax.duckdns.org/openapi.json",
+  "data_api": "DATA-API.yaml (в пакете сдачи, рядом с этим файлом)",
+  "test_accounts": [
+    {
+      "role": "tester",
+      "auth": {
+        "type": "header",
+        "name": "X-Test-Token",
+        "value_distribution": "токен передаётся организаторам отдельно (секрет); значений в репозитории нет"
+      },
+      "user": {
+        "max_user_id": 909001,
+        "first_name": "Тестовая",
+        "last_name": "учётная запись",
+        "note": "создаётся сервером автоматически при первом запросе с валидным токеном"
+      },
+      "initial_state": "чистый аккаунт: маршрут, дневники и лекарства пусты; согласие не дано (consent_at = null)"
+    }
+  ],
+  "test_data": {
+    "consent": { "tz": "Europe/Moscow" },
+    "route": {
+      "situation_key": "chronic",
+      "title_hint": "Наблюдение по хроническому заболеванию"
+    },
+    "health_record_bp": { "systolic": 124, "diastolic": 82, "pulse": 71, "tag": "утром" },
+    "med_course": { "name": "Эналаприл 10 мг", "times": ["08:00", "20:00"] },
+    "invalid_example_bp_422": { "systolic": 999, "diastolic": 10 }
+  },
+  "scenario_order": [
+    "GET /me",
+    "POST /me/consent",
+    "GET /regions",
+    "GET /catalog",
+    "POST /route/start",
+    "GET /route",
+    "POST /route/steps/{step_id}/complete",
+    "POST /route/steps/{step_id}/uncomplete",
+    "POST /health/bp",
+    "GET /health/bp/records",
+    "POST /meds",
+    "GET /health/report",
+    "DELETE /me/data"
+  ],
+  "cleanup": "DELETE /me/data — полное удаление тестовой учётной записи; проверку можно перезапускать",
+  "notes": "Реальные пользователи аутентифицируются подписанным initData платформы MAX (заголовок X-Max-Init-Data) — тестовый токен нужен только для воспроизводимой машинной проверки. Продукт не оценивает значения показателей (правило кейса: без «норма/не норма»)."
+}
