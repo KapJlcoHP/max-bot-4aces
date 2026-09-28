@@ -46,6 +46,8 @@ def complete_route_step(
         raise ServiceError("Шаг не найден", 404)
     if step.status == "done":
         raise ServiceError("Шаг уже выполнен", 409)
+    if step.status != "current":
+        raise ServiceError("Сначала завершите текущий шаг", 409)
 
     step.status = "done"
     step.completed_at = utcnow()
@@ -67,8 +69,7 @@ def complete_route_step(
 
 
 def uncomplete_route_step(db: Session, user_id: int, step_id: int) -> RouteStep:
-    """Отменить выполнение: шаг снова pending. Если текущего нет (маршрут был завершён),
-    текущим становится самый ранний невыполненный."""
+    """Отменить выполнение: возвращаемся к этому шагу маршрута."""
     route = active_route(db, user_id)
     if route is None:
         raise ServiceError("Активный маршрут не найден", 404)
@@ -78,22 +79,15 @@ def uncomplete_route_step(db: Session, user_id: int, step_id: int) -> RouteStep:
     if step.status != "done":
         raise ServiceError("Шаг ещё не выполнен", 409)
 
-    step.status = "pending"
-    step.completed_at = None
-    has_current = (
+    current_steps = (
         db.query(RouteStep)
         .filter(RouteStep.route_id == route.id, RouteStep.status == "current")
-        .first()
+        .all()
     )
-    if has_current is None:
-        earliest = (
-            db.query(RouteStep)
-            .filter(RouteStep.route_id == route.id, RouteStep.status != "done")
-            .order_by(RouteStep.position)
-            .first()
-        )
-        if earliest is not None:
-            earliest.status = "current"
+    for current in current_steps:
+        current.status = "pending"
+    step.status = "current"
+    step.completed_at = None
     db.commit()
     db.refresh(step)
     return step

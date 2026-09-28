@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl
 
 from sqlalchemy.orm import Session
@@ -13,6 +14,8 @@ from core.db.seed import pilot_region
 
 HEADER = "X-Max-Init-Data"
 DEV_USER_MAX_ID = 0
+INIT_DATA_MAX_AGE = timedelta(hours=24)
+INIT_DATA_CLOCK_SKEW = timedelta(minutes=1)
 
 
 class AuthError(Exception):
@@ -28,7 +31,7 @@ def _parse_init_data(raw: str) -> dict[str, str]:
 
 
 def validate_init_data(raw: str) -> dict | None:
-    """Возвращает распарсенный initData (с user JSON-строкой) или None, если подпись неверна."""
+    """Проверяет подпись и срок действия initData."""
     settings = get_settings()
     if not settings.max_bot_token or not raw:
         return None
@@ -45,15 +48,27 @@ def validate_init_data(raw: str) -> dict | None:
     if not hmac.compare_digest(computed, received_hash):
         return None
 
+    try:
+        auth_date = datetime.fromtimestamp(int(pairs["auth_date"]), tz=timezone.utc)
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+    now = datetime.now(timezone.utc)
+    if auth_date > now + INIT_DATA_CLOCK_SKEW or now - auth_date > INIT_DATA_MAX_AGE:
+        return None
+
     return pairs
 
 
 def _parse_user(payload: dict) -> dict:
-    user_raw = payload.get("user") or "{}"
     try:
-        return json.loads(user_raw)
-    except json.JSONDecodeError:
-        return {}
+        user = json.loads(payload["user"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise AuthError("Некорректные данные пользователя") from exc
+    if not isinstance(user, dict) or type(user.get("id")) is not int or not 0 < user["id"] < 2**63:
+        raise AuthError("Некорректные данные пользователя")
+    if any(user.get(field) is not None and not isinstance(user[field], str) for field in ("first_name", "last_name", "avatar_url", "photo_url")):
+        raise AuthError("Некорректные данные пользователя")
+    return user
 
 
 def get_or_create_user(db: Session, init_data: str | None) -> User:
@@ -76,7 +91,7 @@ def get_or_create_user(db: Session, init_data: str | None) -> User:
             raise AuthError("initData отсутствует")
         user_payload = {"id": DEV_USER_MAX_ID, "first_name": "Анна", "last_name": "Иванова"}
 
-    max_id = int(user_payload.get("id") or DEV_USER_MAX_ID)
+    max_id = user_payload["id"]
     user = db.query(User).filter(User.max_user_id == max_id).first()
     if user is None:
         user = User(
