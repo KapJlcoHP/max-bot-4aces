@@ -4,6 +4,7 @@
 """
 
 from datetime import date, datetime, time as dtime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,7 @@ from core.db.models import (
     Reminder,
     Route,
     RouteStep,
+    User,
     utcnow,
 )
 
@@ -96,12 +98,25 @@ def uncomplete_route_step(db: Session, user_id: int, step_id: int) -> RouteStep:
 # ---------- лекарства ----------
 
 
+def user_today(user: User, now: datetime | None = None) -> date:
+    """Текущая дата в часовом поясе пользователя."""
+    try:
+        zone = ZoneInfo(user.tz or "Europe/Moscow")
+    except Exception:
+        zone = datetime.now().astimezone().tzinfo
+    return (now or utcnow()).astimezone(zone).date()
+
+
 def take_med(db: Session, user_id: int, course_id: int, at_time: str, day: date | None = None) -> MedIntake:
     """Отметить приём (односторонне: снимает только API через intake-toggle с undo)."""
     course = db.query(MedCourse).filter(MedCourse.id == course_id, MedCourse.user_id == user_id).first()
     if course is None:
         raise ServiceError("Курс лекарства не найден", 404)
-    day = day or date.today()
+    if day is None:
+        user = db.get(User, user_id)
+        if user is None:
+            raise ServiceError("Пользователь не найден", 404)
+        day = user_today(user)
     intake = (
         db.query(MedIntake)
         .filter(

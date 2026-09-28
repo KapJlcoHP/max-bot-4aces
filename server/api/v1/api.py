@@ -4,7 +4,7 @@
 дата-эндпоинты отвечают 403 consent_required, фронт показывает онбординг.
 """
 
-from datetime import date, datetime, time as dtime, timedelta
+from datetime import datetime, time as dtime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -69,6 +69,7 @@ from core.services import (
     complete_route_step,
     take_med,
     uncomplete_route_step,
+    user_today,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -283,19 +284,24 @@ def add_step(
             .first()
         )
 
-    # сдвигаем последующие шаги, освобождая позицию после якоря
-    db.query(RouteStep).filter(
-        RouteStep.route_id == route.id, RouteStep.position > anchor.position
-    ).update({"position": RouteStep.position + 1}, synchronize_session=False)
+    # В пустом маршруте якоря нет; первый добавленный шаг становится текущим.
+    position = anchor.position + 1 if anchor is not None else 1
+    has_unfinished = db.query(RouteStep).filter(
+        RouteStep.route_id == route.id, RouteStep.status != "done"
+    ).first() is not None
+    if anchor is not None:
+        db.query(RouteStep).filter(
+            RouteStep.route_id == route.id, RouteStep.position >= position
+        ).update({"position": RouteStep.position + 1}, synchronize_session=False)
     step = RouteStep(
         route_id=route.id,
-        position=anchor.position + 1,
+        position=position,
         title=title,
         description="",
         place=body.place or "",
         deadline=body.deadline,
         deadline_time=body.deadline_time,
-        status="pending",
+        status="pending" if has_unfinished else "current",
         source=body.source,
     )
     db.add(step)
@@ -682,8 +688,8 @@ def health_report(user: User = Depends(consented_user), db: Session = Depends(db
         )
         out.notes = [ReportNote(at=n.at, note=n.note) for n in notes]
 
-    today = date.today()
-    period_start_day = period_start.date()
+    today = user_today(user)
+    period_start_day = user_today(user, period_start)
     for course in db.query(MedCourse).filter(MedCourse.user_id == user.id, MedCourse.enabled.is_(True)).all():
         start = max(course.created_at.date(), period_start_day) if course.created_at else period_start_day
         end = min(course.until, today) if course.until else today
@@ -720,7 +726,7 @@ def health_report(user: User = Depends(consented_user), db: Session = Depends(db
 
 
 def _meds_out(db: Session, user: User) -> MedsOut:
-    today = date.today()
+    today = user_today(user)
     courses = (
         db.query(MedCourse)
         .filter(MedCourse.user_id == user.id, MedCourse.enabled.is_(True))
@@ -774,7 +780,7 @@ def toggle_intake(course_id: int, body: dict, user: User = Depends(consented_use
         raise HTTPException(status_code=404, detail="Курс или время приёма не найдены")
     intake = (
         db.query(MedIntake)
-        .filter(MedIntake.course_id == course.id, MedIntake.day == date.today(), MedIntake.at_time == at_time)
+        .filter(MedIntake.course_id == course.id, MedIntake.day == user_today(user), MedIntake.at_time == at_time)
         .first()
     )
     undo = intake is not None and intake.taken_at is not None

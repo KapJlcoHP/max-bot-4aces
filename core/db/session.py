@@ -70,20 +70,34 @@ def _migrate_sqlite() -> None:
 
 def _migrate_bp_records() -> None:
     """Разовый перенос старого дневника АД в единую таблицу health_records."""
-    from sqlalchemy import inspect, text  # noqa: PLC0415
+    from collections import Counter  # noqa: PLC0415
 
-    from core.db.models import HealthRecord  # noqa: PLC0415
+    from sqlalchemy import inspect, text  # noqa: PLC0415
 
     inspector = inspect(engine)
     if "bp_records" not in inspector.get_table_names() or "health_records" not in inspector.get_table_names():
         return
     with engine.begin() as conn:
-        already = conn.execute(text("SELECT COUNT(*) FROM health_records")).scalar_one()
-        if already > 0:
+        conn.execute(text("CREATE TABLE IF NOT EXISTS data_migrations (name VARCHAR(100) PRIMARY KEY)"))
+        if conn.execute(text("SELECT 1 FROM data_migrations WHERE name = 'bp_records_v2'")).first():
             return
-        conn.execute(
-            text(
-                "INSERT INTO health_records (user_id, type, at, systolic, diastolic, pulse) "
-                "SELECT user_id, 'bp', at, systolic, diastolic, pulse FROM bp_records"
-            )
+        # Старая миграция могла уже перенести часть строк. Сравниваем кратности,
+        # чтобы сохранить одинаковые измерения и не создавать дубли при обновлении.
+        columns = "user_id, at, systolic, diastolic, pulse"
+        existing = Counter(
+            tuple(row) for row in conn.execute(text(f"SELECT {columns} FROM health_records WHERE type = 'bp'"))
         )
+        legacy = conn.execute(text(f"SELECT id, {columns} FROM bp_records ORDER BY id"))
+        for row in legacy:
+            values = tuple(row)[1:]
+            if existing[values]:
+                existing[values] -= 1
+                continue
+            conn.execute(
+                text(
+                    "INSERT INTO health_records (user_id, type, at, systolic, diastolic, pulse) "
+                    "SELECT user_id, 'bp', at, systolic, diastolic, pulse FROM bp_records WHERE id = :id"
+                ),
+                {"id": row[0]},
+            )
+        conn.execute(text("INSERT INTO data_migrations (name) VALUES ('bp_records_v2')"))

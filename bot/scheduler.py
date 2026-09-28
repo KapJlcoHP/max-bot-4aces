@@ -11,9 +11,10 @@ HealthSetting.push_time) трактуются в поясе ПОЛЬЗОВАТЕ
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, time as dtime, timedelta
+from datetime import date, datetime, time as dtime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.db.models import (
@@ -109,8 +110,8 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
             zone = ZoneInfo(user.tz or "Europe/Moscow")
         except Exception:
             zone = None
-        now = now or _user_now(user)
-        today = now.date()
+        user_now = now if now is not None else _user_now(user)
+        today = user_now.date()
 
         # --- шаг маршрута: дедлайн текущего шага ---
         route = active_route(db, user.id)
@@ -125,14 +126,17 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
                 slot = _parse_time(step.deadline_time) or dtime(12, 0)
                 due_at = datetime.combine(step.deadline, slot)
                 has_time = step.deadline_time is not None
-                for lead, delta in (("day", timedelta(days=1)), ("hour", timedelta(hours=1))):
-                    if now >= due_at - delta and not logged("step", step.id, lead):
+                for lead, start, end in (
+                    ("day", due_at - timedelta(days=1), due_at - timedelta(hours=1)),
+                    ("hour", due_at - timedelta(hours=1), due_at),
+                ):
+                    if start <= user_now < end and not logged("step", step.id, lead):
                         pushes.append(
                             Push(
                                 user_id=user.id,
                                 max_user_id=user.max_user_id,
                                 text=(
-                                    f"⏰ **Напоминание о шаге**\n«{step.title}» — срок {_when_desc(due_at, now, has_time)}.\n"
+                                    f"⏰ **Напоминание о шаге**\n«{step.title}» — срок {_when_desc(due_at, user_now, has_time)}.\n"
                                     "Отметить выполнение можно прямо здесь."
                                 ),
                                 actions=[("✅ Выполнить шаг", f"sdone_{step.id}")],
@@ -142,7 +146,7 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
                                 lead=lead,
                             )
                         )
-                if due_at.date() == today and now >= due_at and not logged("step", step.id, "now"):
+                if due_at.date() == today and user_now >= due_at and not logged("step", step.id, "now"):
                     pushes.append(
                         Push(
                             user_id=user.id,
@@ -164,14 +168,18 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
         ):
             at = _local_naive(r.at, zone)
             where = f" · {r.place}" if r.place else ""
-            for lead, delta in (("day", timedelta(days=1)), ("hour", timedelta(hours=1)), ("now", timedelta(0))):
+            for lead, start, end in (
+                ("day", at - timedelta(days=1), at - timedelta(hours=1)),
+                ("hour", at - timedelta(hours=1), at),
+                ("now", at, None),
+            ):
                 if lead == "now" and at.date() != today:
                     continue  # прошлые дни не догоняем — шумно
-                if now >= at - delta and not logged("reminder", r.id, lead):
+                if user_now >= start and (end is None or user_now < end) and not logged("reminder", r.id, lead):
                     if lead == "day":
-                        text = f"⏰ **Напоминание**: «{r.title}»{where} — {_when_desc(at, now, True)}."
+                        text = f"⏰ **Напоминание**: «{r.title}»{where} — {_when_desc(at, user_now, True)}."
                     elif lead == "hour":
-                        text = f"⏰ **Через час**: «{r.title}»{where} — {_when_desc(at, now, True)}."
+                        text = f"⏰ **Через час**: «{r.title}»{where} — {_when_desc(at, user_now, True)}."
                     else:
                         text = f"⏰ **Пора**: «{r.title}»{where}."
                     pushes.append(
@@ -205,7 +213,7 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
                 if slot is None:
                     continue
                 slot_at = datetime.combine(today, slot)
-                if not (slot_at <= now < slot_at + timedelta(hours=6)):
+                if not (slot_at <= user_now < slot_at + timedelta(hours=6)):
                     continue  # не догоняем пропущенные слоты
                 lead = f"{today:%Y%m%d}-{slot:%H%M}"
                 if t in taken_slots or logged("med", c.id, lead):
@@ -232,18 +240,22 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
             if not s.push_time or s.diary not in DIARY_TITLES:
                 continue
             slot = _parse_time(s.push_time)
-            if slot is None or now.time() < slot:
+            if slot is None or user_now.time() < slot:
                 continue
             lead = f"{today:%Y%m%d}"
             if logged("diary", s.id, lead):
                 continue
-            day_start = datetime.combine(today, dtime(0, 0))
+            # HealthRecord.at хранится как UTC; сравниваем с границами местного дня в UTC.
+            local_zone = zone or datetime.now().astimezone().tzinfo
+            day_start = datetime.combine(today, dtime.min, tzinfo=local_zone).astimezone(timezone.utc).replace(tzinfo=None)
+            day_end = datetime.combine(today + timedelta(days=1), dtime.min, tzinfo=local_zone).astimezone(timezone.utc).replace(tzinfo=None)
             already = (
                 db.query(HealthRecord)
                 .filter(
                     HealthRecord.user_id == user.id,
                     HealthRecord.type == s.diary,
                     HealthRecord.at >= day_start,
+                    HealthRecord.at < day_end,
                 )
                 .first()
             )
@@ -274,23 +286,47 @@ def mark_sent(db: Session, push: Push) -> None:
             reminder.sent_at = utcnow()
     try:
         db.commit()
-    except Exception:
-        # ключ уже занят (гонка/повторный тик) — дедуп и так стоит, откатываем
+    except IntegrityError:
+        # Игнорируем только повторную запись уже существующего уведомления.
         db.rollback()
+        existing = (
+            db.query(NotificationLog)
+            .filter(
+                NotificationLog.kind == push.kind,
+                NotificationLog.ref_id == push.ref_id,
+                NotificationLog.lead == push.lead,
+            )
+            .first()
+        )
+        if existing is None:
+            raise
 
 
 async def scheduler_loop(bot, bot_username: str | None) -> None:
     from bot.keyboards import push_keyboard
 
     fail_counts: dict[tuple[str, int, str], int] = {}
+    sent_unlogged: dict[tuple[str, int, str], Push] = {}
 
     while True:
         try:
+            # Сообщение уже доставлено, но запись в БД могла не сохраниться.
+            # Повторяем только запись журнала, не отправку в MAX.
+            for key, push in list(sent_unlogged.items()):
+                try:
+                    with SessionLocal() as db:
+                        mark_sent(db, push)
+                except Exception:
+                    log.exception("Не удалось записать доставленное уведомление: kind=%s ref=%s", push.kind, push.ref_id)
+                else:
+                    sent_unlogged.pop(key, None)
             with SessionLocal() as db:
                 due = collect_due(db)
             for push in due:
-                kb = push_keyboard(bot_username, push.actions, push.app_payload)
                 key = (push.kind, push.ref_id, push.lead)
+                if key in sent_unlogged:
+                    continue
+                kb = push_keyboard(bot_username, push.actions, push.app_payload)
                 try:
                     await bot.send_message(
                         user_id=push.max_user_id,
@@ -311,8 +347,14 @@ async def scheduler_loop(bot, bot_username: str | None) -> None:
                         log.exception("Пуш не отправлен: kind=%s ref=%s", push.kind, push.ref_id)
                     continue
                 fail_counts.pop(key, None)
-                with SessionLocal() as db:
-                    mark_sent(db, push)
+                sent_unlogged[key] = push
+                try:
+                    with SessionLocal() as db:
+                        mark_sent(db, push)
+                except Exception:
+                    log.exception("Не удалось записать доставленное уведомление: kind=%s ref=%s", push.kind, push.ref_id)
+                else:
+                    sent_unlogged.pop(key, None)
         except Exception:
             log.exception("Тик планировщика упал")
         await asyncio.sleep(TICK_SECONDS)
