@@ -8,7 +8,7 @@ import { Input } from "@maxhub/max-ui";
 import { Button, Badge, Header, LoadingView } from "../components/ui";
 import { I } from "../icons";
 
-const CHIPS = ["Все", "Поликлиники", "Диспансеры", "Центры"];
+const CHIPS = ["Все", "Больницы", "Поликлиники", "Диспансеры", "Центры"];
 
 export default function Orgs() {
   const nav = useNavigate();
