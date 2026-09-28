@@ -72,6 +72,10 @@ export default function Home() {
             </div>
             <div className="split">
               <div className="col">
+                <div className="section-h">
+                  <b>Маршрут</b>
+                  {!empty && <button onClick={() => nav("/route")}>Открыть</button>}
+                </div>
                 {empty ? (
                   <div className="card hero tinted press" onClick={() => nav("/builder")}>
                     <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
