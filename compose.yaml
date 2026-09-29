@@ -1,0 +1,61 @@
+# «МедМаршрут» — запуск всех компонентов.
+#
+# Локальная проверка (без домена):  docker compose up -d --build
+#   → API и мини-ап на http://localhost:8000
+#
+# Прод (VPS, с доменом и HTTPS):   docker compose --profile prod up -d --build
+#   → Caddy терминирует TLS и проксирует на приложение
+#
+# Чат-бот (long polling):          docker compose --profile bot up -d --build
+#   → требует MAX_BOT_TOKEN в .env; экземпляр бота должен быть ровно один!
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # «настенные» времена (напоминания, приёмы лекарств) — локальные, не UTC
+      TZ: Europe/Moscow
+    volumes:
+      - ./database:/srv/database
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  caddy:
+    image: caddy:2
+    profiles: ["prod"]
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      MEDROUTE_DOMAIN: ${MEDROUTE_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  bot:
+    build: .
+    profiles: ["bot"]
+    command: python run_bot.py
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: Europe/Moscow
+    volumes:
+      # общая БД с app: планировщик напоминаний читает reminders/med_courses,
+      # пишет notification_log. DSN по умолчанию sqlite:///./database/app.db
+      - ./database:/srv/database
+
+volumes:
+  caddy_data:
+  caddy_config:

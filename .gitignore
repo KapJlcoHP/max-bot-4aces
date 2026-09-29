@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 case_text.txt
 *.pdf
+database/*.db
+database/*.db-*
+web/node_modules/
+web/dist/

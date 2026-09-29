@@ -1,6 +1,6 @@
 @echo off
-rem Запуск бота в виртуальном окружении проекта (maxapi установлен именно тут)
+rem Чат-бот «МедМаршрут» (long polling). ВАЖНО: экземпляр должен быть один!
 cd /d "%~dp0"
-.venv\Scripts\python.exe bot.py
-rem Оставляем окно открытым, чтобы прочитать ошибку, если бот упал
+.venv\Scripts\python.exe run_bot.py
+
 pause
