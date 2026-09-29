@@ -463,6 +463,18 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   width: 64px; height: 64px; border-radius: 50%; background: var(--red-tint); color: var(--red);
   display: flex; align-items: center; justify-content: center;
 }
+.inline-error {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 12px 14px; border-radius: var(--r); background: var(--red-tint);
+  color: var(--red); font-size: 13px; font-weight: 600;
+}
+.inline-error button {
+  border: none; background: none; color: var(--blue); cursor: pointer;
+  font: inherit; font-weight: 700; padding: 2px 0;
+}
+.inline-error button:disabled { opacity: 0.55; cursor: default; }
+.tile-slot { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tile-slot .tile { flex: 1; width: 100%; }
 .empty-ico {
   width: 44px; height: 44px; border-radius: 50%; background: var(--bg); color: var(--muted);
   display: flex; align-items: center; justify-content: center;

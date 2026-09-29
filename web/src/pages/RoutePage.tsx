@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { fmtDeadline } from "../format";
 import type { Checklist, ChecklistItem, RouteDto, Step } from "../types";
-import { Button, ErrorView, Header, LoadingView, Sheet, useToast } from "../components/ui";
+import { Button, ErrorView, Header, InlineError, LoadingView, Sheet, useToast } from "../components/ui";
 import { I } from "../icons";
 
 function StepBadge({ source }: { source: Step["source"] }) {
@@ -18,6 +18,11 @@ export default function RoutePage() {
   const [route, setRoute] = useState<RouteDto | null>(null);
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [routeError, setRouteError] = useState(false);
+  const [checklistError, setChecklistError] = useState(false);
+  const [retryingChecklist, setRetryingChecklist] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const loadId = useRef(0);
   const [sheet, setSheet] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDate, setNewDate] = useState("");
@@ -26,19 +31,41 @@ export default function RoutePage() {
   const [delRoute, setDelRoute] = useState(false);
 
   const load = useCallback(() => {
-    setStatus("loading");
+    const requestId = ++loadId.current;
+    setRefreshing(true);
+    setStatus((previous) => previous === "ready" ? "ready" : "loading");
     Promise.allSettled([
       api.get<RouteDto | null>("/api/v1/route"),
       api.get<Checklist>("/api/v1/checklist"),
     ])
       .then(([r, c]) => {
-        setRoute(r.status === "fulfilled" ? r.value : null);
-        setChecklist(c.status === "fulfilled" && c.value.total > 0 ? c.value : null);
-        setStatus("ready");
+        if (requestId !== loadId.current) return;
+        if (r.status === "fulfilled") setRoute(r.value);
+        if (c.status === "fulfilled") setChecklist(c.value.total > 0 ? c.value : null);
+        setRouteError(r.status === "rejected");
+        setChecklistError(c.status === "rejected");
+        setStatus((previous) => r.status === "fulfilled" || previous === "ready" ? "ready" : "error");
+        setRefreshing(false);
       });
   }, []);
 
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    return () => { loadId.current += 1; };
+  }, [load]);
+
+  const retryChecklist = async () => {
+    setRetryingChecklist(true);
+    try {
+      const updated = await api.get<Checklist>("/api/v1/checklist");
+      setChecklist(updated.total > 0 ? updated : null);
+      setChecklistError(false);
+    } catch {
+      setChecklistError(true);
+    } finally {
+      setRetryingChecklist(false);
+    }
+  };
 
   const toggleDoc = async (item: ChecklistItem) => {
     if (!checklist) return;
@@ -135,6 +162,7 @@ export default function RoutePage() {
       />
       <div className="screen-body">
         {status === "loading" && <LoadingView />}
+        {status === "ready" && routeError && <InlineError message="Не удалось обновить маршрут. Показаны последние данные." onRetry={load} retrying={refreshing} />}
 
         {status === "ready" && route === null && (
           <>
@@ -154,6 +182,9 @@ export default function RoutePage() {
             <p>Все шаги пройдены. Можно построить маршрут для новой ситуации.</p>
             <Button onClick={() => nav("/builder")}>Свой маршрут</Button>
           </div>
+        )}
+        {route && finished && checklistError && (
+          <InlineError message="Не удалось загрузить документы." onRetry={retryChecklist} retrying={retryingChecklist} />
         )}
 
         {route && !finished && (
@@ -202,6 +233,10 @@ export default function RoutePage() {
               <button className="add-dash" onClick={() => setSheet(true)}>
                 <I.plus size={18} /> Добавить шаг
               </button>
+
+              {checklistError && (
+                <InlineError message="Не удалось загрузить документы." onRetry={retryChecklist} retrying={retryingChecklist} />
+              )}
 
               {checklist && (
                 <>
