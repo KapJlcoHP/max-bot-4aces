@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { fmtDeadline, fmtWhen } from "../format";
 import type { HealthRecord, MedsOut, Reminder, RouteDto } from "../types";
 import { useApp } from "../App";
-import { ErrorView, LoadingView, RootHeader } from "../components/ui";
+import { ErrorView, InlineError, LoadingView, RootHeader } from "../components/ui";
 import { I } from "../icons";
 
 const WEEKDAYS = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
@@ -18,9 +18,18 @@ export default function Home() {
   const [meds, setMeds] = useState<MedsOut | null>(null);
   const [bp, setBp] = useState<HealthRecord | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [routeError, setRouteError] = useState(false);
+  const [remindersError, setRemindersError] = useState(false);
+  const [medsError, setMedsError] = useState(false);
+  const [bpError, setBpError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [retrying, setRetrying] = useState<Partial<Record<"reminders" | "meds" | "bp", boolean>>>({});
+  const loadId = useRef(0);
 
   const load = useCallback(() => {
-    setStatus("loading");
+    const requestId = ++loadId.current;
+    setRefreshing(true);
+    setStatus((previous) => previous === "ready" ? "ready" : "loading");
     Promise.allSettled([
       api.get<RouteDto | null>("/api/v1/route"),
       api.get<Reminder[]>("/api/v1/reminders"),
@@ -28,15 +37,61 @@ export default function Home() {
       api.get<HealthRecord[]>("/api/v1/health/bp/records?limit=1"),
     ])
       .then(([r, rem, m, b]) => {
-        setRoute(r.status === "fulfilled" ? r.value : null);
-        setReminders(rem.status === "fulfilled" ? rem.value : []);
-        setMeds(m.status === "fulfilled" ? m.value : null);
-        setBp(b.status === "fulfilled" && b.value.length ? b.value[0] : null);
-        setStatus("ready");
+        if (requestId !== loadId.current) return;
+        if (r.status === "fulfilled") setRoute(r.value);
+        if (rem.status === "fulfilled") setReminders(rem.value);
+        if (m.status === "fulfilled") setMeds(m.value);
+        if (b.status === "fulfilled") setBp(b.value[0] ?? null);
+        setRouteError(r.status === "rejected");
+        setRemindersError(rem.status === "rejected");
+        setMedsError(m.status === "rejected");
+        setBpError(b.status === "rejected");
+        setStatus((previous) => r.status === "fulfilled" || previous === "ready" ? "ready" : "error");
+        setRefreshing(false);
       });
   }, []);
 
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    return () => { loadId.current += 1; };
+  }, [load]);
+
+  const retryReminders = async () => {
+    setRetrying((previous) => ({ ...previous, reminders: true }));
+    try {
+      setReminders(await api.get<Reminder[]>("/api/v1/reminders"));
+      setRemindersError(false);
+    } catch {
+      setRemindersError(true);
+    } finally {
+      setRetrying((previous) => ({ ...previous, reminders: false }));
+    }
+  };
+
+  const retryMeds = async () => {
+    setRetrying((previous) => ({ ...previous, meds: true }));
+    try {
+      setMeds(await api.get<MedsOut>("/api/v1/meds"));
+      setMedsError(false);
+    } catch {
+      setMedsError(true);
+    } finally {
+      setRetrying((previous) => ({ ...previous, meds: false }));
+    }
+  };
+
+  const retryBp = async () => {
+    setRetrying((previous) => ({ ...previous, bp: true }));
+    try {
+      const records = await api.get<HealthRecord[]>("/api/v1/health/bp/records?limit=1");
+      setBp(records[0] ?? null);
+      setBpError(false);
+    } catch {
+      setBpError(true);
+    } finally {
+      setRetrying((previous) => ({ ...previous, bp: false }));
+    }
+  };
 
   if (status === "error") {
     return (
@@ -66,6 +121,7 @@ export default function Home() {
 
         {status === "ready" && (
           <>
+            {routeError && <InlineError message="Не удалось обновить маршрут. Показаны последние данные." onRetry={load} retrying={refreshing} />}
             <div className="greeting">
               <h2>Здравствуйте, {user.first_name}</h2>
               <p>{dateLine}</p>
@@ -112,7 +168,8 @@ export default function Home() {
                   <b>Напоминания</b>
                   {!empty && <button onClick={() => nav("/reminders")}>Все</button>}
                 </div>
-                {upcoming.length === 0 ? (
+                {remindersError && <InlineError message="Не удалось загрузить напоминания." onRetry={retryReminders} retrying={retrying.reminders} />}
+                {!remindersError && upcoming.length === 0 ? (
                   <div className="card empty-card">
                     <div className="empty-ico"><I.bell size={20} /></div>
                     <b style={{ fontSize: 14.5 }}>Пока тихо</b>
@@ -122,7 +179,7 @@ export default function Home() {
                         : "Все напоминания выключены или уже прошли."}
                     </div>
                   </div>
-                ) : (
+                ) : upcoming.length > 0 && (
                   <div className="card" style={{ padding: "8px 16px" }}>
                     {upcoming.map((r) => {
                       const d = new Date(r.at);
@@ -166,16 +223,22 @@ export default function Home() {
             <div className="ic r"><I.building size={20} /></div>
             <b>Организации</b><span>поликлиники рядом</span>
           </button>
-          <button className="tile" onClick={() => nav("/meds")}>
-            {nextMed && <span className="val">{nextMed.at_time}</span>}
-            <div className="ic r"><I.pill size={20} /></div>
-            <b>Приём лекарств</b><span>{nextMed ? "следующий приём" : "добавьте курс"}</span>
-          </button>
-          <button className="tile" onClick={() => nav("/health")}>
-            {bp && bp.systolic !== null && <span className="val">{bp.systolic}/{bp.diastolic}</span>}
-            <div className="ic g"><I.pulse size={20} /></div>
-            <b>Дневник здоровья</b><span>{bp ? fmtWhen(bp.at) : "настроить под себя"}</span>
-          </button>
+          <div className="tile-slot">
+            <button className="tile" onClick={() => nav("/meds")}>
+              {nextMed && <span className="val">{nextMed.at_time}</span>}
+              <div className="ic r"><I.pill size={20} /></div>
+              <b>Приём лекарств</b><span>{medsError && !meds ? "данные недоступны" : nextMed ? "следующий приём" : "добавьте курс"}</span>
+            </button>
+            {medsError && <InlineError message="Лекарства не загрузились." onRetry={retryMeds} retrying={retrying.meds} />}
+          </div>
+          <div className="tile-slot">
+            <button className="tile" onClick={() => nav("/health")}>
+              {bp && bp.systolic !== null && <span className="val">{bp.systolic}/{bp.diastolic}</span>}
+              <div className="ic g"><I.pulse size={20} /></div>
+              <b>Дневник здоровья</b><span>{bpError && !bp ? "данные недоступны" : bp ? fmtWhen(bp.at) : "настроить под себя"}</span>
+            </button>
+            {bpError && <InlineError message="Давление не загрузилось." onRetry={retryBp} retrying={retrying.bp} />}
+          </div>
         </div>
       </div>
     </div>

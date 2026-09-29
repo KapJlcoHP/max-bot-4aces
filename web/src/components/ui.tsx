@@ -132,6 +132,19 @@ export function ErrorView({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+export function InlineError({ message, onRetry, retrying = false }: {
+  message: string; onRetry: () => void; retrying?: boolean;
+}) {
+  return (
+    <div className="inline-error" role="alert">
+      <span>{message}</span>
+      <button type="button" onClick={onRetry} disabled={retrying}>
+        {retrying ? "Загрузка…" : "Повторить"}
+      </button>
+    </div>
+  );
+}
+
 export function Toast({ text }: { text: string | null }) {
   if (!text) return null;
   return <div className="toast">{text}</div>;
