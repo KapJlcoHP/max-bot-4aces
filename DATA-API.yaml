@@ -195,4 +195,4 @@ checks:
     response:
       format: application/json
       required_fields: [status]
-      notes: "после этого проверку можно перезапустить: следующая проверка me-profile создаст учётную запись заново"
+      notes: "после удаления GET /me вернёт временный профиль с id = 0; аккаунт снова создаётся при POST /me/consent"
