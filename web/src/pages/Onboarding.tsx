@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { HealthSetting, HealthType } from "../types";
+import { useApp } from "../App";
+import type { HealthSetting, HealthType, Region, UserDto } from "../types";
 import { Button, Switch } from "../components/ui";
 import { I } from "../icons";
 
@@ -33,25 +34,47 @@ function detectTz(): string {
 }
 
 export default function Onboarding() {
+  const { user, updateUser } = useApp();
   const [step, setStep] = useState(0);
   const [agreed, setAgreed] = useState(false);
   const [diaries, setDiaries] = useState(DIARY_META);
   const [busy, setBusy] = useState(false);
   const [tz, setTz] = useState(detectTz);
+  const [region, setRegion] = useState(user.region);
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [regionsStatus, setRegionsStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const loadRegions = () => {
+    setRegionsStatus("loading");
+    api.get<Region[]>("/api/v1/regions")
+      .then((items) => {
+        if (items.length === 0) throw new Error("Список регионов пуст");
+        setRegions(items);
+        setRegion((current) => items.some((item) => item.title === current)
+          ? current
+          : (items.find((item) => item.pilot) ?? items[0]).title);
+        setRegionsStatus("ready");
+      })
+      .catch(() => setRegionsStatus("error"));
+  };
+
+  useEffect(() => { loadRegions(); }, []);
 
   const toggleDiary = (key: HealthType, on: boolean) =>
     setDiaries((prev) => prev.map((d) => (d.key === key ? { ...d, on } : d)));
 
   const finish = async () => {
+    if (regionsStatus !== "ready" || !region) return;
     setBusy(true);
+    setSaveError(null);
     try {
-      await api.post("/api/v1/me/consent", { tz });
       const enabled = diaries.filter((d) => d.on).map((d) => d.key);
-      // push_time не передаём (null): онбординг не должен сбрасывать настроенное время пуша
       const payload: HealthSetting[] = DIARY_META.map((d) => ({ diary: d.key, enabled: enabled.includes(d.key), push_time: null }));
-      await api.put("/api/v1/health/settings", { diaries: payload });
-      window.location.reload(); // refreshUser + сброс гейта
+      const updated = await api.post<UserDto>("/api/v1/me/consent", { tz, region, diaries: payload });
+      updateUser(updated);
     } catch {
+      setSaveError("Не удалось сохранить настройки. Проверьте подключение и попробуйте ещё раз.");
       setBusy(false);
     }
   };
@@ -106,7 +129,7 @@ export default function Onboarding() {
               <div className="rem-item"><div className="what"><b>Профиль из MAX</b><small>Имя и аватар приходят подписанными из приложения — пароли мы не видим</small></div></div>
               <div className="rem-item"><div className="what"><b>Шаги маршрута и заметки</b><small>Ситуации, назначения врача, ваши пункты</small></div></div>
               <div className="rem-item"><div className="what"><b>Записи дневников здоровья</b><small>То, что введёте вы сами: давление, вес и другое</small></div></div>
-              <div className="rem-item"><div className="what"><b>Где хранится</b><small>На нашем сервере по защищённому соединению; доступ — только из вашего приложения</small></div></div>
+              <div className="rem-item"><div className="what"><b>Где хранится</b><small>На нашем сервере; приложение и бот используют записи для маршрута и напоминаний</small></div></div>
               <div className="rem-item"><div className="what"><b>Чистый старт</b><small>Аккаунт начинается с нуля — маршрут и дневники вы заведёте сами, ничего чужого не появится</small></div></div>
             </div>
             <label className="consent">
@@ -149,6 +172,26 @@ export default function Onboarding() {
             <div className="card" style={{ padding: "8px 16px" }}>
               <div className="rem-item" style={{ paddingTop: 10, paddingBottom: 10 }}>
                 <div className="what">
+                  <b>Регион</b>
+                  <small>По нему покажем подходящие организации</small>
+                </div>
+              </div>
+              {regionsStatus === "ready" && (
+                <select className="tz-select" style={{ marginTop: 0, marginBottom: 10 }} value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Регион">
+                  {regions.map((item) => <option key={item.key} value={item.title}>{item.title}</option>)}
+                </select>
+              )}
+              {regionsStatus === "loading" && <div className="muted" style={{ padding: "8px 0" }}>Загружаем регионы…</div>}
+              {regionsStatus === "error" && (
+                <div role="alert" style={{ padding: "8px 0" }}>
+                  <div className="muted">Не удалось загрузить регионы.</div>
+                  <Button variant="secondary" onClick={loadRegions}>Повторить</Button>
+                </div>
+              )}
+            </div>
+            <div className="card" style={{ padding: "8px 16px" }}>
+              <div className="rem-item" style={{ paddingTop: 10, paddingBottom: 10 }}>
+                <div className="what">
                   <b>Часовой пояс</b>
                   <small>Определили с вашего телефона — по нему бот будет будить вовремя</small>
                 </div>
@@ -162,7 +205,10 @@ export default function Onboarding() {
             </div>
           </div>
           <div className="steps"><i /><i /><i className="on" /></div>
-          <div className="foot"><Button disabled={busy} onClick={finish}>{busy ? "Настраиваем…" : "Начать"}</Button></div>
+          <div className="foot">
+            {saveError && <div role="alert" style={{ color: "var(--red)", fontSize: 13, marginBottom: 8 }}>{saveError}</div>}
+            <Button disabled={busy || regionsStatus !== "ready" || !region} onClick={finish}>{busy ? "Настраиваем…" : "Начать"}</Button>
+          </div>
         </>
       )}
     </div>

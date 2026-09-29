@@ -76,6 +76,7 @@ export default function Report() {
       // единый путь для всех устройств: файл доставляет бот в чат
       await api.post("/api/v1/health/send-to-bot", {});
       showToast("Собираю — PDF придёт в чат бота через несколько секунд");
+      setBusy(false);
       return;
     } catch {
       showToast("Не удалось отправить в чат — пробуем скачать…");
