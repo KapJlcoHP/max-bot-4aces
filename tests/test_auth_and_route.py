@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from core.db.models import Base, Route, RouteStep, User
 from core.services import ServiceError, complete_route_step, uncomplete_route_step
-from server.deps import AuthError, _parse_user, validate_init_data
+from server.deps import AuthError, PendingUser, _parse_user, get_authenticated_user, validate_init_data
 
 
 def signed_data(auth_date: int | None, user: object = None) -> str:
@@ -28,6 +28,22 @@ def signed_data(auth_date: int | None, user: object = None) -> str:
 
 
 class AuthTests(unittest.TestCase):
+    def test_signed_first_visit_does_not_create_a_user(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        try:
+            with Session(engine) as db:
+                raw = signed_data(int(datetime.now(timezone.utc).timestamp()), {"id": 123, "first_name": "Анна"})
+                settings = SimpleNamespace(max_bot_token="test-token", test_api_token="", dev_bypass_auth=False)
+                with patch("server.deps.get_settings", return_value=settings):
+                    profile = get_authenticated_user(db, raw)
+                self.assertIsInstance(profile, PendingUser)
+                self.assertEqual(profile.first_name, "Анна")
+                self.assertEqual(profile.id, 0)
+                self.assertEqual(db.query(User).count(), 0)
+        finally:
+            engine.dispose()
+
     def test_signed_data_has_a_limited_lifetime(self):
         now = datetime.now(timezone.utc)
         with patch("server.deps.get_settings", return_value=SimpleNamespace(max_bot_token="test-token")):

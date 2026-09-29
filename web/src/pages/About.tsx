@@ -44,10 +44,10 @@ export default function About() {
         <div className="section-h"><b>Данные и приватность</b></div>
         <CellList mode="island">
           <CellSimple title="Что мы обрабатываем" subtitle="Профиль из MAX (имя, аватар), шаги маршрутов и заметки, записи дневников здоровья, курсы лекарств" separator />
-          <CellSimple title="Где хранится" subtitle="На нашем сервере по защищённому соединению; доступ — только из вашего приложения" separator />
+          <CellSimple title="Где хранится" subtitle="На нашем сервере; приложение и бот используют записи для маршрута и напоминаний" separator />
           <CellSimple title="Согласие" subtitle={user.consent_at ? `Оформлено ${fmtDayMonth(user.consent_at)}` : "Не оформлено"} separator />
-          <CellSimple title="Право на удаление" subtitle="Кнопка ниже стирает маршруты, дневники и курсы. Соответствует 152-ФЗ, ст. 21" separator />
-          <CellSimple title="Демо-данные" subtitle="Показанные примеры синтетические, персональные данные не собираются" separator />
+          <CellSimple title="Удаление данных" subtitle="Кнопка ниже удаляет ваш профиль, маршруты, дневники и курсы" separator />
+          <CellSimple title="Демо-данные" subtitle="Примеры синтетические; после согласия профиль MAX и введённые вами записи сохраняются на сервере" separator />
         </CellList>
 
         <Button variant="secondary" onClick={() => setConfirm(true)}>

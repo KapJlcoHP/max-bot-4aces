@@ -100,7 +100,7 @@ export default function App() {
     <Ctx.Provider value={{ user, refreshUser: load, updateUser: setUser }}>
       <div className="app">
         {!isInsideMax() && (
-          <div className="demo-banner">Демо-режим (вне MAX): данные синтетические, вход по dev-доступу</div>
+          <div className="demo-banner">Демо-режим (вне MAX): вход по dev-доступу</div>
         )}
         <Outlet />
         {showNav && <TabBar />}

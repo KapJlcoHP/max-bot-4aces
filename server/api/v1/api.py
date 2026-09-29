@@ -1,16 +1,18 @@
 """REST API v1 для мини-апа. Аутентификация — подписанный initData в заголовке X-Max-Init-Data.
 
-Персональные данные отдаём только после согласия на обработку (152-ФЗ): без consent_at
-дата-эндпоинты отвечают 403 consent_required, фронт показывает онбординг.
+До согласия отдаём временный профиль из проверенного initData и справочник регионов.
+Эндпоинты с пользовательскими записями требуют consent_at, иначе отвечают 403.
 """
 
-from datetime import datetime, time as dtime, timedelta
+from datetime import datetime, time as dtime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.db.models import (
+    BpRecord,
     ChecklistItem,
     ExportRequest,
     FamilyMember,
@@ -60,7 +62,7 @@ from core.schemas import (
     StepUpdateIn,
     UserDto,
 )
-from server.deps import AuthError, get_or_create_user
+from server.deps import AuthError, PendingUser, get_authenticated_user
 from server.health_pdf import build_health_pdf
 from core.db.session import SessionLocal
 from core.services import (
@@ -86,9 +88,9 @@ def db_session():
         db.close()
 
 
-def current_user(request: Request, db: Session = Depends(db_session)) -> User:
+def current_user(request: Request, db: Session = Depends(db_session)) -> User | PendingUser:
     try:
-        return get_or_create_user(
+        return get_authenticated_user(
             db,
             request.headers.get("X-Max-Init-Data"),
             test_token=request.headers.get("X-Test-Token"),
@@ -97,9 +99,9 @@ def current_user(request: Request, db: Session = Depends(db_session)) -> User:
         raise HTTPException(status_code=401, detail=str(e)) from e
 
 
-def consented_user(user: User = Depends(current_user)) -> User:
-    """Данные пользователя отдаём только после согласия на обработку (152-ФЗ)."""
-    if user.consent_at is None:
+def consented_user(user: User | PendingUser = Depends(current_user)) -> User:
+    """Маршруты и записи доступны после сохранения согласия."""
+    if isinstance(user, PendingUser) or user.consent_at is None:
         raise HTTPException(status_code=403, detail="consent_required")
     return user
 
@@ -118,34 +120,94 @@ def route_dto(route: Route) -> RouteDto:
     )
 
 
+def _validate_diary_settings(diaries: list[HealthSettingDto]) -> list[tuple[str, bool, str | None]]:
+    """Проверить весь набор до первой записи в БД."""
+    normalized: list[tuple[str, bool, str | None]] = []
+    seen: set[str] = set()
+    for item in diaries:
+        if item.diary not in HEALTH_TYPES or item.diary in seen:
+            raise HTTPException(status_code=422, detail=f"Неизвестный или повторный дневник: {item.diary}")
+        seen.add(item.diary)
+        push_time = (item.push_time or "").strip() or None
+        if push_time:
+            try:
+                dtime.fromisoformat(push_time)
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=f"Некорректное время: {push_time}") from e
+        normalized.append((item.diary, item.enabled, push_time))
+    return normalized
+
+
+def _apply_diary_settings(db: Session, user_id: int, normalized: list[tuple[str, bool, str | None]]) -> None:
+    """Сохранить проверенные настройки в текущей транзакции."""
+    for diary, enabled, push_time in normalized:
+        row = db.query(HealthSetting).filter(HealthSetting.user_id == user_id, HealthSetting.diary == diary).first()
+        if row is None:
+            db.add(HealthSetting(user_id=user_id, diary=diary, enabled=enabled, push_time=push_time))
+        else:
+            row.enabled = enabled
+            row.push_time = push_time
+
+
 # ---------- профиль ----------
 
 
 @router.get("/me", response_model=UserDto)
-def me(user: User = Depends(current_user)):
-    return user
+def me(user: User | PendingUser = Depends(current_user)):
+    return UserDto.model_validate(user)
 
 
 @router.post("/me/consent", response_model=UserDto)
-def give_consent(body: ConsentIn | None = None, user: User = Depends(current_user), db: Session = Depends(db_session)):
-    """Фиксируем согласие на обработку персональных данных (+ часовой пояс с телефона)."""
-    if user.consent_at is None:
-        user.consent_at = utcnow()
+def give_consent(body: ConsentIn | None = None, user: User | PendingUser = Depends(current_user), db: Session = Depends(db_session)):
+    """Создаём профиль только при согласии; настройки и профиль фиксируются вместе."""
     if body and body.tz:
         try:
             ZoneInfo(body.tz)
-            user.tz = body.tz
-        except Exception:
-            pass  # незнакомую зону не сохраняем — остаётся дефолт
+        except Exception as e:
+            raise HTTPException(status_code=422, detail="Неизвестный часовой пояс") from e
+    if body and body.region is not None:
+        if body.region not in {r["title"] for r in load_regions()}:
+            raise HTTPException(status_code=422, detail="Неизвестный регион")
+    diaries = _validate_diary_settings(body.diaries) if body and body.diaries is not None else None
+
+    if isinstance(user, PendingUser):
+        pending = user
+        user = User(
+            max_user_id=pending.max_user_id,
+            first_name=pending.first_name,
+            last_name=pending.last_name,
+            email=pending.email,
+            avatar_url=pending.avatar_url,
+            region=pending.region,
+        )
+        db.add(user)
+        try:
+            db.flush()
+        except IntegrityError:
+            # Два окна могли подтвердить согласие одновременно: используем уже созданный профиль.
+            db.rollback()
+            user = db.query(User).filter(User.max_user_id == pending.max_user_id).first()
+            if user is None:
+                raise
+    if body and body.tz:
+        user.tz = body.tz
+    if body and body.region is not None:
+        user.region = body.region
+    if user.consent_at is None:
+        user.consent_at = utcnow()
+    if diaries is not None:
+        _apply_diary_settings(db, user.id, diaries)
     db.commit()
     db.refresh(user)
     return user
 
 
 @router.delete("/me/data")
-def delete_my_data(user: User = Depends(current_user), db: Session = Depends(db_session)):
+def delete_my_data(user: User | PendingUser = Depends(current_user), db: Session = Depends(db_session)):
     """Право на удаление (152-ФЗ, ст. 21): стираем аккаунт целиком — при следующем входе
     пользователь зарегистрируется заново (согласие + демо-данные)."""
+    if isinstance(user, PendingUser):
+        return {"status": "deleted"}
     route_ids = db.query(Route.id).filter(Route.user_id == user.id)
     # bulk-удаление маршрутов обходит ORM-каскад — шаги стираем явно (user_id у них нет)
     db.query(RouteStep).filter(RouteStep.route_id.in_(route_ids)).delete(synchronize_session=False)
@@ -153,6 +215,7 @@ def delete_my_data(user: User = Depends(current_user), db: Session = Depends(db_
         (Route, "user_id"),
         (ChecklistItem, "user_id"),
         (Reminder, "user_id"),
+        (BpRecord, "user_id"),
         (HealthRecord, "user_id"),
         (HealthSetting, "user_id"),
         (MedIntake, "user_id"),
@@ -187,7 +250,7 @@ def update_settings(body: SettingsIn, user: User = Depends(consented_user), db: 
 
 
 @router.get("/regions", response_model=list[RegionDto])
-def regions(user: User = Depends(consented_user)):
+def regions(user: User | PendingUser = Depends(current_user)):
     """Справочник регионов из content/regions.json — источник и организаций (сид-синк на старте)."""
     return [RegionDto(key=r["key"], title=r["title"], pilot=r.get("pilot", False)) for r in load_regions()]
 
@@ -526,27 +589,7 @@ def health_settings(user: User = Depends(consented_user), db: Session = Depends(
 
 @router.put("/health/settings", response_model=HealthSettingsOut)
 def update_health_settings(body: HealthSettingsIn, user: User = Depends(consented_user), db: Session = Depends(db_session)):
-    for item in body.diaries:
-        if item.diary not in HEALTH_TYPES:
-            raise HTTPException(status_code=422, detail=f"Неизвестный дневник: {item.diary}")
-        push_time = (item.push_time or "").strip()
-        if push_time:
-            try:
-                dtime.fromisoformat(push_time)
-            except ValueError:
-                raise HTTPException(status_code=422, detail=f"Некорректное время: {push_time}")
-        else:
-            push_time = None
-        row = (
-            db.query(HealthSetting)
-            .filter(HealthSetting.user_id == user.id, HealthSetting.diary == item.diary)
-            .first()
-        )
-        if row is None:
-            db.add(HealthSetting(user_id=user.id, diary=item.diary, enabled=item.enabled, push_time=push_time))
-        else:
-            row.enabled = item.enabled
-            row.push_time = push_time
+    _apply_diary_settings(db, user.id, _validate_diary_settings(body.diaries))
     db.commit()
     return health_settings(user=user, db=db)
 
@@ -604,7 +647,7 @@ def export_health_pdf(request: Request, t: str | None = Query(default=None), db:
         user = db.get(User, entry[0])
     else:
         try:
-            user = get_or_create_user(db, request.headers.get("X-Max-Init-Data"))
+            user = get_authenticated_user(db, request.headers.get("X-Max-Init-Data"))
         except AuthError as e:
             raise HTTPException(status_code=401, detail=str(e)) from e
     if user is None:
@@ -695,7 +738,25 @@ def health_report(user: User = Depends(consented_user), db: Session = Depends(db
     today = user_today(user)
     period_start_day = user_today(user, period_start)
     for course in db.query(MedCourse).filter(MedCourse.user_id == user.id, MedCourse.enabled.is_(True)).all():
-        start = max(course.created_at.date(), period_start_day) if course.created_at else period_start_day
+        # Старые демо-курсы могли быть созданы сегодня с отметками за прошлые дни.
+        # Первая фактическая отметка подтверждает начало курса раньше created_at.
+        first_intake = (
+            db.query(MedIntake.day)
+            .filter(
+                MedIntake.course_id == course.id,
+                MedIntake.taken_at.is_not(None),
+                MedIntake.day >= period_start_day,
+            )
+            .order_by(MedIntake.day)
+            .first()
+        )
+        created_at = course.created_at
+        if created_at is not None and created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)  # SQLite хранит utcnow() без tzinfo
+        course_start = user_today(user, created_at) if created_at else period_start_day
+        if first_intake:
+            course_start = min(course_start, first_intake[0])
+        start = max(course_start, period_start_day)
         end = min(course.until, today) if course.until else today
         if start > end:
             continue

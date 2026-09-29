@@ -12,7 +12,7 @@ from datetime import date, datetime, time as dtime, timedelta
 from sqlalchemy.orm import Session
 
 from core.db.models import (
-    ChecklistItem, ExportRequest, FamilyMember, HealthRecord, HealthSetting,
+    BpRecord, ChecklistItem, ExportRequest, FamilyMember, HealthRecord, HealthSetting,
     MedCourse, MedIntake, NotificationLog, Reminder, Route, RouteStep, User,
 )
 from core.db.seed import build_route_for
@@ -41,6 +41,7 @@ def wipe_data(db: Session, user: User) -> None:
         (Route, "user_id"),
         (ChecklistItem, "user_id"),
         (Reminder, "user_id"),
+        (BpRecord, "user_id"),
         (HealthRecord, "user_id"),
         (HealthSetting, "user_id"),
         (MedIntake, "user_id"),
@@ -116,8 +117,10 @@ def fill_demo(db: Session, user: User) -> None:
     # --- курсы лекарств + отметки приёма за 30 дней ---
     courses = [
         MedCourse(user_id=user.id, name="Эналаприл 10 мг", times=["08:00", "20:00"],
+                  created_at=_at(29, 8, 0),
                   until=TODAY + timedelta(days=27)),
         MedCourse(user_id=user.id, name="Аторвастатин 20 мг", times=["21:00"],
+                  created_at=_at(29, 8, 0),
                   until=TODAY + timedelta(days=27)),
     ]
     db.add_all(courses)

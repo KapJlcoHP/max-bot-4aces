@@ -32,10 +32,18 @@ class RegionDto(OrmDto):
     pilot: bool = False
 
 
+class HealthSettingDto(OrmDto):
+    diary: str
+    enabled: bool
+    push_time: str | None = None  # "HH:MM" — время пуша бота; None = напоминание выключено
+
+
 class ConsentIn(OrmDto):
-    """Согласие на обработку данных + часовой пояс с телефона (для времени пушей)."""
+    """Согласие и настройки первого входа сохраняются одной транзакцией."""
 
     tz: str | None = None
+    region: str | None = None
+    diaries: list[HealthSettingDto] | None = None
 
 
 class SituationDto(OrmDto):
@@ -176,12 +184,6 @@ class HealthAddIn(OrmDto):
     pain: int | None = None
     tag: str | None = None
     note: str | None = None
-
-
-class HealthSettingDto(OrmDto):
-    diary: str
-    enabled: bool
-    push_time: str | None = None  # "HH:MM" — время пуша бота; None = напоминание выключено
 
 
 class HealthSettingsOut(OrmDto):

@@ -26,7 +26,7 @@
     "/api/v1/me/consent": {
       "post": {
         "summary": "Give Consent",
-        "description": "Фиксируем согласие на обработку персональных данных (+ часовой пояс с телефона).",
+        "description": "Создаём профиль только при согласии; настройки и профиль фиксируются вместе.",
         "operationId": "give_consent_api_v1_me_consent_post",
         "requestBody": {
           "content": {
@@ -1463,11 +1463,36 @@
               }
             ],
             "title": "Tz"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "diaries": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/HealthSettingDto"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diaries"
           }
         },
         "type": "object",
         "title": "ConsentIn",
-        "description": "Согласие на обработку данных + часовой пояс с телефона (для времени пушей)."
+        "description": "Согласие и настройки первого входа сохраняются одной транзакцией."
       },
       "CustomStepIn": {
         "properties": {
