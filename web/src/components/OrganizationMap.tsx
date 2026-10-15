@@ -58,6 +58,9 @@ function loadYandexMaps(apiKey: string, lang = "ru_RU"): Promise<void> {
     if (!existing) {
       script.id = "yandex-maps-v3";
       script.async = true;
+      // MAX WebView может выбрать слишком строгую политику referrer.
+      // Яндекс проверяет доменное ограничение JS API по HTTP Referer.
+      script.referrerPolicy = "origin";
       script.src = `https://api-maps.yandex.ru/v3/?${new URLSearchParams({ apikey: apiKey, lang })}`;
       document.head.appendChild(script);
     }
