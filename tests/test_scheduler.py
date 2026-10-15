@@ -2,7 +2,7 @@
 
 import asyncio
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -13,6 +13,7 @@ from core.db.models import (
     Base,
     HealthRecord,
     HealthSetting,
+    MedCourse,
     NotificationLog,
     Reminder,
     Route,
@@ -38,8 +39,10 @@ class SchedulerTests(unittest.TestCase):
         ]
         self.db.add_all(users)
         self.db.flush()
-        for user in users:
-            self.db.add(Reminder(user_id=user.id, title="Visit", at=datetime(2026, 9, 29, 10)))
+        # DateTime в БД — UTC-naive форма: 10:00 Moscow = 07:00 UTC,
+        # 10:00 New York = 14:00 UTC.
+        self.db.add(Reminder(user_id=users[0].id, title="Visit", at=datetime(2026, 9, 29, 7)))
+        self.db.add(Reminder(user_id=users[1].id, title="Visit", at=datetime(2026, 9, 29, 14)))
         self.db.commit()
 
         with patch("bot.scheduler._user_now", side_effect=[datetime(2026, 9, 29, 10), datetime(2026, 9, 29, 3)]) as clock:
@@ -58,7 +61,7 @@ class SchedulerTests(unittest.TestCase):
         self.db.add(route)
         self.db.flush()
         self.db.add(RouteStep(route_id=route.id, position=1, title="Step", status="current", deadline=due_at.date(), deadline_time="10:00"))
-        self.db.add(Reminder(user_id=user.id, title="Visit", at=due_at))
+        self.db.add(Reminder(user_id=user.id, title="Visit", at=datetime(2026, 9, 29, 7)))
         self.db.commit()
 
         for now, expected in (
@@ -80,6 +83,43 @@ class SchedulerTests(unittest.TestCase):
         self.db.commit()
 
         self.assertEqual(collect_due(self.db, now=datetime(2026, 9, 29, 1)), [])
+
+    def test_notification_dedup_is_scoped_to_user(self):
+        users = [User(max_user_id=302, tz="UTC"), User(max_user_id=303, tz="UTC")]
+        self.db.add_all(users)
+        self.db.flush()
+        for user in users:
+            self.db.add(MedCourse(user_id=user.id, name="Medicine", times=["10:00"]))
+        self.db.commit()
+        pushes = collect_due(self.db, now=datetime(2026, 9, 29, 10))
+        self.assertEqual(len([p for p in pushes if p.kind == "med"]), 2)
+        mark_sent(self.db, next(p for p in pushes if p.user_id == users[0].id))
+        remaining = collect_due(self.db, now=datetime(2026, 9, 29, 10))
+        self.assertEqual([p.user_id for p in remaining if p.kind == "med"], [users[1].id])
+
+    def test_moving_step_deadline_clears_old_dedup(self):
+        from core.schemas import StepUpdateIn
+        from server.api.v1 import api
+
+        user = User(max_user_id=304, consent_at=datetime.now(timezone.utc))
+        self.db.add(user)
+        self.db.flush()
+        route = Route(user_id=user.id, situation_key="test", title="Test")
+        self.db.add(route)
+        self.db.flush()
+        step = RouteStep(
+            route_id=route.id, position=1, title="Step", status="current",
+            deadline=date(2026, 9, 30), deadline_time="10:00",
+        )
+        self.db.add(step)
+        self.db.commit()
+        self.db.add(NotificationLog(user_id=user.id, kind="step", ref_id=step.id, lead="day"))
+        self.db.commit()
+
+        api.update_step(step.id, StepUpdateIn(deadline=date(2026, 10, 2)), user=user, db=self.db)
+        self.assertEqual(self.db.query(NotificationLog).filter_by(user_id=user.id, ref_id=step.id).count(), 0)
+        pushes = collect_due(self.db, now=datetime(2026, 10, 1, 10))
+        self.assertEqual([(p.kind, p.lead) for p in pushes], [("step", "day")])
 
 
 class DeliveryRetryTests(unittest.IsolatedAsyncioTestCase):
@@ -134,6 +174,48 @@ class DeliveryRetryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(db.query(NotificationLog).count(), 1)
         self.assertEqual(bot.calls, 1)
         self.assertEqual(attempts, 2)
+        engine.dispose()
+
+    async def test_network_failures_never_mark_push_as_delivered(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        sessions = sessionmaker(bind=engine)
+        due_at = datetime(2026, 9, 29, 10)
+        with sessions() as db:
+            user = User(max_user_id=402, tz="UTC")
+            db.add(user)
+            db.flush()
+            db.add(Reminder(user_id=user.id, title="Visit", at=due_at))
+            db.commit()
+
+        class Bot:
+            calls = 0
+
+            async def send_message(self, **kwargs):
+                self.calls += 1
+                raise OSError("temporary network outage")
+
+        bot = Bot()
+        ticks = 0
+
+        async def stop_after_six_ticks(_):
+            nonlocal ticks
+            ticks += 1
+            if ticks == 6:
+                raise asyncio.CancelledError()
+
+        with (
+            patch("bot.scheduler.SessionLocal", sessions),
+            patch("bot.scheduler._user_now", return_value=due_at),
+            patch("bot.scheduler.asyncio.sleep", stop_after_six_ticks),
+            patch("bot.scheduler.log.exception"),
+        ):
+            with self.assertRaises(asyncio.CancelledError):
+                await scheduler_loop(bot, None)
+
+        with sessions() as db:
+            self.assertEqual(db.query(NotificationLog).count(), 0)
+        self.assertEqual(bot.calls, 6)
         engine.dispose()
 
 

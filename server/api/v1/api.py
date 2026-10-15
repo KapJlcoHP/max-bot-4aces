@@ -1,5 +1,6 @@
-"""REST API v1 для мини-апа. Аутентификация — подписанный initData в заголовке X-Max-Init-Data.
+"""REST API v1: совместимый фасад и сборка доменных роутеров.
 
+<<<<<<< Updated upstream
 Персональные данные отдаём только после согласия на обработку (152-ФЗ): без consent_at
 дата-эндпоинты отвечают 403 consent_required, фронт показывает онбординг.
 """
@@ -9,6 +10,16 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
+=======
+Публичные функции остаются доступны по старому пути ``server.api.v1.api``.
+Доменные реализации находятся в соседних модулях, а фасад сохраняет старые
+имена и точки monkeypatch для тестов и фоновых callers.
+"""
+
+from zoneinfo import ZoneInfo
+
+from fastapi import APIRouter
+>>>>>>> Stashed changes
 
 from core.db.models import (
     ChecklistItem,
@@ -26,6 +37,7 @@ from core.db.models import (
     User,
     utcnow,
 )
+<<<<<<< Updated upstream
 from core.db.seed import build_route_for, load_catalog, load_regions, load_scenarios
 from core.schemas import (
     ChecklistAddIn,
@@ -63,6 +75,11 @@ from core.schemas import (
 from server.deps import AuthError, get_or_create_user
 from server.health_pdf import build_health_pdf
 from core.db.session import SessionLocal
+=======
+from core.db.seed import load_catalog, load_regions, load_scenarios, build_route_for
+from core.diary_settings import DEFAULT_DIARIES, diary_settings, enabled_diaries
+from core.schemas import *  # noqa: F401,F403 - исторически экспортировалось из api.py
+>>>>>>> Stashed changes
 from core.services import (
     ServiceError,
     add_health_record as create_health_record,
@@ -71,21 +88,87 @@ from core.services import (
     uncomplete_route_step,
     user_today,
 )
+from core.time import db_utc, report_window, user_local, user_zone
+from server.deps import AuthError, PendingUser, get_authenticated_user
+from server.health_pdf import build_health_pdf
 
+from . import common, health, meds, misc, profile, route
+
+# Три уровня доменных маршрутов объединяются здесь, сохраняя прежний prefix.
 router = APIRouter(prefix="/api/v1")
+for domain_router in (profile.router, route.router, misc.router, health.router, meds.router):
+    router.include_router(domain_router)
 
-HEALTH_TYPES = {"bp", "weight", "sugar", "mood"}
-DEFAULT_DIARIES = [("bp", True), ("weight", True), ("sugar", False), ("mood", True)]
+HEALTH_TYPES = common.HEALTH_TYPES
+
+# Совместимые имена общих helpers.
+db_session = common.db_session
+current_user = common.current_user
+consented_user = common.consented_user
+route_dto = common.route_dto
+_validate_diary_settings = common.validate_diary_settings
+_apply_diary_settings = common.apply_diary_settings
+_get_active_route = common.get_active_route
+
+# Совместимые имена доменных helpers.
+_reminder_dto = misc._reminder_dto
+_health_record_dto = health._health_record_dto
+_meds_out = meds._meds_out
+_diary_settings = health._diary_settings
+_get_diary_settings = health._get_diary_settings
+_EXPORT_TOKENS = health._EXPORT_TOKENS
+_EXPORT_TTL = health._EXPORT_TTL
+
+# Реэкспорт endpoint-функций для старых прямых callers и unit-тестов.
+me = profile.me
+delete_my_data = profile.delete_my_data
+update_settings = profile.update_settings
+regions = profile.regions
+catalog = profile.catalog
+catalog_steps = profile.catalog_steps
+
+get_route = route.get_route
+delete_route = route.delete_route
+start_route = route.start_route
+add_step = route.add_step
+delete_step = route.delete_step
+complete_step = route.complete_step
+uncomplete_step = route.uncomplete_step
+update_step = route.update_step
+
+checklist = misc.checklist
+toggle_checklist_item = misc.toggle_checklist_item
+add_checklist_item = misc.add_checklist_item
+orgs = misc.orgs
+org_detail = misc.org_detail
+reminders = misc.reminders
+toggle_reminder = misc.toggle_reminder
+add_reminder = misc.add_reminder
+family = misc.family
+add_family_member = misc.add_family_member
+
+health_settings = health.health_settings
+update_health_settings = health.update_health_settings
+health_records = health.health_records
+create_export_token = health.create_export_token
+request_pdf_in_chat = health.request_pdf_in_chat
+pdf_in_chat_status = health.pdf_in_chat_status
+add_health_record = health.add_health_record
+delete_health_record = health.delete_health_record
+
+_meds_endpoint = meds.meds
+add_med = meds.add_med
+toggle_intake = meds.toggle_intake
+disable_med = meds.disable_med
+meds = _meds_endpoint
 
 
-def db_session():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def give_consent(body=None, user=None, db=None):
+    """Совместимая обёртка с сохранением patch(api.ZoneInfo) в тестах."""
+    return profile.give_consent_impl(body, user, db, zone_info_cls=ZoneInfo)
 
 
+<<<<<<< Updated upstream
 def current_user(request: Request, db: Session = Depends(db_session)) -> User:
     try:
         return get_or_create_user(
@@ -243,169 +326,30 @@ def start_route(body: RouteStartIn, user: User = Depends(consented_user), db: Se
         raise HTTPException(status_code=404, detail="Неизвестная ситуация")
     route = build_route_for(
         db,
+=======
+def health_report(user=None, db=None):
+    """Совместимая обёртка с сохранением patch(api.utcnow) и settings helper."""
+    return health.health_report_impl(
+>>>>>>> Stashed changes
         user,
-        body.situation_key,
-        exclude_positions=body.exclude_positions,
-        custom_steps=[s.model_dump() for s in body.custom_steps],
-    )
-    return route_dto(route)
-
-
-@router.post("/route/steps", response_model=RouteDto)
-def add_step(
-    body: StepAddIn,
-    after_step_id: int | None = Query(default=None),
-    user: User = Depends(consented_user),
-    db: Session = Depends(db_session),
-):
-    """Новый шаг маршрута. По умолчанию вставаем сразу после текущего шага;
-    after_step_id нужен, чтобы несколько назначений подряд шли в порядке добавления."""
-    title = body.title.strip()
-    if not title:
-        raise HTTPException(status_code=422, detail="Название шага не может быть пустым")
-    if body.source not in ("user", "doctor"):
-        raise HTTPException(status_code=422, detail="Недопустимый источник шага")
-    route = _get_active_route(db, user.id)
-    if route is None:
-        raise HTTPException(status_code=404, detail="Активный маршрут не найден")
-
-    anchor = None
-    if after_step_id:
-        anchor = db.query(RouteStep).filter(RouteStep.id == after_step_id, RouteStep.route_id == route.id).first()
-        if anchor is None:
-            raise HTTPException(status_code=404, detail="Шаг для вставки не найден")
-    if anchor is None:
-        anchor = (
-            db.query(RouteStep)
-            .filter(RouteStep.route_id == route.id, RouteStep.status == "current")
-            .first()
-        )
-    if anchor is None:  # всё выполнено — добавляем в конец
-        anchor = (
-            db.query(RouteStep)
-            .filter(RouteStep.route_id == route.id)
-            .order_by(RouteStep.position.desc())
-            .first()
-        )
-
-    # В пустом маршруте якоря нет; первый добавленный шаг становится текущим.
-    position = anchor.position + 1 if anchor is not None else 1
-    has_unfinished = db.query(RouteStep).filter(
-        RouteStep.route_id == route.id, RouteStep.status != "done"
-    ).first() is not None
-    if anchor is not None:
-        db.query(RouteStep).filter(
-            RouteStep.route_id == route.id, RouteStep.position >= position
-        ).update({"position": RouteStep.position + 1}, synchronize_session=False)
-    step = RouteStep(
-        route_id=route.id,
-        position=position,
-        title=title,
-        description="",
-        place=body.place or "",
-        deadline=body.deadline,
-        deadline_time=body.deadline_time,
-        status="pending" if has_unfinished else "current",
-        source=body.source,
-    )
-    db.add(step)
-    db.commit()
-    db.refresh(route)
-    return route_dto(route)
-
-
-@router.delete("/route/steps/{step_id}", response_model=RouteDto)
-def delete_step(step_id: int, user: User = Depends(consented_user), db: Session = Depends(db_session)):
-    """Удалить непройденный шаг; если удалили текущий — текущим становится следующий pending."""
-    route = _get_active_route(db, user.id)
-    if route is None:
-        raise HTTPException(status_code=404, detail="Активный маршрут не найден")
-    step = db.query(RouteStep).filter(RouteStep.id == step_id, RouteStep.route_id == route.id).first()
-    if step is None:
-        raise HTTPException(status_code=404, detail="Шаг не найден")
-    if step.status == "done":
-        raise HTTPException(status_code=409, detail="Пройденный шаг удалить нельзя")
-
-    was_current = step.status == "current"
-    position = step.position
-    db.delete(step)
-    db.flush()
-    db.query(RouteStep).filter(
-        RouteStep.route_id == route.id, RouteStep.position > position
-    ).update({"position": RouteStep.position - 1}, synchronize_session=False)
-    if was_current:
-        next_step = (
-            db.query(RouteStep)
-            .filter(RouteStep.route_id == route.id, RouteStep.status != "done")
-            .order_by(RouteStep.position)
-            .first()
-        )
-        if next_step is not None:
-            next_step.status = "current"
-    db.commit()
-    db.refresh(route)
-    return route_dto(route)
-
-
-@router.post("/route/steps/{step_id}/complete", response_model=CompleteStepOut)
-def complete_step(step_id: int, body: CompleteStepIn | None = None, user: User = Depends(consented_user), db: Session = Depends(db_session)):
-    try:
-        step = complete_route_step(db, user.id, step_id, note=(body.note if body else None), done_date=(body.date if body else None))
-    except ServiceError as e:
-        raise HTTPException(status_code=e.status, detail=str(e)) from e
-    route = _get_active_route(db, user.id)
-    next_step = (
-        db.query(RouteStep)
-        .filter(RouteStep.route_id == route.id, RouteStep.status != "done")
-        .order_by(RouteStep.position)
-        .first()
-    )
-    return CompleteStepOut(
-        step=StepDto.model_validate(step),
-        route=route_dto(route),
-        next_step=StepDto.model_validate(next_step) if next_step else None,
+        db,
+        now_fn=utcnow,
+        get_diary_settings_fn=_get_diary_settings,
     )
 
 
-@router.post("/route/steps/{step_id}/uncomplete", response_model=RouteDto)
-def uncomplete_step(step_id: int, user: User = Depends(consented_user), db: Session = Depends(db_session)):
-    """Отменить выполнение шага (отметили случайно — можно снять)."""
-    try:
-        uncomplete_route_step(db, user.id, step_id)
-    except ServiceError as e:
-        raise HTTPException(status_code=e.status, detail=str(e)) from e
-    route = _get_active_route(db, user.id)
-    return route_dto(route)
-
-
-@router.patch("/route/steps/{step_id}", response_model=StepDto)
-def update_step(step_id: int, body: StepUpdateIn, user: User = Depends(consented_user), db: Session = Depends(db_session)):
-    """Изменить срок шага (в том числе шаблонного) — выполняенный не меняем."""
-    route = _get_active_route(db, user.id)
-    if route is None:
-        raise HTTPException(status_code=404, detail="Активный маршрут не найден")
-    step = db.query(RouteStep).filter(RouteStep.id == step_id, RouteStep.route_id == route.id).first()
-    if step is None:
-        raise HTTPException(status_code=404, detail="Шаг не найден")
-    if step.status == "done":
-        raise HTTPException(status_code=409, detail="Пройденный шаг изменить нельзя")
-    step.deadline = body.deadline
-    db.commit()
-    db.refresh(step)
-    return StepDto.model_validate(step)
-
-
-# ---------- чек-лист ----------
-
-
-@router.get("/checklist", response_model=ChecklistOut)
-def checklist(user: User = Depends(consented_user), db: Session = Depends(db_session)):
-    items = db.query(ChecklistItem).filter(ChecklistItem.user_id == user.id).order_by(ChecklistItem.position, ChecklistItem.id).all()
-    return ChecklistOut(
-        items=[ChecklistItemDto.model_validate(i) for i in items],
-        collected=sum(1 for i in items if i.collected),
-        total=len(items),
+def export_health_pdf(request, t=None, db=None):
+    """Совместимая обёртка для callers, патчащих helpers на фасаде."""
+    return health.export_health_pdf_impl(
+        request,
+        t,
+        db,
+        auth_fn=get_authenticated_user,
+        report_fn=health_report,
+        diary_settings_fn=_get_diary_settings,
+        pdf_builder=build_health_pdf,
     )
+<<<<<<< Updated upstream
 
 
 @router.post("/checklist/{item_id}/toggle", response_model=ChecklistItemDto)
@@ -827,3 +771,5 @@ def add_family_member(body: FamilyAddIn, user: User = Depends(consented_user), d
     db.add(row)
     db.commit()
     return row
+=======
+>>>>>>> Stashed changes

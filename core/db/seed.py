@@ -109,7 +109,7 @@ def _build_route(
                 description="",
                 place=step.get("place", ""),
                 deadline=deadline,
-                deadline_time=step.get("time"),
+                deadline_time=step.get("deadline_time") or step.get("time"),
                 status="pending",
                 source="user",
             )
@@ -141,11 +141,13 @@ def build_route_for(
     situation_key: str,
     exclude_positions: list[int] | None = None,
     custom_steps: list[dict] | None = None,
+    commit: bool = True,
 ) -> Route:
     """Новая активная ситуация: прежний активный маршрут гасим, чек-лист обновляем."""
     db.query(Route).filter(Route.user_id == user.id, Route.active.is_(True)).update({"active": False})
     route = _build_route(db, user, situation_key, exclude_positions, custom_steps)
     db.query(ChecklistItem).filter(ChecklistItem.user_id == user.id).delete()
     _seed_checklist(db, user, situation_key)
-    db.commit()
+    if commit:
+        db.commit()
     return route

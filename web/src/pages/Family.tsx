@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "../api";
 import { useApp } from "../App";
 import type { FamilyMember } from "../types";
-import { Button, UserAvatar, BrandMark, Header, LoadingView, useToast } from "../components/ui";
+import { Button, ErrorView, UserAvatar, BrandMark, Header, LoadingView, useToast } from "../components/ui";
 import { I } from "../icons";
 
 export default function Family() {
@@ -46,6 +46,7 @@ export default function Family() {
       <Header title="Семейный доступ" subtitle="Управление доступом к маршрутам" back="/profile" right={<BrandMark />} />
       <div className="screen-body">
         {status === "loading" && <LoadingView />}
+        {status === "error" && <ErrorView onRetry={load} />}
         {status === "ready" && rows !== null && (
           <>
             <div className="card" style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -80,11 +81,13 @@ export default function Family() {
           </>
         )}
       </div>
-      <div className="foot">
-        <Button onClick={showForm ? add : () => setShowForm(true)} disabled={busy || (showForm && !name.trim())}>
-          {busy ? "Добавляем…" : showForm ? "Сохранить участника" : "Добавить участника"}
-        </Button>
-      </div>
+      {status === "ready" && (
+        <div className="foot">
+          <Button onClick={showForm ? add : () => setShowForm(true)} disabled={busy || (showForm && !name.trim())}>
+            {busy ? "Добавляем…" : showForm ? "Сохранить участника" : "Добавить участника"}
+          </Button>
+        </div>
+      )}
       {toast}
     </div>
   );

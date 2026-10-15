@@ -10,6 +10,8 @@ from datetime import date, datetime, time as dtime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 # временная БД ДО импортов (session.py читает settings один раз)
 os.environ["DATABASE_URL"] = "sqlite:///./database/_smoke_bot.db"
@@ -25,6 +27,7 @@ from core.db.models import (  # noqa: E402
     utcnow,
 )
 from core.db.session import SessionLocal, init_db  # noqa: E402
+from core.time import db_utc, user_zone  # noqa: E402
 from core.services import (  # noqa: E402
     ServiceError,
     add_health_record,
@@ -121,7 +124,7 @@ def main() -> None:
         step = db.get(RouteStep, ids["step1"])
         due_at = datetime.combine(step.deadline, dtime(14, 0))
         reminder = db.query(Reminder).filter(Reminder.user_id == user.id).first()
-        reminder.at = due_at + timedelta(days=1)  # детерминизм: день-лид сработает ровно в due_at
+        reminder.at = db_utc(due_at + timedelta(days=1), user_zone(user.tz))  # детерминизм: день-лид сработает ровно в due_at
         course = db.query(MedCourse).filter(MedCourse.user_id == user.id).first()
         setting = (
             db.query(HealthSetting)
@@ -132,7 +135,7 @@ def main() -> None:
 
         # 1) за сутки до всего (порог day-лида пройден 5 минут назад)
         now = due_at - timedelta(days=1) + timedelta(minutes=5)
-        pushes = collect_due(db, now)
+        pushes = [p for p in collect_due(db, now) if p.user_id == user.id]
         kinds = {(p.kind, p.lead) for p in pushes}
         check("лид day: шаг", ("step", "day") in kinds)
         check("напоминанию до day-лида рано", ("reminder", "day") not in kinds)
@@ -143,7 +146,7 @@ def main() -> None:
 
         # 2) за час до срока (лекарство 09:00 уже в окне: 09:00–15:00)
         now = due_at - timedelta(minutes=30)
-        pushes = collect_due(db, now)
+        pushes = [p for p in collect_due(db, now) if p.user_id == user.id]
         kinds = {(p.kind, p.lead) for p in pushes}
         check("лид hour: шаг", ("step", "hour") in kinds)
         check("лид day не повторяется", ("step", "day") not in kinds)
@@ -154,10 +157,14 @@ def main() -> None:
             mark_sent(db, p)
 
         # 3) в момент срока + время лекарства + напоминание «сейчас»
-        db.add(Reminder(user_id=user.id, title="Срочно", at=due_at - timedelta(minutes=1)))
+        db.add(Reminder(
+            user_id=user.id,
+            title="Срочно",
+            at=db_utc(due_at - timedelta(minutes=1), user_zone(user.tz)),
+        ))
         db.commit()
         now = due_at + timedelta(minutes=5)
-        pushes = collect_due(db, now)
+        pushes = [p for p in collect_due(db, now) if p.user_id == user.id]
         kinds = {(p.kind, p.lead) for p in pushes}
         check("лид now: шаг", ("step", "now") in kinds)
         check("лид day: напоминание на завтра", ("reminder", "day") in kinds)

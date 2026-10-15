@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { fmtDeadline, fmtDayMonth } from "../format";
 import type { CompleteStepResult, RouteDto, Step } from "../types";
-import { Button, ErrorView, Header, LoadingView, Sheet, useToast } from "../components/ui";
+import { Button, ErrorView, Header, LoadingView, Sheet, StateView, useToast } from "../components/ui";
 import { I } from "../icons";
 
 interface Picked {
@@ -136,16 +136,36 @@ export default function StepCard() {
     );
   }
 
+  if (status === "loading") {
+    return (
+      <div className="app narrow">
+        <Header title="Шаг" back="/route" />
+        <div className="screen-body"><LoadingView /></div>
+      </div>
+    );
+  }
+
+  if (!step) {
+    return (
+      <div className="app narrow">
+        <Header title="Шаг" back="/route" />
+        <StateView
+          title="Шаг не найден"
+          text="Этот шаг больше не доступен в маршруте."
+          button="Вернуться к маршруту"
+          onButton={() => nav("/route")}
+        />
+      </div>
+    );
+  }
+
   const count = picked.length;
 
   return (
     <div className="app narrow">
       <Header title={step ? step.title : "Шаг"} subtitle={step ? `Шаг ${step.position} из ${route?.total_steps ?? "…"}` : undefined} back="/route" />
       <div className="screen-body">
-        {status === "loading" || !step ? (
-          <LoadingView />
-        ) : (
-          <>
+        <>
             <div className="card">
               {step.status !== "done" ? (
                 <div className="kv" style={{ gap: 10 }}>
@@ -201,8 +221,7 @@ export default function StepCard() {
                 <p className="muted" style={{ marginTop: 8 }}>{step.note}</p>
               </div>
             )}
-          </>
-        )}
+        </>
       </div>
 
       {step && step.status !== "done" && (

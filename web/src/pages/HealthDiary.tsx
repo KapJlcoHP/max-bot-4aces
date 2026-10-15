@@ -45,6 +45,21 @@ const PERIODS: { key: Period; label: string }[] = [
 const toIsoDay = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+const toFormNumber = (value: string): number | null => {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const isInRange = (value: string, min: number, max: number) => {
+  const parsed = toFormNumber(value);
+  return parsed !== null && parsed >= min && parsed <= max;
+};
+
+const isOptionalInRange = (value: string, min: number, max: number) =>
+  !value.trim() || isInRange(value, min, max);
+
 /** Дата в полночь (локальная) из «YYYY-MM-DD» */
 const fromIsoDay = (iso: string, endOfDay = false): Date | null => {
   const d = parseDate(iso);
@@ -79,6 +94,20 @@ export default function HealthDiary() {
   const [pain, setPain] = useState(2);
   const [tag, setTag] = useState("утром");
   const [note, setNote] = useState("");
+
+  const resetForm = () => {
+    setSys("");
+    setDia("");
+    setPulse("");
+    setWeight("");
+    setSugar("");
+    setAttempted(false);
+    setMealTag("до еды");
+    setMood("Хорошо");
+    setPain(2);
+    setTag("утром");
+    setNote("");
+  };
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -153,16 +182,31 @@ export default function HealthDiary() {
     setBusy(true);
     try {
       if (type === "bp") {
-        await api.post("/api/v1/health/bp", { systolic: Number(sys), diastolic: Number(dia), pulse: pulse ? Number(pulse) : null, tag, note: note || null });
+        const systolic = toFormNumber(sys);
+        const diastolic = toFormNumber(dia);
+        const pulseValue = toFormNumber(pulse);
+        if (systolic === null || diastolic === null) return;
+        const body: { systolic: number; diastolic: number; pulse?: number; tag: string; note: string | null } = {
+          systolic,
+          diastolic,
+          tag,
+          note: note || null,
+        };
+        if (pulseValue !== null) body.pulse = pulseValue;
+        await api.post("/api/v1/health/bp", body);
       } else if (type === "weight") {
-        await api.post("/api/v1/health/weight", { weight_kg: Number(weight.replace(",", ".")), tag, note: note || null });
+        const weightValue = toFormNumber(weight);
+        if (weightValue === null) return;
+        await api.post("/api/v1/health/weight", { weight_kg: weightValue, tag, note: note || null });
       } else if (type === "sugar") {
-        await api.post("/api/v1/health/sugar", { sugar_mmol: Number(sugar.replace(",", ".")), meal_tag: mealTag, note: note || null });
+        const sugarValue = toFormNumber(sugar);
+        if (sugarValue === null) return;
+        await api.post("/api/v1/health/sugar", { sugar_mmol: sugarValue, meal_tag: mealTag, note: note || null });
       } else {
         await api.post("/api/v1/health/mood", { mood, pain, note: note || null, tag: "вечером" });
       }
       setSheet(false);
-      setNote("");
+      resetForm();
       showToast("Запись сохранена");
       load();
     } catch (e) {
@@ -204,6 +248,21 @@ export default function HealthDiary() {
 
   const stroke = type === "weight" ? "#22C55E" : type === "sugar" ? "#DE2129" : "#006DF8";
   const unit = UNITS[type];
+
+  const validateForm = (): string | null => {
+    if (type === "bp") {
+      if (!isInRange(sys, 50, 260)) return sys.trim() ? "САД должен быть от 50 до 260 мм рт. ст." : "Заполните САД";
+      if (!isInRange(dia, 30, 150)) return dia.trim() ? "ДАД должен быть от 30 до 150 мм рт. ст." : "Заполните ДАД";
+      if (!isOptionalInRange(pulse, 25, 220)) return "Пульс должен быть от 25 до 220 уд/мин";
+    }
+    if (type === "weight" && !isInRange(weight, 20, 300)) {
+      return weight.trim() ? "Вес должен быть от 20 до 300 кг" : "Заполните вес";
+    }
+    if (type === "sugar" && !isInRange(sugar, 1, 35)) {
+      return sugar.trim() ? "Сахар должен быть от 1 до 35 ммоль/л" : "Заполните сахар";
+    }
+    return null;
+  };
 
   const activeSeries = useMemo(() => {
     if (type === "bp") return BP_SERIES.filter((s) => !hidden[s.key]).map((s) => ({ key: s.key, label: s.label, color: s.color }));
@@ -370,14 +429,14 @@ export default function HealthDiary() {
 
         {type === "bp" && (
           <div className="own-row" style={{ marginBottom: 10 }}>
-            <input inputMode="numeric" placeholder="Верхнее" value={sys} className={attempted && !sys ? "invalid" : undefined} onChange={(e) => setSys(e.target.value)} />
-            <input inputMode="numeric" placeholder="Нижнее" value={dia} className={attempted && !dia ? "invalid" : undefined} onChange={(e) => setDia(e.target.value)} />
-            <input inputMode="numeric" placeholder="Пульс" value={pulse} onChange={(e) => setPulse(e.target.value)} />
+            <input inputMode="numeric" placeholder="Верхнее" value={sys} className={attempted && !isInRange(sys, 50, 260) ? "invalid" : undefined} onChange={(e) => setSys(e.target.value)} />
+            <input inputMode="numeric" placeholder="Нижнее" value={dia} className={attempted && !isInRange(dia, 30, 150) ? "invalid" : undefined} onChange={(e) => setDia(e.target.value)} />
+            <input inputMode="numeric" placeholder="Пульс" value={pulse} className={attempted && !isOptionalInRange(pulse, 25, 220) ? "invalid" : undefined} onChange={(e) => setPulse(e.target.value)} />
           </div>
         )}
         {type === "weight" && (
           <div className="own-row" style={{ marginBottom: 10 }}>
-            <input inputMode="decimal" placeholder="Вес, кг" value={weight} className={attempted && !weight ? "invalid" : undefined} onChange={(e) => setWeight(e.target.value)} />
+            <input inputMode="decimal" placeholder="Вес, кг" value={weight} className={attempted && !isInRange(weight, 20, 300) ? "invalid" : undefined} onChange={(e) => setWeight(e.target.value)} />
           </div>
         )}
         {type === "sugar" && (
@@ -389,7 +448,7 @@ export default function HealthDiary() {
         )}
         {type === "sugar" && (
           <div className="own-row" style={{ marginBottom: 10 }}>
-            <input inputMode="decimal" placeholder="ммоль/л" value={sugar} className={attempted && !sugar ? "invalid" : undefined} onChange={(e) => setSugar(e.target.value)} />
+            <input inputMode="decimal" placeholder="ммоль/л" value={sugar} className={attempted && !isInRange(sugar, 1, 35) ? "invalid" : undefined} onChange={(e) => setSugar(e.target.value)} />
           </div>
         )}
         {type === "mood" && (
@@ -422,9 +481,9 @@ export default function HealthDiary() {
           disabled={busy}
           onClick={() => {
             setAttempted(true);
-            const missing = (type === "bp" && (!sys || !dia)) || (type === "weight" && !weight) || (type === "sugar" && !sugar);
-            if (missing) {
-              showToast("Заполните обязательные поля — они подсвечены красным");
+            const error = validateForm();
+            if (error) {
+              showToast(error);
               return;
             }
             submit();

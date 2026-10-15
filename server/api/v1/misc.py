@@ -1,0 +1,147 @@
+"""Чек-лист, организации, напоминания и семейный доступ."""
+
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from core.db.models import ChecklistItem, FamilyMember, Organization, Reminder, User, utcnow
+from core.schemas import (
+    ChecklistAddIn,
+    ChecklistItemDto,
+    ChecklistOut,
+    FamilyAddIn,
+    FamilyMemberDto,
+    OrganizationDto,
+    ReminderDto,
+)
+from core.time import db_utc, user_local, user_zone
+from .common import consented_user, db_session
+
+router = APIRouter()
+
+
+@router.get("/checklist", response_model=ChecklistOut)
+def checklist(user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    items = db.query(ChecklistItem).filter(
+        ChecklistItem.user_id == user.id
+    ).order_by(ChecklistItem.position, ChecklistItem.id).all()
+    return ChecklistOut(
+        items=[ChecklistItemDto.model_validate(i) for i in items],
+        collected=sum(1 for i in items if i.collected),
+        total=len(items),
+    )
+
+
+@router.post("/checklist/{item_id}/toggle", response_model=ChecklistItemDto)
+def toggle_checklist_item(item_id: int, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    item = db.query(ChecklistItem).filter(
+        ChecklistItem.id == item_id, ChecklistItem.user_id == user.id
+    ).first()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Пункт не найден")
+    item.collected = not item.collected
+    db.commit()
+    return item
+
+
+@router.post("/checklist", response_model=ChecklistItemDto)
+def add_checklist_item(body: ChecklistAddIn, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Название не может быть пустым")
+    item = ChecklistItem(user_id=user.id, title=title, position=0)
+    db.add(item)
+    db.commit()
+    return item
+
+
+@router.get("/orgs", response_model=list[OrganizationDto])
+def orgs(
+    q: str = Query(default=""),
+    org_type: str = Query(default=""),
+    user: User = Depends(consented_user),
+    db: Session = Depends(db_session),
+):
+    query = db.query(Organization)
+    if user.region:
+        query = query.filter(Organization.region == user.region)
+    if org_type and org_type != "Все":
+        query = query.filter(Organization.org_type == org_type)
+    if q:
+        query = query.filter(Organization.title.ilike(f"%{q}%"))
+    return [OrganizationDto.model_validate(o) for o in query.all()]
+
+
+@router.get("/orgs/{org_id}", response_model=OrganizationDto)
+def org_detail(org_id: int, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if org is None:
+        raise HTTPException(status_code=404, detail="Организация не найдена")
+    return OrganizationDto.model_validate(org)
+
+
+def _reminder_dto(row: Reminder, user: User) -> ReminderDto:
+    dto = ReminderDto.model_validate(row)
+    dto.at = user_local(row.at, user.tz)
+    if row.done_at is not None:
+        dto.done_at = user_local(row.done_at, user.tz)
+    return dto
+
+
+@router.get("/reminders", response_model=list[ReminderDto])
+def reminders(user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    rows = db.query(Reminder).filter(
+        Reminder.user_id == user.id, Reminder.done_at.is_(None)
+    ).order_by(Reminder.at).all()
+    return [_reminder_dto(r, user) for r in rows]
+
+
+@router.post("/reminders/{reminder_id}/toggle", response_model=ReminderDto)
+def toggle_reminder(reminder_id: int, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    row = db.query(Reminder).filter(
+        Reminder.id == reminder_id, Reminder.user_id == user.id
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Напоминание не найдено")
+    row.enabled = not row.enabled
+    db.commit()
+    return _reminder_dto(row, user)
+
+
+@router.post("/reminders", response_model=ReminderDto)
+def add_reminder(body: dict, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    title = str((body or {}).get("title", "")).strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Название не может быть пустым")
+    raw_at = (body or {}).get("at")
+    try:
+        at = datetime.fromisoformat(raw_at) if raw_at else utcnow() + timedelta(days=1)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Некорректная дата напоминания")
+    row = Reminder(
+        user_id=user.id,
+        title=title,
+        place=str((body or {}).get("place", "") or ""),
+        at=db_utc(at, user_zone(user.tz)),
+    )
+    db.add(row)
+    db.commit()
+    return _reminder_dto(row, user)
+
+
+@router.get("/family", response_model=list[FamilyMemberDto])
+def family(user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    rows = db.query(FamilyMember).filter(FamilyMember.owner_id == user.id).all()
+    return [FamilyMemberDto.model_validate(r) for r in rows]
+
+
+@router.post("/family", response_model=FamilyMemberDto)
+def add_family_member(body: FamilyAddIn, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Имя не может быть пустым")
+    row = FamilyMember(owner_id=user.id, name=name, role=body.role.strip() or "Родственник", color="blue")
+    db.add(row)
+    db.commit()
+    return row

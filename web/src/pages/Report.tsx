@@ -8,6 +8,8 @@ import { Button, ErrorView, Header, LoadingView, useToast } from "../components/
 import { I } from "../icons";
 
 const num = (v: number | null | undefined) => (v === null || v === undefined ? "—" : String(v).replace(".", ","));
+type QueueStatus = "idle" | "queued" | "processing" | "retry" | "failed" | "sent";
+type PdfQueue = { status: QueueStatus; attempts: number; error?: string | null; can_retry: boolean };
 
 export default function Report() {
   const nav = useNavigate();
@@ -15,6 +17,7 @@ export default function Report() {
   const [report, setReport] = useState<HealthReport | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
+  const [queue, setQueue] = useState<PdfQueue | null>(null);
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -24,6 +27,16 @@ export default function Report() {
   }, []);
 
   useEffect(load, []);
+
+  const loadQueue = useCallback(() => {
+    api.get<PdfQueue>("/api/v1/health/send-to-bot")
+      .then(setQueue)
+      .catch(() => setQueue(null));
+  }, []);
+
+  useEffect(() => {
+    loadQueue();
+  }, [loadQueue]);
 
   /** Запасной путь (используется только если бот недоступен): каскад share → a.download → ссылка с токеном. */
   const downloadInWebview = async () => {
@@ -74,8 +87,16 @@ export default function Report() {
     setBusy(true);
     try {
       // единый путь для всех устройств: файл доставляет бот в чат
+<<<<<<< Updated upstream
       await api.post("/api/v1/health/send-to-bot", {});
       showToast("Собираю — PDF придёт в чат бота через несколько секунд");
+=======
+      const requested = await api.post<{ status: QueueStatus }>("/api/v1/health/send-to-bot", {});
+      setQueue((prev) => ({ ...(prev ?? { attempts: 0, can_retry: false }), status: requested.status }));
+      showToast(requested.status === "queued" ? "Собираю — PDF придёт в чат бота после обработки" : "PDF уже находится в очереди");
+      loadQueue();
+      setBusy(false);
+>>>>>>> Stashed changes
       return;
     } catch {
       showToast("Не удалось отправить в чат — пробуем скачать…");
@@ -110,6 +131,15 @@ export default function Report() {
         {status === "loading" && <LoadingView />}
         {status === "ready" && report && (
           <>
+            {queue?.status === "failed" && (
+              <div className="card" role="alert">
+                <b>PDF не удалось доставить</b>
+                <div className="muted" style={{ marginTop: 6 }}>Нажмите «PDF в чат» ещё раз, чтобы повторить отправку.</div>
+              </div>
+            )}
+            {(queue?.status === "queued" || queue?.status === "processing" || queue?.status === "retry") && (
+              <div className="card muted">PDF готовится и будет отправлен в чат бота после обработки.</div>
+            )}
             {report.bp_avg && (
               <div className="card">
                 <b style={{ fontSize: 15 }}>Давление и пульс</b>

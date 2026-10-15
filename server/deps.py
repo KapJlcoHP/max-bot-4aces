@@ -54,7 +54,13 @@ def validate_init_data(raw: str) -> dict | None:
     check_string = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs))
     secret_key = hmac.new(b"WebAppData", settings.max_bot_token.encode(), hashlib.sha256).digest()
     computed = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(computed, received_hash):
+    try:
+        signature_matches = hmac.compare_digest(computed, received_hash)
+    except TypeError:
+        # Python 3.12 выбрасывает TypeError для не-ASCII Unicode в строковом
+        # варианте compare_digest; это входные данные клиента, а не ошибка сервера.
+        return None
+    if not signature_matches:
         return None
 
     try:

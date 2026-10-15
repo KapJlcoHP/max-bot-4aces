@@ -89,11 +89,11 @@ checks:
     path: /route/start
     params:
       body: { situation_key: "chronic" }
-    expected_status: [200, 409]
+    expected_status: [200]
     response:
       format: application/json
       required_fields: [id, situation_key, total_steps, steps]
-      notes: "409 допустим, если активный маршрут у учётной записи уже существует"
+      notes: "Повторный запуск переключает активную ситуацию на выбранный маршрут"
 
   - id: route-get
     title: "Текущий маршрут с шагами"

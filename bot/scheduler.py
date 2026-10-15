@@ -11,7 +11,7 @@ HealthSetting.push_time) трактуются в поясе ПОЛЬЗОВАТЕ
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, time as dtime, timedelta, timezone
+from datetime import date, datetime, time as dtime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
@@ -29,12 +29,13 @@ from core.db.models import (
     utcnow,
 )
 from core.db.session import SessionLocal
+from core.diary_settings import diary_settings
 from core.services import active_route
+from core.time import db_utc, local_day_bounds, user_local, user_zone
 
 log = logging.getLogger("bot.scheduler")
 
 TICK_SECONDS = 60
-FAIL_MARK_ATTEMPTS = 5  # после стольких неудачных тиков пуш глушим дедупом (dialog.not.found сам не вылечится)
 DIARY_TITLES = {"bp": "Давление", "weight": "Вес", "sugar": "Сахар", "mood": "Самочувствие"}
 
 
@@ -52,17 +53,13 @@ class Push:
 
 
 def _local_naive(dt: datetime, tz: ZoneInfo | None) -> datetime:
-    if dt.tzinfo is None:
-        return dt
-    return dt.astimezone(tz).replace(tzinfo=None) if tz else dt.astimezone().replace(tzinfo=None)
+    """UTC DateTime из БД -> настенное время пользователя."""
+    return user_local(dt, str(tz) if tz else None).replace(tzinfo=None)
 
 
 def _user_now(user: User) -> datetime:
     """«Сейчас» в поясе пользователя (наивное настенное время)."""
-    try:
-        return datetime.now(ZoneInfo(user.tz or "Europe/Moscow")).replace(tzinfo=None)
-    except Exception:
-        return datetime.now()
+    return datetime.now(user_zone(user.tz)).replace(tzinfo=None)
 
 
 def _when_desc(due: datetime, now: datetime, has_time: bool) -> str:
@@ -94,6 +91,7 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
         return (
             db.query(NotificationLog)
             .filter(
+                NotificationLog.user_id == user.id,
                 NotificationLog.kind == kind,
                 NotificationLog.ref_id == ref_id,
                 NotificationLog.lead == lead,
@@ -110,7 +108,10 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
             zone = ZoneInfo(user.tz or "Europe/Moscow")
         except Exception:
             zone = None
-        user_now = now if now is not None else _user_now(user)
+        user_now = (
+            user_local(now, user.tz).replace(tzinfo=None) if now is not None and now.tzinfo is not None
+            else now if now is not None else _user_now(user)
+        )
         today = user_now.date()
 
         # --- шаг маршрута: дедлайн текущего шага ---
@@ -232,23 +233,25 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
                 )
 
         # --- дневники здоровья: время пуша настало, записи сегодня ещё нет ---
-        for s in (
-            db.query(HealthSetting)
-            .filter(HealthSetting.user_id == user.id, HealthSetting.enabled.is_(True))
-            .all()
-        ):
+        for s in diary_settings(db, user.id).values():
             if not s.push_time or s.diary not in DIARY_TITLES:
                 continue
+            setting_row = (
+                db.query(HealthSetting)
+                .filter(HealthSetting.user_id == user.id, HealthSetting.diary == s.diary)
+                .first()
+            )
+            # Current defaults have no push time. If a default ever gains one,
+            # use a stable per-user/diary ref without inventing an ORM id.
+            setting_ref = setting_row.id if setting_row is not None else user.id * 10 + ("bp", "weight", "sugar", "mood").index(s.diary)
             slot = _parse_time(s.push_time)
             if slot is None or user_now.time() < slot:
                 continue
             lead = f"{today:%Y%m%d}"
-            if logged("diary", s.id, lead):
+            if logged("diary", setting_ref, lead):
                 continue
             # HealthRecord.at хранится как UTC; сравниваем с границами местного дня в UTC.
-            local_zone = zone or datetime.now().astimezone().tzinfo
-            day_start = datetime.combine(today, dtime.min, tzinfo=local_zone).astimezone(timezone.utc).replace(tzinfo=None)
-            day_end = datetime.combine(today + timedelta(days=1), dtime.min, tzinfo=local_zone).astimezone(timezone.utc).replace(tzinfo=None)
+            day_start, day_end = local_day_bounds(today, user.tz)
             already = (
                 db.query(HealthRecord)
                 .filter(
@@ -269,7 +272,7 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
                     actions=[("✍️ Внести данные", f"diary_{s.diary}")],
                     app_payload="health",
                     kind="diary",
-                    ref_id=s.id,
+                    ref_id=setting_ref,
                     lead=lead,
                 )
             )
@@ -283,7 +286,7 @@ def mark_sent(db: Session, push: Push) -> None:
     if push.reminder_id is not None:
         reminder = db.get(Reminder, push.reminder_id)
         if reminder is not None and reminder.sent_at is None:
-            reminder.sent_at = utcnow()
+            reminder.sent_at = db_utc(utcnow())
     try:
         db.commit()
     except IntegrityError:
@@ -293,6 +296,7 @@ def mark_sent(db: Session, push: Push) -> None:
             db.query(NotificationLog)
             .filter(
                 NotificationLog.kind == push.kind,
+                NotificationLog.user_id == push.user_id,
                 NotificationLog.ref_id == push.ref_id,
                 NotificationLog.lead == push.lead,
             )
@@ -305,8 +309,7 @@ def mark_sent(db: Session, push: Push) -> None:
 async def scheduler_loop(bot, bot_username: str | None) -> None:
     from bot.keyboards import push_keyboard
 
-    fail_counts: dict[tuple[str, int, str], int] = {}
-    sent_unlogged: dict[tuple[str, int, str], Push] = {}
+    sent_unlogged: dict[tuple[int, str, int, str], Push] = {}
 
     while True:
         try:
@@ -323,7 +326,9 @@ async def scheduler_loop(bot, bot_username: str | None) -> None:
             with SessionLocal() as db:
                 due = collect_due(db)
             for push in due:
-                key = (push.kind, push.ref_id, push.lead)
+                # user_id обязателен: id курса/напоминания/настройки могут
+                # совпадать у разных пользователей.
+                key = (push.user_id, push.kind, push.ref_id, push.lead)
                 if key in sent_unlogged:
                     continue
                 kb = push_keyboard(bot_username, push.actions, push.app_payload)
@@ -335,18 +340,10 @@ async def scheduler_loop(bot, bot_username: str | None) -> None:
                         notify=True,
                     )
                 except Exception:
-                    fail_counts[key] = fail_counts.get(key, 0) + 1
-                    if fail_counts[key] >= FAIL_MARK_ATTEMPTS:
-                        log.warning(
-                            "Пуш не отправлен после %d попыток, глушу дедупом: kind=%s ref=%s lead=%s",
-                            fail_counts.pop(key), push.kind, push.ref_id, push.lead,
-                        )
-                        with SessionLocal() as db:
-                            mark_sent(db, push)
-                    else:
-                        log.exception("Пуш не отправлен: kind=%s ref=%s", push.kind, push.ref_id)
+                    # Нельзя превращать сетевой сбой в «доставлено»: пока MAX
+                    # недоступен, due-запись остаётся видимой на следующем тике.
+                    log.exception("Пуш не отправлен: user=%s kind=%s ref=%s", push.user_id, push.kind, push.ref_id)
                     continue
-                fail_counts.pop(key, None)
                 sent_unlogged[key] = push
                 try:
                     with SessionLocal() as db:

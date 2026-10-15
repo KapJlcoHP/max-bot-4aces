@@ -20,8 +20,9 @@ from bot.keyboards import (
     sugar_meal_keyboard,
 )
 from core.db.models import HealthSetting, MedCourse, RouteStep, User
-from core.db.demo import fill_demo, has_any_data, wipe_data
+from core.db.demo import fill_demo, has_any_data, is_demo_data, wipe_data
 from core.db.session import SessionLocal
+from core.diary_settings import diary_settings
 from core.services import (
     ServiceError,
     active_route,
@@ -123,11 +124,7 @@ async def diary_command(event: MessageCreated):
         if user is None or user.consent_at is None:
             await event.message.answer("Сначала откройте «МедМаршрут» — настройка дневников там.")
             return
-        enabled = (
-            db.query(HealthSetting)
-            .filter(HealthSetting.user_id == user.id, HealthSetting.enabled.is_(True))
-            .all()
-        )
+        enabled = [s for s in diary_settings(db, user.id).values() if s.enabled]
     diaries = [(s.diary, DIARY_TITLES[s.diary]) for s in enabled if s.diary in DIARY_TITLES]
     if not diaries:
         await event.message.answer("Дневники пока не выбраны — настройте их в приложении, раздел «Здоровье».")
@@ -151,10 +148,15 @@ async def demo_command(event: MessageCreated):
         if user is None or user.consent_at is None:
             await event.message.answer("Сначала откройте «МедМаршрут» и пройдите вход — потом возвращайтесь за демо-данными.")
             return
-        if has_any_data(db, user.id):
+        if has_any_data(db, user.id) and not is_demo_data(db, user.id):
             await event.message.answer("В аккаунте уже есть данные — чтобы заменить их на демо, сначала отправьте /wipe.")
             return
-        fill_demo(db, user)
+        try:
+            fill_demo(db, user)
+        except Exception:
+            log.exception("Не удалось заполнить демо для пользователя %s", user.max_user_id)
+            await event.message.answer("Не удалось загрузить демо-данные — попробуйте ещё раз.")
+            return
     await event.message.answer(
         "🎲 Аккаунт заполнен **модельными данными** для демонстрации:\n\n"
         "• маршрут «Наблюдаться по хроническому» — первые шаги выполнены\n"

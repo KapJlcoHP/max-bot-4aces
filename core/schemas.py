@@ -2,7 +2,7 @@
 
 from datetime import date as Date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 
 class OrmDto(BaseModel):
@@ -103,6 +103,7 @@ class CustomStepIn(OrmDto):
     title: str
     deadline: Date | None = None
     deadline_time: str | None = None
+    place: str = ""
 
 
 class RouteStartIn(OrmDto):
@@ -205,6 +206,8 @@ class ReportNote(OrmDto):
 
 
 class HealthReportOut(OrmDto):
+    # Внутренний snapshot окна для PDF; не меняет JSON API.
+    _window_now: datetime | None = PrivateAttr(default=None)
     period_days: int = 30
     bp_count: int = 0
     bp_avg: str | None = None  # «124/81»

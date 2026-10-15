@@ -4,8 +4,9 @@
 по включённым дневникам. Никаких оценок «норма/не норма» — правило кейса.
 """
 
+import html
 import io
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from reportlab.graphics.charts.linecharts import HorizontalLineChart
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from core.db.models import HealthRecord, User
 from core.schemas import HealthReportOut
+from core.time import report_window, user_local
 
 FONT_DIR = Path(__file__).resolve().parents[1] / "content" / "fonts"
 INK = colors.HexColor("#1B2433")
@@ -58,11 +60,11 @@ def _num(v: float | None) -> str:
     return "—" if v is None else f"{v:.1f}".rstrip("0").rstrip(".").replace(".", ",")
 
 
-def _daily_averages(rows: list[HealthRecord], getter) -> tuple[list[str], list[float | None]]:
+def _daily_averages(rows: list[HealthRecord], getter, tz: str | None = None) -> tuple[list[str], list[float | None]]:
     """Среднее за день для графика; возвращаем (подписи, значения)."""
     by_day: dict[str, tuple[str, list[float]]] = {}
     for r in rows:
-        at = r.at.astimezone() if r.at.tzinfo else r.at
+        at = user_local(r.at, tz)
         key = at.strftime("%Y-%m-%d")
         v = getter(r)
         if v is None:
@@ -134,14 +136,14 @@ def _line_chart(
     return drawing
 
 
-def _bp_chart(rows: list[HealthRecord]) -> Drawing | None:
+def _bp_chart(rows: list[HealthRecord], tz: str | None = None) -> Drawing | None:
     """Давление: систолическое, диастолическое и пульс на общей шкале."""
     ascending = list(reversed(rows))
-    labels, sys_vals = _daily_averages(ascending, lambda r: r.systolic)
+    labels, sys_vals = _daily_averages(ascending, lambda r: r.systolic, tz)
     if len([v for v in sys_vals if v is not None]) < 2:
         return None
-    _, dia_vals = _daily_averages(ascending, lambda r: r.diastolic)
-    _, pulse_vals = _daily_averages(ascending, lambda r: r.pulse)
+    _, dia_vals = _daily_averages(ascending, lambda r: r.diastolic, tz)
+    _, pulse_vals = _daily_averages(ascending, lambda r: r.pulse, tz)
     # reportlab требует числовые ряды одной длины: пропуски (например, пульс) закрываем соседними точками
     series = [
         (BLUE, _fill_gaps(sys_vals)),
@@ -154,14 +156,14 @@ def _bp_chart(rows: list[HealthRecord]) -> Drawing | None:
     )
 
 
-def _simple_chart(rows: list[HealthRecord], getter, color: colors.Color) -> Drawing | None:
+def _simple_chart(rows: list[HealthRecord], getter, color: colors.Color, tz: str | None = None) -> Drawing | None:
     ascending = list(reversed(rows))
-    labels, values = _daily_averages(ascending, getter)
+    labels, values = _daily_averages(ascending, getter, tz)
     return _line_chart(labels, [(color, values)])
 
 
-def _record_line(r: HealthRecord) -> tuple[str, str]:
-    at = r.at.astimezone() if r.at.tzinfo else r.at
+def _record_line(r: HealthRecord, tz: str | None = None) -> tuple[str, str]:
+    at = user_local(r.at, tz)
     when = at.strftime("%d.%m.%Y %H:%M")
     context = " · ".join(x for x in (r.tag, r.meal_tag) if x)
     if r.type == "bp":
@@ -188,9 +190,10 @@ def build_health_pdf(db: Session, user: User, report: HealthReportOut, enabled: 
         leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm,
         title="МедМаршрут — сводка для врача",
     )
-    now = datetime.now(timezone.utc).astimezone()
-    period_start = (now - timedelta(days=30)).strftime("%d.%m.%Y")
-    patient = f"{user.first_name} {user.last_name}".strip() or "Пациент"
+    now = report._window_now or datetime.now(timezone.utc)
+    period_start_utc, period_end_utc, local_start, local_now = report_window(now, user.tz)
+    period_start = local_start.strftime("%d.%m.%Y")
+    patient = html.escape(f"{user.first_name} {user.last_name}".strip() or "Пациент")
 
     story: list = [
         Paragraph("МедМаршрут", st["title"]),
@@ -198,8 +201,8 @@ def build_health_pdf(db: Session, user: User, report: HealthReportOut, enabled: 
         Paragraph("Сводка для врача · только фактические измерения", st["sub"]),
         Spacer(1, 6),
         Paragraph(
-            f"Период: {period_start} — {now.strftime('%d.%m.%Y')} · Пациент: {patient} · "
-            f"Сформировано {now.strftime('%d.%m.%Y %H:%M')}",
+            f"Период: {period_start} — {local_now.strftime('%d.%m.%Y')} · Пациент: {patient} · "
+            f"Сформировано {local_now.strftime('%d.%m.%Y %H:%M')}",
             st["sub"],
         ),
         Spacer(1, 4),
@@ -226,18 +229,18 @@ def build_health_pdf(db: Session, user: User, report: HealthReportOut, enabled: 
     if enabled.get("bp"):
         rows = (
             db.query(HealthRecord)
-            .filter(HealthRecord.user_id == user.id, HealthRecord.type == "bp", HealthRecord.at >= now - timedelta(days=30))
+            .filter(HealthRecord.user_id == user.id, HealthRecord.type == "bp", HealthRecord.at >= period_start_utc, HealthRecord.at <= period_end_utc)
             .order_by(HealthRecord.at.desc())
             .limit(30)
             .all()
         )
         if rows:
             story.append(Paragraph("Давление и пульс", st["h2"]))
-            chart = _bp_chart(rows)
+            chart = _bp_chart(rows, user.tz)
             if chart:
                 story.append(chart)
                 story.append(Spacer(1, 4))
-            data = [["Дата", "Значение"]] + [_record_line(r) for r in rows]
+            data = [["Дата", "Значение"]] + [_record_line(r, user.tz) for r in rows]
             table = Table(data, colWidths=[34 * mm, None])
             table.setStyle(TableStyle([
                 ("FONTNAME", (0, 0), (-1, 0), "DejaVu-Bold"),
@@ -261,7 +264,7 @@ def build_health_pdf(db: Session, user: User, report: HealthReportOut, enabled: 
             continue
         rows = (
             db.query(HealthRecord)
-            .filter(HealthRecord.user_id == user.id, HealthRecord.type == dtype, HealthRecord.at >= now - timedelta(days=30))
+            .filter(HealthRecord.user_id == user.id, HealthRecord.type == dtype, HealthRecord.at >= period_start_utc, HealthRecord.at <= period_end_utc)
             .order_by(HealthRecord.at.desc())
             .limit(30)
             .all()
@@ -269,11 +272,11 @@ def build_health_pdf(db: Session, user: User, report: HealthReportOut, enabled: 
         if not rows:
             continue
         story.append(Paragraph(title, st["h2"]))
-        chart = _simple_chart(rows, getter, color)
+        chart = _simple_chart(rows, getter, color, user.tz)
         if chart:
             story.append(chart)
             story.append(Spacer(1, 4))
-        data = [["Дата", "Значение"]] + [_record_line(r) for r in rows]
+        data = [["Дата", "Значение"]] + [_record_line(r, user.tz) for r in rows]
         table = Table(data, colWidths=[34 * mm, None])
         table.setStyle(TableStyle([
             ("FONTNAME", (0, 0), (-1, 0), "DejaVu-Bold"),
@@ -311,8 +314,11 @@ def build_health_pdf(db: Session, user: User, report: HealthReportOut, enabled: 
     if report.notes:
         story.append(Paragraph("Заметки о самочувствии", st["h2"]))
         for n in report.notes:
-            at = n.at.astimezone() if n.at.tzinfo else n.at
-            story.append(Paragraph(f"<b>{at.strftime('%d.%m.%Y %H:%M')}</b> — «{n.note}»", st["body"]))
+            at = user_local(n.at, user.tz)
+            story.append(Paragraph(
+                f"<b>{at.strftime('%d.%m.%Y %H:%M')}</b> — «{html.escape(n.note)}»",
+                st["body"],
+            ))
 
     if not (agg or report.meds or report.notes):
         story.append(Spacer(1, 8))

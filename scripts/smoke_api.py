@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 os.environ["DATABASE_URL"] = "sqlite:///./database/_smoke_api.db"
 os.environ["DEV_BYPASS_AUTH"] = "true"
 
@@ -85,9 +87,15 @@ def main() -> None:
         check("невалидное АД → 422", r.status_code == 422, r.text)
 
         r = client.get("/api/v1/health/settings")
+        diaries = {item["diary"]: item["enabled"] for item in r.json()["diaries"]}
         check(
+<<<<<<< Updated upstream
             "health/settings без онбординга: дефолт все выключены",
             r.status_code == 200 and len(r.json()["diaries"]) == 4 and all(not d["enabled"] for d in r.json()["diaries"]),
+=======
+            "effective-настройки дневников после согласия",
+            r.status_code == 200 and diaries == {"bp": True, "weight": True, "sugar": False, "mood": True},
+>>>>>>> Stashed changes
             r.text,
         )
         r = client.put("/api/v1/health/settings", json={"diaries": [{"diary": "bp", "enabled": True, "push_time": "08:30"}]})

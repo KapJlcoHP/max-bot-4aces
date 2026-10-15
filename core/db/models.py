@@ -7,7 +7,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    """Текущее время UTC без tzinfo для DateTime без timezone в SQLite/SQL."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):
@@ -183,7 +184,9 @@ class NotificationLog(Base):
     """Журнал пушей бота: один и тот же напоминатель не отправляем дважды (lead: day | hour | now)."""
 
     __tablename__ = "notification_log"
-    __table_args__ = (UniqueConstraint("kind", "ref_id", "lead", name="uq_notification_kind_ref_lead"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "kind", "ref_id", "lead", name="uq_notification_user_kind_ref_lead"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -206,7 +209,9 @@ class ExportRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
-
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | processing | retry | failed | sent
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 class BpRecord(Base):
     """Устаревшая таблица АД — оставлена для разовой миграции в HealthRecord."""

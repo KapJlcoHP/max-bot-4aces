@@ -5,7 +5,6 @@
 
 from datetime import date, datetime, time as dtime
 from zoneinfo import ZoneInfo
-
 from sqlalchemy.orm import Session
 
 from core.db.models import (
@@ -18,6 +17,7 @@ from core.db.models import (
     User,
     utcnow,
 )
+from core.time import as_utc, db_utc, user_zone
 
 HEALTH_TYPES = {"bp", "weight", "sugar", "mood"}
 MOODS = ("Хорошо", "Нормально", "Плохо")
@@ -37,7 +37,12 @@ def active_route(db: Session, user_id: int) -> Route | None:
 
 
 def complete_route_step(
-    db: Session, user_id: int, step_id: int, note: str | None = None, done_date: date | None = None
+    db: Session,
+    user_id: int,
+    step_id: int,
+    note: str | None = None,
+    done_date: date | None = None,
+    commit: bool = True,
 ) -> RouteStep:
     """Шаг → done, следующий незавершённый → current. Возвращает выполненный шаг."""
     route = active_route(db, user_id)
@@ -55,7 +60,11 @@ def complete_route_step(
     step.completed_at = utcnow()
     step.note = note or None
     if done_date:
-        step.completed_at = datetime.combine(done_date, dtime(12, 0))
+        owner = db.get(User, user_id)
+        step.completed_at = db_utc(
+            datetime.combine(done_date, dtime(12, 0)),
+            user_zone(owner.tz if owner else None),
+        )
 
     next_step = (
         db.query(RouteStep)
@@ -65,8 +74,9 @@ def complete_route_step(
     )
     if next_step is not None:
         next_step.status = "current"
-    db.commit()
-    db.refresh(step)
+    if commit:
+        db.commit()
+        db.refresh(step)
     return step
 
 
@@ -100,11 +110,13 @@ def uncomplete_route_step(db: Session, user_id: int, step_id: int) -> RouteStep:
 
 def user_today(user: User, now: datetime | None = None) -> date:
     """Текущая дата в часовом поясе пользователя."""
+    # ZoneInfo остаётся локальной точкой подмены для legacy callers/tests;
+    # при плохом значении используется та же безопасная конвенция.
     try:
         zone = ZoneInfo(user.tz or "Europe/Moscow")
     except Exception:
-        zone = datetime.now().astimezone().tzinfo
-    return (now or utcnow()).astimezone(zone).date()
+        zone = user_zone(user.tz)
+    return as_utc(now or utcnow()).astimezone(zone).date()
 
 
 def take_med(db: Session, user_id: int, course_id: int, at_time: str, day: date | None = None) -> MedIntake:
@@ -128,10 +140,10 @@ def take_med(db: Session, user_id: int, course_id: int, at_time: str, day: date 
         .first()
     )
     if intake is None:
-        intake = MedIntake(course_id=course.id, user_id=user_id, day=day, at_time=at_time, taken_at=utcnow())
+        intake = MedIntake(course_id=course.id, user_id=user_id, day=day, at_time=at_time, taken_at=db_utc(utcnow()))
         db.add(intake)
     elif intake.taken_at is None:
-        intake.taken_at = utcnow()
+        intake.taken_at = db_utc(utcnow())
     db.commit()
     db.refresh(intake)
     return intake
@@ -145,7 +157,7 @@ def complete_reminder(db: Session, user_id: int, reminder_id: int) -> Reminder:
     if row is None:
         raise ServiceError("Напоминание не найдено", 404)
     if row.done_at is None:
-        row.done_at = utcnow()
+        row.done_at = db_utc(utcnow())
         db.commit()
         db.refresh(row)
     return row
@@ -159,7 +171,7 @@ def add_health_record(db: Session, user_id: int, type: str, **fields) -> HealthR
     if type not in HEALTH_TYPES:
         raise ServiceError("Неизвестный дневник", 404)
 
-    row = HealthRecord(user_id=user_id, type=type, at=utcnow(), tag=fields.get("tag"), note=fields.get("note"))
+    row = HealthRecord(user_id=user_id, type=type, at=db_utc(utcnow()), tag=fields.get("tag"), note=fields.get("note"))
     if type == "bp":
         systolic, diastolic, pulse = fields.get("systolic"), fields.get("diastolic"), fields.get("pulse")
         if systolic is None or diastolic is None:
