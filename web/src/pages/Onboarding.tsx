@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import type { HealthSetting, HealthType } from "../types";
+import { useApp } from "../App";
+import type { ConsentPayload, HealthSetting, HealthType, Organization, Region, UserDto } from "../types";
 import { Button, Switch } from "../components/ui";
 import { I } from "../icons";
+import OrganizationMap from "../components/OrganizationMap";
 
 const DIARY_META: { key: HealthType; title: string; hint: string; on: boolean }[] = [
   { key: "bp", title: "Давление и пульс", hint: "нужен тонометр", on: true },
@@ -33,25 +35,88 @@ function detectTz(): string {
 }
 
 export default function Onboarding() {
+  const { user, updateUser } = useApp();
   const [step, setStep] = useState(0);
   const [agreed, setAgreed] = useState(false);
   const [diaries, setDiaries] = useState(DIARY_META);
   const [busy, setBusy] = useState(false);
   const [tz, setTz] = useState(detectTz);
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [regionsLoading, setRegionsLoading] = useState(true);
+  const [regionsError, setRegionsError] = useState(false);
+  const [region, setRegion] = useState(user.region || "");
+  const [clinics, setClinics] = useState<Organization[] | null>(null);
+  const [clinicsLoading, setClinicsLoading] = useState(false);
+  const [clinicsError, setClinicsError] = useState(false);
+  const [clinicRetry, setClinicRetry] = useState(0);
+  const [attachedClinicId, setAttachedClinicId] = useState<number | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const clinicsRequestId = useRef(0);
+
+  const loadRegions = () => {
+    setRegionsLoading(true);
+    setRegionsError(false);
+    api.get<Region[]>("/api/v1/regions")
+      .then((items) => {
+        setRegions(items);
+        if (region && !items.some((item) => item.title === region)) setRegion("");
+      })
+      .catch(() => setRegionsError(true))
+      .finally(() => setRegionsLoading(false));
+  };
+
+  useEffect(loadRegions, []);
+
+  useEffect(() => {
+    const requestId = ++clinicsRequestId.current;
+    setAttachedClinicId(null);
+    setClinics(null);
+    setClinicsError(false);
+    if (!region) {
+      setClinicsLoading(false);
+      return;
+    }
+    setClinicsLoading(true);
+    const params = new URLSearchParams({ org_type: "Поликлиники", region });
+    api.get<Organization[]>(`/api/v1/orgs?${params}`)
+      .then((items) => {
+        if (requestId === clinicsRequestId.current) setClinics(items);
+      })
+      .catch(() => {
+        if (requestId === clinicsRequestId.current) setClinicsError(true);
+      })
+      .finally(() => {
+        if (requestId === clinicsRequestId.current) setClinicsLoading(false);
+      });
+  }, [region, clinicRetry]);
 
   const toggleDiary = (key: HealthType, on: boolean) =>
     setDiaries((prev) => prev.map((d) => (d.key === key ? { ...d, on } : d)));
 
   const finish = async () => {
+    const validRegion = regions.some((item) => item.title === region);
+    const validClinic = clinics?.some((item) => item.id === attachedClinicId) ?? false;
+    if (!validRegion) {
+      setFormError("Выберите регион из списка");
+      setStep(2);
+      return;
+    }
+    if (!validClinic || attachedClinicId === null) {
+      setFormError("Выберите поликлинику, чтобы продолжить");
+      setStep(2);
+      return;
+    }
+    setFormError(null);
     setBusy(true);
     try {
-      await api.post("/api/v1/me/consent", { tz });
       const enabled = diaries.filter((d) => d.on).map((d) => d.key);
       // push_time не передаём (null): онбординг не должен сбрасывать настроенное время пуша
       const payload: HealthSetting[] = DIARY_META.map((d) => ({ diary: d.key, enabled: enabled.includes(d.key), push_time: null }));
-      await api.put("/api/v1/health/settings", { diaries: payload });
-      window.location.reload(); // refreshUser + сброс гейта
+      const consent: ConsentPayload = { tz, region, attached_clinic_id: attachedClinicId, diaries: payload };
+      const saved = await api.post<UserDto>("/api/v1/me/consent", consent);
+      updateUser(saved);
     } catch {
+      setFormError("Не удалось сохранить настройки. Проверьте соединение и попробуйте ещё раз.");
       setBusy(false);
     }
   };
@@ -88,7 +153,7 @@ export default function Onboarding() {
               </div>
             </div>
           </div>
-          <div className="steps"><i className="on" /><i /><i /></div>
+          <div className="steps"><i className="on" /><i /><i /><i /></div>
           <div className="foot"><Button onClick={() => setStep(1)}>Дальше</Button></div>
         </>
       )}
@@ -121,7 +186,7 @@ export default function Onboarding() {
               Подробнее — в разделе «О приложении» вашего профиля
             </div>
           </div>
-          <div className="steps"><i /><i className="on" /><i /></div>
+          <div className="steps"><i /><i className="on" /><i /><i /></div>
           <div className="foot">
             <Button disabled={!agreed} onClick={() => setStep(2)}>Продолжить</Button>
           </div>
@@ -129,6 +194,38 @@ export default function Onboarding() {
       )}
 
       {step === 2 && (
+        <>
+          <div className="header">
+            <div className="hdr-title" style={{ paddingLeft: 16 }}><h1>Ваш регион и поликлиника</h1></div>
+          </div>
+          <div className="screen-body ob">
+            <div className="greeting">
+              <h2 style={{ fontSize: 21 }}>Выберите регион</h2>
+              <p>Покажем организации рядом и сохраним вашу поликлинику для быстрого доступа.</p>
+            </div>
+            {regionsError && <div className="card" role="alert">Не удалось загрузить регионы. <button className="cell-h-btn" onClick={loadRegions}>Повторить</button></div>}
+            {!regionsError && <select className="tz-select" value={region} disabled={regionsLoading} onChange={(e) => { setRegion(e.target.value); setFormError(null); }} aria-label="Регион">
+              <option value="">{regionsLoading ? "Загрузка регионов…" : "Выберите регион"}</option>
+              {regions.map((item) => <option key={item.key} value={item.title}>{item.title}</option>)}
+            </select>}
+            {region && clinicsError && <div className="card" role="alert">Не удалось загрузить поликлиники. <button className="cell-h-btn" onClick={() => setClinicRetry((value) => value + 1)}>Повторить</button></div>}
+            {region && !clinicsError && clinicsLoading && <div className="muted">Загружаем поликлиники…</div>}
+            {region && !clinicsLoading && !clinicsError && clinics && clinics.length === 0 && <div className="card" role="alert">В выбранном регионе пока нет поликлиник.</div>}
+            {clinics && clinics.length > 0 && <>
+              <select className="tz-select" value={attachedClinicId ?? ""} onChange={(e) => { setAttachedClinicId(e.target.value ? Number(e.target.value) : null); setFormError(null); }} aria-label="Поликлиника">
+                <option value="">Выберите поликлинику</option>
+                {clinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.title}</option>)}
+              </select>
+              <OrganizationMap organizations={clinics} selectedId={attachedClinicId} onSelect={(id) => { setAttachedClinicId(id); setFormError(null); }} />
+            </>}
+            {formError && <div className="card" role="alert" style={{ color: "var(--red)" }}>{formError}</div>}
+          </div>
+          <div className="steps"><i /><i /><i className="on" /><i /></div>
+          <div className="foot"><Button disabled={regionsLoading || clinicsLoading || !attachedClinicId} onClick={() => { setFormError(null); setStep(3); }}>Продолжить</Button></div>
+        </>
+      )}
+
+      {step === 3 && (
         <>
           <div className="header">
             <div className="hdr-title" style={{ paddingLeft: 16 }}><h1>Дневники под себя</h1></div>
@@ -148,21 +245,16 @@ export default function Onboarding() {
             </div>
             <div className="card" style={{ padding: "8px 16px" }}>
               <div className="rem-item" style={{ paddingTop: 10, paddingBottom: 10 }}>
-                <div className="what">
-                  <b>Часовой пояс</b>
-                  <small>Определили с вашего телефона — по нему бот будет будить вовремя</small>
-                </div>
+                <div className="what"><b>Часовой пояс</b><small>Определили с вашего телефона — по нему бот будет будить вовремя</small></div>
               </div>
               <select className="tz-select" style={{ marginTop: 0, marginBottom: 10 }} value={tz} onChange={(e) => setTz(e.target.value)} aria-label="Часовой пояс">
                 {!TZ_OPTIONS.some((o) => o.tz === tz) && <option value={tz}>{tz}</option>}
-                {TZ_OPTIONS.map((o) => (
-                  <option key={o.tz} value={o.tz}>{o.label}</option>
-                ))}
+                {TZ_OPTIONS.map((o) => <option key={o.tz} value={o.tz}>{o.label}</option>)}
               </select>
             </div>
           </div>
-          <div className="steps"><i /><i /><i className="on" /></div>
-          <div className="foot"><Button disabled={busy} onClick={finish}>{busy ? "Настраиваем…" : "Начать"}</Button></div>
+          <div className="steps"><i /><i /><i /><i className="on" /></div>
+          <div className="foot"><Button disabled={busy || !attachedClinicId} onClick={finish}>{busy ? "Настраиваем…" : "Начать"}</Button></div>
         </>
       )}
     </div>

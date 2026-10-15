@@ -50,9 +50,14 @@ def _migrate_sqlite() -> None:
             ("avatar_url", "VARCHAR(500) NULL DEFAULT ''"),
             ("tz", "VARCHAR(64) NOT NULL DEFAULT 'Europe/Moscow'"),
             ("region", "VARCHAR(100) NOT NULL DEFAULT ''"),
+            ("attached_clinic_id", "INTEGER NULL"),
         ],
         "route_steps": [("source", "VARCHAR(16) NOT NULL DEFAULT 'template'")],
-        "organizations": [("region", "VARCHAR(100) NOT NULL DEFAULT ''")],
+        "organizations": [
+            ("region", "VARCHAR(100) NOT NULL DEFAULT ''"),
+            ("lat", "FLOAT NULL"),
+            ("lon", "FLOAT NULL"),
+        ],
         "reminders": [("sent_at", "DATETIME NULL"), ("done_at", "DATETIME NULL")],
         "health_settings": [("push_time", "VARCHAR(5) NULL")],
         "export_requests": [
@@ -75,6 +80,12 @@ def _migrate_sqlite() -> None:
                 if name not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
             inspector.clear_cache()
+
+        if "users" in inspector.get_table_names():
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_users_attached_clinic_id "
+                "ON users (attached_clinic_id)"
+            ))
 
         # Существующие заявки получают явные состояния. Отправленные заявки
         # никогда не должны блокировать новую заявку пользователя.

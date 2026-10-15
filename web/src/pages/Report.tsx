@@ -87,16 +87,11 @@ export default function Report() {
     setBusy(true);
     try {
       // единый путь для всех устройств: файл доставляет бот в чат
-<<<<<<< Updated upstream
-      await api.post("/api/v1/health/send-to-bot", {});
-      showToast("Собираю — PDF придёт в чат бота через несколько секунд");
-=======
       const requested = await api.post<{ status: QueueStatus }>("/api/v1/health/send-to-bot", {});
       setQueue((prev) => ({ ...(prev ?? { attempts: 0, can_retry: false }), status: requested.status }));
       showToast(requested.status === "queued" ? "Собираю — PDF придёт в чат бота после обработки" : "PDF уже находится в очереди");
       loadQueue();
       setBusy(false);
->>>>>>> Stashed changes
       return;
     } catch {
       showToast("Не удалось отправить в чат — пробуем скачать…");

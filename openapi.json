@@ -26,7 +26,6 @@
     "/api/v1/me/consent": {
       "post": {
         "summary": "Give Consent",
-        "description": "Фиксируем согласие на обработку персональных данных (+ часовой пояс с телефона).",
         "operationId": "give_consent_api_v1_me_consent_post",
         "requestBody": {
           "content": {
@@ -72,7 +71,7 @@
     "/api/v1/me/data": {
       "delete": {
         "summary": "Delete My Data",
-        "description": "Право на удаление (152-ФЗ, ст. 21): стираем аккаунт целиком — при следующем входе\nпользователь зарегистрируется заново (согласие + демо-данные).",
+        "description": "Стереть аккаунт целиком; при следующем входе профиль создаётся заново.",
         "operationId": "delete_my_data_api_v1_me_data_delete",
         "responses": {
           "200": {
@@ -127,7 +126,6 @@
     "/api/v1/regions": {
       "get": {
         "summary": "Regions",
-        "description": "Справочник регионов из content/regions.json — источник и организаций (сид-синк на старте).",
         "operationId": "regions_api_v1_regions_get",
         "responses": {
           "200": {
@@ -172,7 +170,6 @@
     "/api/v1/catalog/{key}/steps": {
       "get": {
         "summary": "Catalog Steps",
-        "description": "Шаги шаблона — конструктору нужны тумблеры «включить/выключить шаг» до создания маршрута.",
         "operationId": "catalog_steps_api_v1_catalog__key__steps_get",
         "parameters": [
           {
@@ -234,7 +231,6 @@
       },
       "delete": {
         "summary": "Delete Route",
-        "description": "Удалить активный маршрут целиком (шаги уходят каскадом).",
         "operationId": "delete_route_api_v1_route_delete",
         "responses": {
           "200": {
@@ -289,7 +285,6 @@
     "/api/v1/route/steps": {
       "post": {
         "summary": "Add Step",
-        "description": "Новый шаг маршрута. По умолчанию вставаем сразу после текущего шага;\nafter_step_id нужен, чтобы несколько назначений подряд шли в порядке добавления.",
         "operationId": "add_step_api_v1_route_steps_post",
         "parameters": [
           {
@@ -346,7 +341,6 @@
     "/api/v1/route/steps/{step_id}": {
       "delete": {
         "summary": "Delete Step",
-        "description": "Удалить непройденный шаг; если удалили текущий — текущим становится следующий pending.",
         "operationId": "delete_step_api_v1_route_steps__step_id__delete",
         "parameters": [
           {
@@ -384,7 +378,6 @@
       },
       "patch": {
         "summary": "Update Step",
-        "description": "Изменить срок шага (в том числе шаблонного) — выполняенный не меняем.",
         "operationId": "update_step_api_v1_route_steps__step_id__patch",
         "parameters": [
           {
@@ -490,7 +483,6 @@
     "/api/v1/route/steps/{step_id}/uncomplete": {
       "post": {
         "summary": "Uncomplete Step",
-        "description": "Отменить выполнение шага (отметили случайно — можно снять).",
         "operationId": "uncomplete_step_api_v1_route_steps__step_id__uncomplete_post",
         "parameters": [
           {
@@ -644,6 +636,16 @@
               "default": "",
               "title": "Org Type"
             }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Region"
+            }
           }
         ],
         "responses": {
@@ -667,6 +669,25 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/maps/config": {
+      "get": {
+        "summary": "Maps Config",
+        "description": "Публичная конфигурация клиентской части Яндекс.Карт.",
+        "operationId": "maps_config_api_v1_maps_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapConfigDto"
                 }
               }
             }
@@ -812,6 +833,64 @@
         }
       }
     },
+    "/api/v1/family": {
+      "get": {
+        "summary": "Family",
+        "operationId": "family_api_v1_family_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FamilyMemberDto"
+                  },
+                  "type": "array",
+                  "title": "Response Family Api V1 Family Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add Family Member",
+        "operationId": "add_family_member_api_v1_family_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyAddIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyMemberDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health/settings": {
       "get": {
         "summary": "Health Settings",
@@ -937,9 +1016,22 @@
       }
     },
     "/api/v1/health/send-to-bot": {
+      "get": {
+        "summary": "Pdf In Chat Status",
+        "operationId": "pdf_in_chat_status_api_v1_health_send_to_bot_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
       "post": {
         "summary": "Request Pdf In Chat",
-        "description": "Попросить бота прислать PDF-сводку в чат (на телефонах вебвью MAX не умеет скачивать).",
         "operationId": "request_pdf_in_chat_api_v1_health_send_to_bot_post",
         "responses": {
           "200": {
@@ -956,7 +1048,6 @@
     "/api/v1/health/export": {
       "get": {
         "summary": "Export Health Pdf",
-        "description": "PDF-сводка дневников для врача. Авторизация: initData-заголовок ИЛИ ?t=<токен из /health/export-token>.",
         "operationId": "export_health_pdf_api_v1_health_export_get",
         "parameters": [
           {
@@ -1050,7 +1141,6 @@
     "/api/v1/health/{type}/{record_id}": {
       "delete": {
         "summary": "Delete Health Record",
-        "description": "Удалить одну запись дневника (ошибочно внесённую).",
         "operationId": "delete_health_record_api_v1_health__type___record_id__delete",
         "parameters": [
           {
@@ -1097,7 +1187,6 @@
     "/api/v1/health/report": {
       "get": {
         "summary": "Health Report",
-        "description": "Сводка для врача: агрегаты за 30 дней по включённым дневникам, только факты.",
         "operationId": "health_report_api_v1_health_report_get",
         "responses": {
           "200": {
@@ -1240,64 +1329,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MedsOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/family": {
-      "get": {
-        "summary": "Family",
-        "operationId": "family_api_v1_family_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/FamilyMemberDto"
-                  },
-                  "type": "array",
-                  "title": "Response Family Api V1 Family Get"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "summary": "Add Family Member",
-        "operationId": "add_family_member_api_v1_family_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FamilyAddIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FamilyMemberDto"
                 }
               }
             }
@@ -1463,11 +1494,47 @@
               }
             ],
             "title": "Tz"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "diaries": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/HealthSettingDto"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diaries"
+          },
+          "attached_clinic_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attached Clinic Id"
           }
         },
         "type": "object",
         "title": "ConsentIn",
-        "description": "Согласие на обработку данных + часовой пояс с телефона (для времени пушей)."
+        "description": "Согласие и настройки первого входа сохраняются одной транзакцией."
       },
       "CustomStepIn": {
         "properties": {
@@ -1497,6 +1564,11 @@
               }
             ],
             "title": "Deadline Time"
+          },
+          "place": {
+            "type": "string",
+            "title": "Place",
+            "default": ""
           }
         },
         "type": "object",
@@ -1972,6 +2044,25 @@
         ],
         "title": "HealthSettingsOut"
       },
+      "MapConfigDto": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "api_key": {
+            "type": "string",
+            "title": "Api Key",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "MapConfigDto",
+        "description": "Публичная конфигурация JS API: сам ключ ограничивается доменом в кабинете."
+      },
       "MedAddIn": {
         "properties": {
           "name": {
@@ -2150,6 +2241,28 @@
             },
             "type": "array",
             "title": "Services"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
           }
         },
         "type": "object",
@@ -2393,6 +2506,17 @@
               }
             ],
             "title": "Region"
+          },
+          "attached_clinic_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attached Clinic Id"
           }
         },
         "type": "object",
@@ -2614,6 +2738,17 @@
             "type": "string",
             "title": "Region",
             "default": ""
+          },
+          "attached_clinic_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attached Clinic Id"
           },
           "consent_at": {
             "anyOf": [

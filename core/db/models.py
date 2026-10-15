@@ -28,9 +28,13 @@ class User(Base):
     avatar_url: Mapped[str] = mapped_column(String(500), default="")  # фото из MAX, если платформа его отдала
     tz: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")  # IANA-зона с телефона — «настенные» времена пушей
     region: Mapped[str] = mapped_column(String(100), default="")  # регион из content/regions.json
+    attached_clinic_id: Mapped[int | None] = mapped_column(
+        ForeignKey("organizations.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     routes: Mapped[list["Route"]] = relationship(back_populates="user")
+    attached_clinic: Mapped["Organization | None"] = relationship(foreign_keys=[attached_clinic_id])
 
 
 class Route(Base):

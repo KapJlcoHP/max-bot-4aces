@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl
 
@@ -21,6 +22,23 @@ INIT_DATA_CLOCK_SKEW = timedelta(minutes=1)
 
 class AuthError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class PendingUser:
+    """Проверенный профиль MAX до согласия; в БД не записывается."""
+
+    max_user_id: int
+    first_name: str
+    last_name: str
+    email: str
+    avatar_url: str
+    region: str
+    id: int = 0
+    notifications_on: bool = True
+    tz: str = "Europe/Moscow"
+    attached_clinic_id: int | None = None
+    consent_at: None = None
 
 
 def test_token_ok(test_token: str | None) -> bool:
@@ -86,8 +104,8 @@ def _parse_user(payload: dict) -> dict:
     return user
 
 
-def get_or_create_user(db: Session, init_data: str | None, test_token: str | None = None) -> User:
-    """Валидирует initData (если передан) и заводит пользователя с демо-данными при первом входе.
+def get_authenticated_user(db: Session, init_data: str | None, test_token: str | None = None) -> User | PendingUser:
+    """Проверяет initData и не записывает новый профиль до согласия.
 
     При dev_bypass_auth и отсутствии/невалидном initData работаем под демо-пользователем.
     Если initData нет/невалиден, но передан верный X-Test-Token — работаем под тестовой
@@ -114,7 +132,7 @@ def get_or_create_user(db: Session, init_data: str | None, test_token: str | Non
     max_id = user_payload["id"]
     user = db.query(User).filter(User.max_user_id == max_id).first()
     if user is None:
-        user = User(
+        return PendingUser(
             max_user_id=max_id,
             first_name=user_payload.get("first_name") or "Пользователь",
             last_name=user_payload.get("last_name") or "",
@@ -122,13 +140,28 @@ def get_or_create_user(db: Session, init_data: str | None, test_token: str | Non
             avatar_url=user_payload.get("avatar_url") or user_payload.get("photo_url") or "",
             region=pilot_region(),  # регион пилотного запуска — потом выбирается в профиле
         )
-        # чистый аккаунт: маршрут и дневники пользователь заводит сам
+    # До согласия существующий профиль не обновляем. После согласия фото из MAX
+    # может измениться; обновляем его при следующем входе.
+    fresh_avatar = user_payload.get("avatar_url") or user_payload.get("photo_url") or ""
+    if user.consent_at is not None and fresh_avatar and fresh_avatar != user.avatar_url:
+        user.avatar_url = fresh_avatar
+        db.commit()
+    return user
+
+
+def get_or_create_user(db: Session, init_data: str | None, test_token: str | None = None) -> User:
+    """Backward-compatible helper for bot/callers that expect eager creation."""
+    user = get_authenticated_user(db, init_data, test_token=test_token)
+    if isinstance(user, PendingUser):
+        user = User(
+            max_user_id=user.max_user_id,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            email=user.email,
+            avatar_url=user.avatar_url,
+            region=user.region,
+        )
         db.add(user)
         db.commit()
-    else:
-        # фото из MAX может появиться/смениться между запусками — подтягиваем при входе
-        fresh_avatar = user_payload.get("avatar_url") or user_payload.get("photo_url") or ""
-        if fresh_avatar and fresh_avatar != user.avatar_url:
-            user.avatar_url = fresh_avatar
-            db.commit()
+        db.refresh(user)
     return user

@@ -242,6 +242,25 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 .org .acts { display: flex; gap: 10px; margin-top: 12px; }
 .org .acts .btn { height: 44px; font-size: 14px; border-radius: 12px; }
 
+/* карта организаций: при недоступном API остаётся компактный понятный фолбэк */
+.organization-map-wrap { grid-column: 1 / -1; position: relative; min-height: 188px; }
+.organization-map { visibility: hidden; width: 100%; height: 260px; overflow: hidden; border-radius: var(--r); background: var(--blue-tint); box-shadow: var(--shadow); }
+.organization-map.is-ready { visibility: visible; }
+.map-fallback {
+  min-height: 188px; padding: 24px 18px; border: 1px dashed var(--border); border-radius: var(--r);
+  background: #fff; color: var(--muted); display: flex; align-items: center; justify-content: center;
+  gap: 10px; text-align: center; font-size: 13.5px; box-shadow: var(--shadow);
+}
+.map-fallback-pin { color: var(--blue); font-size: 30px; line-height: 1; }
+.organization-marker {
+  width: 34px; height: 34px; border: 3px solid #fff; border-radius: 50%; background: var(--blue);
+  box-shadow: 0 3px 12px rgba(15, 42, 90, 0.28); cursor: pointer; position: relative;
+}
+.organization-marker::after { content: ""; position: absolute; inset: 8px; border-radius: 50%; background: #fff; }
+.organization-marker.selected { background: var(--red); transform: scale(1.15); }
+.organization-marker.selected::after { background: #fff; }
+.selected-clinic { outline: 2px solid var(--blue); outline-offset: 2px; }
+
 /* маршрут: таймлайн + документы */
 .tl { display: flex; flex-direction: column; }
 .tl-item { display: flex; gap: 12px; position: relative; padding-bottom: 14px; }

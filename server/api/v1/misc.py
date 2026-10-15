@@ -12,11 +12,14 @@ from core.schemas import (
     ChecklistOut,
     FamilyAddIn,
     FamilyMemberDto,
+    MapConfigDto,
     OrganizationDto,
     ReminderDto,
 )
 from core.time import db_utc, user_local, user_zone
-from .common import consented_user, db_session
+from core.config import get_settings
+from server.deps import PendingUser
+from .common import consented_user, current_user, db_session
 
 router = APIRouter()
 
@@ -60,17 +63,30 @@ def add_checklist_item(body: ChecklistAddIn, user: User = Depends(consented_user
 def orgs(
     q: str = Query(default=""),
     org_type: str = Query(default=""),
-    user: User = Depends(consented_user),
+    region: str = Query(default=""),
+    user: User | PendingUser = Depends(current_user),
     db: Session = Depends(db_session),
 ):
+    # При прямом вызове старых unit-тестов FastAPI не успевает развернуть Query.
+    q = q if isinstance(q, str) else ""
+    org_type = org_type if isinstance(org_type, str) else ""
+    region = region if isinstance(region, str) else ""
     query = db.query(Organization)
-    if user.region:
-        query = query.filter(Organization.region == user.region)
+    selected_region = region or user.region
+    if selected_region:
+        query = query.filter(Organization.region == selected_region)
     if org_type and org_type != "Все":
         query = query.filter(Organization.org_type == org_type)
     if q:
         query = query.filter(Organization.title.ilike(f"%{q}%"))
     return [OrganizationDto.model_validate(o) for o in query.all()]
+
+
+@router.get("/maps/config", response_model=MapConfigDto)
+def maps_config():
+    """Публичная конфигурация клиентской части Яндекс.Карт."""
+    api_key = getattr(get_settings(), "yandex_maps_api_key", "")
+    return MapConfigDto(enabled=bool(api_key), api_key=api_key)
 
 
 @router.get("/orgs/{org_id}", response_model=OrganizationDto)

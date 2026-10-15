@@ -12,7 +12,7 @@ from datetime import date, datetime, time as dtime, timedelta
 from sqlalchemy.orm import Session
 
 from core.db.models import (
-    ChecklistItem, ExportRequest, FamilyMember, HealthRecord, HealthSetting,
+    BpRecord, ChecklistItem, ExportRequest, FamilyMember, HealthRecord, HealthSetting,
     MedCourse, MedIntake, NotificationLog, Reminder, Route, RouteStep, User,
 )
 from core.db.seed import build_route_for, pilot_region
@@ -218,33 +218,6 @@ def fill_demo(db: Session, user: User) -> None:
                             taken_at=_at(day, int(at_time[:2]), int(at_time[3:]), user.tz),
                         ))
 
-<<<<<<< Updated upstream
-    # --- курсы лекарств + отметки приёма за 30 дней ---
-    courses = [
-        MedCourse(user_id=user.id, name="Эналаприл 10 мг", times=["08:00", "20:00"],
-                  until=TODAY + timedelta(days=27)),
-        MedCourse(user_id=user.id, name="Аторвастатин 20 мг", times=["21:00"],
-                  until=TODAY + timedelta(days=27)),
-    ]
-    db.add_all(courses)
-    db.flush()
-    for day in range(30):
-        for course in courses:
-            for at_time in course.times:
-                if rng.random() < 0.93:
-                    db.add(MedIntake(course_id=course.id, user_id=user.id,
-                                     day=TODAY - timedelta(days=day), at_time=at_time,
-                                     taken_at=_at(day, int(at_time[:2]), int(at_time[3:]))))
-
-    # --- будущие визиты, чтобы боту было что напоминать ---
-    db.add(Reminder(user_id=user.id, title="Кардиолог — плановый приём",
-                    place="Консультативно-диагностический центр, каб. 12",
-                    at=datetime.combine(TODAY + timedelta(days=6), dtime(10, 0))))
-    db.add(Reminder(user_id=user.id, title="УЗИ почек натощак",
-                    place="Поликлиника по месту прикрепления",
-                    at=datetime.combine(TODAY + timedelta(days=12), dtime(9, 0))))
-    db.commit()
-=======
         # --- будущие визиты, чтобы боту было что напоминать ---
         db.add(Reminder(
             user_id=user.id, title="Кардиолог — плановый приём",
@@ -260,4 +233,3 @@ def fill_demo(db: Session, user: User) -> None:
     except Exception:
         db.rollback()
         raise
->>>>>>> Stashed changes

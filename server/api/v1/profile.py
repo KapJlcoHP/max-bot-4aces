@@ -16,6 +16,7 @@ from core.db.models import (
     MedCourse,
     MedIntake,
     NotificationLog,
+    Organization,
     Reminder,
     Route,
     RouteStep,
@@ -49,10 +50,22 @@ def give_consent_impl(
             zone_info_cls(body.tz)
         except Exception as e:
             raise HTTPException(status_code=422, detail="Неизвестный часовой пояс") from e
+    known_regions = {r["title"] for r in load_regions()}
     if body and body.region is not None:
-        if body.region not in {r["title"] for r in load_regions()}:
+        if body.region not in known_regions:
             raise HTTPException(status_code=422, detail="Неизвестный регион")
     diaries = validate_diary_settings(body.diaries) if body and body.diaries is not None else None
+
+    target_region = body.region if body and body.region is not None else user.region
+    attached_clinic_id = body.attached_clinic_id if body else None
+    if attached_clinic_id is not None:
+        clinic = db.query(Organization).filter(
+            Organization.id == attached_clinic_id,
+            Organization.org_type == "Поликлиники",
+            Organization.region == target_region,
+        ).first()
+        if clinic is None:
+            raise HTTPException(status_code=422, detail="Поликлиника не найдена в выбранном регионе")
 
     if isinstance(user, PendingUser):
         pending = user
@@ -63,6 +76,7 @@ def give_consent_impl(
             email=pending.email,
             avatar_url=pending.avatar_url,
             region=pending.region,
+            attached_clinic_id=None,
         )
         db.add(user)
         try:
@@ -77,6 +91,8 @@ def give_consent_impl(
         user.tz = body.tz
     if body and body.region is not None:
         user.region = body.region
+    if body and "attached_clinic_id" in body.model_fields_set:
+        user.attached_clinic_id = attached_clinic_id
     if user.consent_at is None:
         user.consent_at = utcnow()
     if diaries is not None:
@@ -128,15 +144,32 @@ def delete_my_data(user: User | PendingUser = Depends(current_user), db: Session
 
 @router.patch("/me/settings", response_model=UserDto)
 def update_settings(body: SettingsIn, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    target_region = body.region if body.region is not None else user.region
+    if body.region is not None:
+        known = {r["title"] for r in load_regions()}
+        if body.region not in known:
+            raise HTTPException(status_code=422, detail="Неизвестный регион")
+    if "attached_clinic_id" in body.model_fields_set and body.attached_clinic_id is not None:
+        clinic = db.query(Organization).filter(
+            Organization.id == body.attached_clinic_id,
+            Organization.org_type == "Поликлиники",
+            Organization.region == target_region,
+        ).first()
+        if clinic is None:
+            raise HTTPException(status_code=422, detail="Поликлиника не найдена в выбранном регионе")
+
     if body.notifications_on is not None:
         user.notifications_on = body.notifications_on
     if body.email is not None:
         user.email = body.email
     if body.region is not None:
-        known = {r["title"] for r in load_regions()}
-        if body.region not in known:
-            raise HTTPException(status_code=422, detail="Неизвестный регион")
         user.region = body.region
+        if user.attached_clinic_id is not None:
+            current_clinic = db.get(Organization, user.attached_clinic_id)
+            if current_clinic is None or current_clinic.org_type != "Поликлиники" or current_clinic.region != body.region:
+                user.attached_clinic_id = None
+    if "attached_clinic_id" in body.model_fields_set:
+        user.attached_clinic_id = body.attached_clinic_id
     db.commit()
     db.refresh(user)
     return user

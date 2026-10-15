@@ -3,10 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { openExternalLink } from "../bridge";
 import { useApp } from "../App";
-import type { Organization } from "../types";
+import type { Organization, Region } from "../types";
 import { Input } from "@maxhub/max-ui";
-import { Button, Badge, Header, LoadingView } from "../components/ui";
+import { Button, Header, LoadingView } from "../components/ui";
 import { I } from "../icons";
+import OrganizationMap from "../components/OrganizationMap";
 
 const CHIPS = ["Все", "Больницы", "Поликлиники", "Диспансеры", "Центры"];
 
@@ -15,6 +16,8 @@ export default function Orgs() {
   const { user } = useApp();
   const [q, setQ] = useState("");
   const [type, setType] = useState("Все");
+  const [region, setRegion] = useState(user.region || "Все");
+  const [regions, setRegions] = useState<Region[]>([]);
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   const [error, setError] = useState(false);
   const requestId = useRef(0);
@@ -26,10 +29,18 @@ export default function Orgs() {
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
     if (type !== "Все") params.set("org_type", type);
+    if (region !== "Все") params.set("region", region);
     api.get<Organization[]>(`/api/v1/orgs?${params}`)
       .then((results) => { if (id === requestId.current) setOrgs(results); })
       .catch(() => { if (id === requestId.current) setError(true); });
-  }, [q, type]);
+  }, [q, type, region]);
+
+  useEffect(() => {
+    api.get<Region[]>("/api/v1/regions").then((items) => {
+      setRegions(items);
+      setRegion((current) => current !== "Все" && current && !items.some((item) => item.title === current) ? "Все" : current);
+    }).catch(() => setRegions([]));
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(load, q.trim() ? 250 : 0);
@@ -39,7 +50,7 @@ export default function Orgs() {
   return (
     <div className="app">
       <div>
-        <Header title="Организации" subtitle={user.region ? `Ваш регион: ${user.region}` : "Регион не выбран — показаны все"} back="/" />
+        <Header title="Организации" subtitle={region === "Все" ? "Все регионы" : `Регион: ${region}`} back="/" />
         <div className="org-search">
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск поликлиники, больницы…" iconBefore={<I.search size={18} />} aria-label="Поиск организаций" />
           <div className="chips" style={{ marginTop: 12 }}>
@@ -47,9 +58,19 @@ export default function Orgs() {
               <button key={c} className={`chip${type === c ? " on" : ""}`} onClick={() => setType(c)}>{c}</button>
             ))}
           </div>
+          <select className="tz-select" value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Регион">
+            <option value="Все">Все регионы</option>
+            {regions.map((item) => <option key={item.key} value={item.title}>{item.title}</option>)}
+          </select>
         </div>
       </div>
       <div className="screen-body cards-2">
+        {orgs !== null && orgs.length > 0 && !error && (
+          <OrganizationMap
+            organizations={orgs}
+            onSelect={(id) => nav(`/orgs/${id}`)}
+          />
+        )}
         {error && (
           <div className="state-wrap">
             <div className="alert-circle"><I.alert size={30} /></div>
@@ -65,13 +86,13 @@ export default function Orgs() {
             <I.building size={64} />
             <h2>Организации не найдены</h2>
             <p>Попробуйте изменить запрос или фильтр</p>
-            <Button style={{ marginTop: 14 }} onClick={() => { setQ(""); setType("Все"); }}>
+              <Button style={{ marginTop: 14 }} onClick={() => { setQ(""); setType("Все"); setRegion("Все"); }}>
               Сбросить фильтры
             </Button>
           </div>
         )}
         {orgs?.map((o) => (
-          <div key={o.id} className="card press" onClick={() => nav(`/orgs/${o.id}`)}>
+          <div key={o.id} className={`card press${user.attached_clinic_id === o.id ? " selected-clinic" : ""}`} onClick={() => nav(`/orgs/${o.id}`)}>
             <h3 style={{ fontSize: 16, fontWeight: 700 }}>
               {o.title}
               {!user.region && o.region && <span className="badge-mine" style={{ marginLeft: 8 }}>{o.region}</span>}

@@ -21,6 +21,7 @@ class UserDto(OrmDto):
     notifications_on: bool
     tz: str = "Europe/Moscow"
     region: str = ""
+    attached_clinic_id: int | None = None
     consent_at: datetime | None = None
 
 
@@ -33,9 +34,12 @@ class RegionDto(OrmDto):
 
 
 class ConsentIn(OrmDto):
-    """Согласие на обработку данных + часовой пояс с телефона (для времени пушей)."""
+    """Согласие и настройки первого входа сохраняются одной транзакцией."""
 
     tz: str | None = None
+    region: str | None = None
+    diaries: list["HealthSettingDto"] | None = None
+    attached_clinic_id: int | None = None
 
 
 class SituationDto(OrmDto):
@@ -137,6 +141,15 @@ class OrganizationDto(OrmDto):
     phone: str
     hours: str
     services: list[str]
+    lat: float | None = None
+    lon: float | None = None
+
+
+class MapConfigDto(BaseModel):
+    """Публичная конфигурация JS API: сам ключ ограничивается доменом в кабинете."""
+
+    enabled: bool
+    api_key: str = ""
 
 
 class ReminderDto(OrmDto):
@@ -264,6 +277,7 @@ class SettingsIn(OrmDto):
     notifications_on: bool | None = None
     email: str | None = None
     region: str | None = None
+    attached_clinic_id: int | None = None
 
 
 RouteDto.model_rebuild()

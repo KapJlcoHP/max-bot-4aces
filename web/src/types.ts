@@ -6,7 +6,9 @@ export interface UserDto {
   email: string;
   avatar_url: string;
   notifications_on: boolean;
+  tz: string;
   region: string;
+  attached_clinic_id: number | null;
   consent_at: string | null;
 }
 
@@ -84,6 +86,22 @@ export interface Organization {
   phone: string;
   hours: string;
   services: string[];
+  lat: number | null;
+  lon: number | null;
+}
+
+/** Публичная конфигурация Yandex Maps JS API, отдаваемая сервером. */
+export interface MapConfig {
+  api_key: string;
+  lang?: string;
+  enabled: boolean;
+}
+
+export interface ConsentPayload {
+  tz: string;
+  region: string;
+  attached_clinic_id: number;
+  diaries: HealthSetting[];
 }
 
 export interface Reminder {

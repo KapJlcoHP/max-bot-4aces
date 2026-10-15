@@ -40,7 +40,12 @@ def main() -> None:
         r = client.post("/api/v1/me/consent", json={"tz": "Asia/Irkutsk"})
         check("consent 200 + tz сохранён", r.status_code == 200 and r.json()["tz"] == "Asia/Irkutsk", r.text)
         r = client.post("/api/v1/me/consent", json={"tz": "Mars/Olympus"})
-        check("незнакомая зона не сохраняется", r.json()["tz"] == "Asia/Irkutsk", r.text)
+        current = client.get("/api/v1/me")
+        check(
+            "незнакомая зона отклоняется и не сохраняется",
+            r.status_code == 422 and current.json()["tz"] == "Asia/Irkutsk",
+            r.text,
+        )
 
         r = client.post("/api/v1/route/start", json={"situation_key": "dispanserizaciya"})
         if r.status_code != 200:
@@ -67,7 +72,7 @@ def main() -> None:
 
         r = client.post(f"/api/v1/route/steps/{step['id']}/uncomplete")
         step_after = next((s for s in r.json()["steps"] if s["id"] == step["id"]), None)
-        check("uncomplete снимает выполнение", r.status_code == 200 and step_after and step_after["status"] == "pending", r.text)
+        check("uncomplete снимает выполнение", r.status_code == 200 and step_after and step_after["status"] == "current", r.text)
         r = client.post(f"/api/v1/route/steps/{step['id']}/uncomplete")
         check("uncomplete невыполненного → 409", r.status_code == 409, r.text)
 
@@ -89,13 +94,8 @@ def main() -> None:
         r = client.get("/api/v1/health/settings")
         diaries = {item["diary"]: item["enabled"] for item in r.json()["diaries"]}
         check(
-<<<<<<< Updated upstream
-            "health/settings без онбординга: дефолт все выключены",
-            r.status_code == 200 and len(r.json()["diaries"]) == 4 and all(not d["enabled"] for d in r.json()["diaries"]),
-=======
             "effective-настройки дневников после согласия",
             r.status_code == 200 and diaries == {"bp": True, "weight": True, "sugar": False, "mood": True},
->>>>>>> Stashed changes
             r.text,
         )
         r = client.put("/api/v1/health/settings", json={"diaries": [{"diary": "bp", "enabled": True, "push_time": "08:30"}]})
@@ -128,11 +128,11 @@ def main() -> None:
         )
         r = client.patch("/api/v1/me/settings", json={"region": "Ярославская область"})
         check("регион сохранён", r.status_code == 200 and r.json()["region"] == "Ярославская область", r.text)
-        r = client.get("/api/v1/orgs")
+        r = client.get("/api/v1/orgs?org_type=Поликлиники")
         org_titles = [o["title"] for o in r.json()]
         check(
-            "организации по региону",
-            r.status_code == 200 and len(org_titles) == 1 and "диагностический" in org_titles[0].lower(),
+            "поликлиники по региону",
+            r.status_code == 200 and len(org_titles) == 1 and "поликлиника" in org_titles[0].lower(),
             r.text,
         )
         r = client.patch("/api/v1/me/settings", json={"region": "Москва"})

@@ -3,19 +3,47 @@ import { useParams } from "react-router-dom";
 import { api } from "../api";
 import { openExternalLink } from "../bridge";
 import type { Organization } from "../types";
-import { Button, Header, LoadingView } from "../components/ui";
+import { useApp } from "../App";
+import { Button, Header, LoadingView, useToast } from "../components/ui";
 import { I } from "../icons";
+import OrganizationMap from "../components/OrganizationMap";
 
 export default function OrgDetail() {
   const { orgId } = useParams();
+  const { user, updateUser } = useApp();
   const [org, setOrg] = useState<Organization | null>(null);
   const [error, setError] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [toast, showToast] = useToast();
 
   useEffect(() => {
     setOrg(null);
     setError(false);
     api.get<Organization>(`/api/v1/orgs/${orgId}`).then(setOrg).catch(() => setError(true));
   }, [orgId]);
+
+  const isClinic = org?.org_type === "Поликлиники";
+  const isAttached = Boolean(org && user.attached_clinic_id === org.id);
+
+  const toggleClinic = async () => {
+    if (!org || !isClinic || busy) return;
+    setBusy(true);
+    try {
+      const updated = await api.patch<typeof user>("/api/v1/me/settings", {
+        attached_clinic_id: isAttached ? null : org.id,
+      });
+      updateUser(updated);
+      showToast(isAttached ? "Поликлиника откреплена" : "Поликлиника прикреплена");
+    } catch {
+      showToast("Не удалось изменить прикрепление — попробуйте ещё раз");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const mapLink = org && org.lat !== null && org.lon !== null
+    ? `https://yandex.ru/maps/?pt=${org.lon},${org.lat}&z=16&l=map`
+    : org ? `https://yandex.ru/maps/?text=${encodeURIComponent(org.address)}` : "";
 
   return (
     <div className="app">
@@ -40,17 +68,19 @@ export default function OrgDetail() {
                   <I.phone size={17} />{org.phone}
                 </a>
                 <p className="kv"><I.clock size={17} />{org.hours}</p>
+                {typeof org.lat === "number" && typeof org.lon === "number" && (
+                  <p className="muted" style={{ marginLeft: 27 }}>Координаты: {org.lat}, {org.lon}</p>
+                )}
               </div>
             </div>
             <div className="section-h">Расположение на карте</div>
-            <div
-              className="map-ph"
-              style={{ cursor: "pointer" }}
-              onClick={() => openExternalLink(`https://yandex.ru/maps/?text=${encodeURIComponent(org.address)}`)}
-            >
-              <I.pin size={40} />
-              <span>Открыть карту</span>
-            </div>
+            <OrganizationMap organizations={[org]} selectedId={org.id} onSelect={() => undefined} />
+            <Button variant="secondary" onClick={() => openExternalLink(mapLink)}>Открыть карту в Яндексе</Button>
+            {isClinic && (
+              <Button variant={isAttached ? "secondary" : "primary"} disabled={busy} onClick={toggleClinic}>
+                {busy ? "Сохраняем…" : isAttached ? "Открепить" : "Прикрепить к моей поликлинике"}
+              </Button>
+            )}
             <div className="card">
               <h3 className="h3" style={{ textTransform: "uppercase", fontSize: 12.5, letterSpacing: "0.05em", color: "var(--muted)" }}>
                 Доступные услуги
@@ -69,13 +99,14 @@ export default function OrgDetail() {
               Позвонить
             </a>
             <Button
-              onClick={() => openExternalLink(`https://yandex.ru/maps/?text=${encodeURIComponent(org.address)}`)}
+              onClick={() => openExternalLink(mapLink)}
             >
               Показать маршрут
             </Button>
           </div>
         </div>
       )}
+      {toast}
     </div>
   );
 }

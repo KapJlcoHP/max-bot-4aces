@@ -1,6 +1,7 @@
 """Загрузка контента и построение маршрутов. Персональные данные пользователь заводит сам."""
 
 import json
+import re
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -33,6 +34,21 @@ def pilot_region() -> str:
     return ""
 
 
+def _clinic_place(place: str, clinic: Organization | None) -> str:
+    """Подставить выбранную поликлинику только в шаблонные места прикрепления."""
+    if clinic is None or not place:
+        return place
+    if not re.search(r"поликлиник|прикреплен", place, flags=re.IGNORECASE):
+        return place
+    base = f"{clinic.title}, {clinic.address}"
+    # Сохраняем кабинет/дополнительную часть исходного места.
+    if "," in place and "прикреп" not in place.lower():
+        suffix = place.split(",", 1)[1].strip()
+        if suffix:
+            base = f"{base}, {suffix}"
+    return base
+
+
 def seed_organizations(db: Session) -> None:
     """Организации синхронизируем из regions.json при каждом старте:
     обновляем существующие по названию, добавляем новые, удаляем исчезнувшие."""
@@ -50,6 +66,12 @@ def seed_organizations(db: Session) -> None:
         else:
             db.add(Organization(**item))
     for org in existing.values():
+        # Не оставляем пользователя со ссылкой на организацию, которая исчезла
+        # из справочника. Это сохраняет инвариант «прикреплена только актуальная
+        # поликлиника» перед удалением устаревшей строки.
+        db.query(User).filter(User.attached_clinic_id == org.id).update(
+            {User.attached_clinic_id: None}, synchronize_session=False
+        )
         db.delete(org)
     db.commit()
 
@@ -76,6 +98,14 @@ def _build_route(
         route = Route(user_id=user.id, situation_key=situation_key, title=spec["route_title"])
         template_steps = [s for i, s in enumerate(spec["steps"], start=1) if i not in exclude]
 
+    clinic = None
+    if user.attached_clinic_id is not None:
+        clinic = db.query(Organization).filter(
+            Organization.id == user.attached_clinic_id,
+            Organization.org_type == "Поликлиники",
+            Organization.region == user.region,
+        ).first()
+
     db.add(route)
     db.flush()
 
@@ -90,7 +120,7 @@ def _build_route(
                 position=position,
                 title=step["title"],
                 description=step.get("description", ""),
-                place=step.get("place", ""),
+                place=_clinic_place(step.get("place", ""), clinic),
                 deadline=deadline,
                 deadline_time=step.get("time"),
                 status=status,
