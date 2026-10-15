@@ -134,9 +134,14 @@ export default function OrganizationMap({ organizations, selectedId, onSelect, c
           [0, 0] as Coordinates,
         );
         const center: Coordinates = [average[0] / mapped.length, average[1] / mapped.length];
+        // В JS API v3 слои добавляются после создания карты. Передача их
+        // третьим аргументом конструктора игнорируется браузером и даёт
+        // пустой контейнер без тайлов.
         map = new ymaps.YMap(containerRef.current, {
           location: { center, zoom: mapped.length === 1 ? 15 : 10 },
-        }, [new ymaps.YMapDefaultSchemeLayer(), new ymaps.YMapDefaultFeaturesLayer()]);
+        });
+        map.addChild(new ymaps.YMapDefaultSchemeLayer());
+        map.addChild(new ymaps.YMapDefaultFeaturesLayer());
 
         mapped.forEach(({ organization, coordinates }) => {
           const marker = document.createElement("button");
