@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
-import { fmtDeadline, fmtDayMonth } from "../format";
+import { useApp } from "../App";
+import { useNow } from "../hooks/useNow";
+import StepCountdown from "../components/StepCountdown";
+import { openExternalLink } from "../bridge";
+import { fmtDateNumeric, fmtDeadline, fmtDayMonth } from "../format";
 import type { CompleteStepResult, RouteDto, Step } from "../types";
 import { Button, ErrorView, Header, LoadingView, Sheet, StateView, useToast } from "../components/ui";
 import { I } from "../icons";
@@ -15,6 +19,8 @@ interface Picked {
 const CHIPS = ["Анализы", "УЗИ", "Специалист", "Процедуры", "Прививка"];
 
 export default function StepCard() {
+  const { user } = useApp();
+  const now = useNow();
   const { stepId } = useParams();
   const nav = useNavigate();
   const [toast, showToast] = useToast();
@@ -183,9 +189,45 @@ export default function StepCard() {
                   <div className="kv"><I.cal size={18} />{fmtDeadline(step.deadline, step.deadline_time)}</div>
                 )
               )}
+              <div className="step-deadline-meta">
+                {step.status !== "done" && step.deadline && step.deadline_time && <span className="muted">В {step.deadline_time}</span>}
+                <StepCountdown step={step} tz={user.tz} now={now} />
+              </div>
               {step.place && <div className="kv"><I.pin size={18} />{step.place}</div>}
               {step.description && (
                 <div className="kv" style={{ fontWeight: 500, color: "var(--muted)", marginTop: 12 }}>{step.description}</div>
+              )}
+            </div>
+
+            {step.reason && (
+              <details className="card step-origin" key={step.id}>
+                <summary>Почему этот шаг появился</summary>
+                <p className="muted">{step.reason}</p>
+              </details>
+            )}
+
+            <div className="card step-source">
+              <h3 className="h3">Источник</h3>
+              {step.source_info ? (
+                <>
+                  <p className="step-source-title">
+                    {step.source_info.title}
+                    {step.source_info.checked_at && <> · проверено {fmtDateNumeric(step.source_info.checked_at)}</>}
+                  </p>
+                  {!step.source_info.checked_at && <p className="muted">Редакционная проверка не проведена.</p>}
+                  {step.source_info.checked_by && <p className="muted">Кем проверено: {step.source_info.checked_by}</p>}
+                  {step.source_info.checked_where && <p className="muted">Где проверено: {step.source_info.checked_where}</p>}
+                  <p className="muted">{step.source_info.scope}</p>
+                  <Button variant="secondary" onClick={() => openExternalLink(step.source_info!.url)}>Открыть источник</Button>
+                </>
+              ) : (
+                <p className="muted">
+                  {step.source === "doctor"
+                    ? "Назначение врача внесено вами. Ссылка на документ и дата проверки не указаны."
+                    : step.source === "user"
+                      ? "Шаг добавлен вами. Внешний источник и дата проверки не указаны."
+                      : "Источник и дата проверки пока не указаны."}
+                </p>
               )}
             </div>
 

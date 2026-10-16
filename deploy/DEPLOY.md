@@ -1,5 +1,26 @@
 # Деплой «МедМаршрут» на VPS (Ubuntu 24.04, Beget)
 
+## Заголовки безопасности
+
+FastAPI добавляет `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`
+и `Content-Security-Policy` к API, собранному мини-приложению, статике и ошибкам,
+включая 500. Настройки находятся в `server/security.py`.
+
+В CSP разрешены MAX Bridge (`st.max.ru`), используемые шрифты Google и HTTPS-аватары.
+`frame-ancestors` допускает свой домен, `https://max.ru` и `https://web.max.ru`.
+В современных клиентах эта директива определяет разрешённое встраивание;
+`SAMEORIGIN` остаётся ограничением для старых клиентов без её поддержки.
+
+При настроенном `YANDEX_MAPS_API_KEY` включаются домены и исключение `unsafe-eval`,
+которые требует [векторный движок Яндекс.Карт v3](https://yandex.ru/maps-api/docs/js-api/common/connection/csp.html).
+Для существующих React/MAX UI style-атрибутов разрешён `style-src 'unsafe-inline'`.
+Обычные страницы не разрешают встроенные скрипты. Только `/docs`, `/redoc` и
+`/docs/oauth2-redirect` дополнительно допускают jsDelivr и встроенную
+инициализацию стандартной документации FastAPI.
+
+После развёртывания проверьте запуск внутри MAX и карту с боевым ключом:
+HTTP-тесты проверяют заголовки, но не выполняют внешние SDK в WebView.
+
 Схема: Docker Compose поднимает два сервиса — `app` (FastAPI: REST API +
 собранный мини-ап) и `caddy` (HTTPS, сертификат Let's Encrypt автоматически).
 База SQLite лежит в папке `database/` на хосте — переживает пересборки.

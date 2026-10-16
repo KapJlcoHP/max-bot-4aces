@@ -14,7 +14,7 @@ export function BrandMark() {
 
 export function Button({
   className = "", variant = "primary", children, ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" }) {
   return (
     <button className={`btn ${variant} ${className}`} {...props}>
       {children}

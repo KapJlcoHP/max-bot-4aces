@@ -70,6 +70,7 @@ class RouteStep(Base):
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     has_checklist: Mapped[bool] = mapped_column(Boolean, default=False)
     source: Mapped[str] = mapped_column(String(16), default="template")  # template | user | doctor
+    source_id: Mapped[str | None] = mapped_column(String(80), nullable=True)  # content/sources.json
 
     route: Mapped[Route] = relationship(back_populates="steps")
 

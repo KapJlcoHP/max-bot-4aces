@@ -94,7 +94,9 @@ Vite (dev) — `5173`.
 
 **Зависимости:** Python — `requirements.txt` (fastapi, uvicorn, sqlalchemy, pydantic,
 pydantic-settings, maxapi, python-dotenv, reportlab, tzdata); мини-ап — `web/package.json`
-(React 19, @maxhub/max-ui 0.5, vite). Автотесты: `pytest` (`pip install pytest`, `pytest tests/`).
+(React 19, @maxhub/max-ui 0.5, vite). Автотесты из корня проекта:
+`python -m pip install -r requirements-smoke.txt`, затем `python -m pytest`.
+В Windows используйте Python из `.venv`: `.venv\Scripts\python.exe -m pytest`.
 
 **Внешние сервисы и интеграции:**
 - MAX Bot API (`platform-api2.max.ru`) — бот, initData, диплинки `startapp`;

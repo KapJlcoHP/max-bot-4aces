@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from core.db.models import HealthSetting, Route, RouteStep, User
 from core.db.session import SessionLocal
-from core.schemas import HealthSettingDto, RouteDto, StepDto
+from core.db.seed import load_catalog, load_sources
+from core.schemas import ContentSourceDto, HealthSettingDto, RouteDto, StepDto
 from core.diary_settings import DIARIES
 from server.deps import AuthError, PendingUser, get_authenticated_user
 
@@ -38,8 +39,33 @@ def consented_user(user: User | PendingUser = Depends(current_user)) -> User:
     return user
 
 
+def route_template_title(route: Route) -> str:
+    return next((item["title"] for item in load_catalog() if item["key"] == route.situation_key), route.title)
+
+
+def step_dto(step: RouteStep, template_title: str, sources: dict[str, dict] | None = None) -> StepDto:
+    dto = StepDto.model_validate(step)
+    if step.source == "template":
+        dto.reason = f"Входит в маршрут «{template_title}», который вы выбрали при создании маршрута."
+        if step.source_id:
+            source = (load_sources() if sources is None else sources).get(step.source_id)
+            if source is not None:
+                dto.source_info = ContentSourceDto.model_validate(source)
+    elif step.source == "doctor":
+        dto.reason = "Назначение врача — внесено вами."
+    elif step.source == "user":
+        dto.reason = "Ваш шаг — добавлен вами в маршрут."
+    else:
+        dto.reason = "Происхождение этого шага не указано."
+    if step.source != "template":
+        dto.source_id = None
+    return dto
+
+
 def route_dto(route: Route) -> RouteDto:
-    steps = [StepDto.model_validate(s) for s in route.steps]
+    template_title = route_template_title(route)
+    sources = load_sources()
+    steps = [step_dto(s, template_title, sources) for s in route.steps]
     return RouteDto(
         id=route.id,
         situation_key=route.situation_key,

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from core.db.models import ExportRequest, User, utcnow
 from core.db.session import SessionLocal
+from core.export_queue import MAX_ATTEMPTS, RETRY_DELAYS_SECONDS
 from core.time import user_local
 from core.time import db_utc
 from server.api.v1.api import _get_diary_settings, health_report
@@ -25,7 +26,6 @@ from server.health_pdf import build_health_pdf
 log = logging.getLogger("bot.exporter")
 
 WATCH_SECONDS = 3
-MAX_ATTEMPTS = 5
 BACKOFF_CAP_SECONDS = 15 * 60
 LEASE_SECONDS = 5 * 60
 
@@ -116,8 +116,7 @@ async def export_watcher_loop(bot: Bot) -> None:
                             row.status = "retry"
                             # 30 с → 2 мин → 5 мин → 15 мин. Это переживает
                             # краткий сетевой сбой, не удерживая заявку бесконечно.
-                            delays = (30, 120, 300, 900)
-                            delay = min(BACKOFF_CAP_SECONDS, delays[row.attempts - 1])
+                            delay = min(BACKOFF_CAP_SECONDS, RETRY_DELAYS_SECONDS[row.attempts - 1])
                             row.next_attempt_at = db_utc(utcnow()) + timedelta(seconds=delay)
                         db.commit()
                         log.exception("PDF не отправлен: заявка #%s (попытка %s)", row.id, row.attempts)

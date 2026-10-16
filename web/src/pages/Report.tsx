@@ -18,6 +18,9 @@ export default function Report() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
   const [queue, setQueue] = useState<PdfQueue | null>(null);
+  const [queueRefresh, setQueueRefresh] = useState(0);
+  const [queueError, setQueueError] = useState(false);
+  const queueActive = queue?.status === "queued" || queue?.status === "processing" || queue?.status === "retry";
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -28,15 +31,29 @@ export default function Report() {
 
   useEffect(load, []);
 
-  const loadQueue = useCallback(() => {
-    api.get<PdfQueue>("/api/v1/health/send-to-bot")
-      .then(setQueue)
-      .catch(() => setQueue(null));
-  }, []);
-
   useEffect(() => {
-    loadQueue();
-  }, [loadQueue]);
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const latest = await api.get<PdfQueue>("/api/v1/health/send-to-bot");
+        if (!active) return;
+        setQueue(latest);
+        setQueueError(false);
+        if (latest.status !== "queued" && latest.status !== "processing" && latest.status !== "retry") return;
+      } catch {
+        if (!active) return;
+        // Сетевой сбой проверки не означает отмену или успешную доставку PDF.
+        setQueueError(true);
+      }
+      timer = setTimeout(poll, 3000);
+    };
+    void poll();
+    return () => {
+      active = false;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [queueRefresh]);
 
   /** Запасной путь (используется только если бот недоступен): каскад share → a.download → ссылка с токеном. */
   const downloadInWebview = async () => {
@@ -84,13 +101,14 @@ export default function Report() {
   };
 
   const downloadPdf = async () => {
+    if (busy || queueActive) return;
     setBusy(true);
     try {
       // единый путь для всех устройств: файл доставляет бот в чат
       const requested = await api.post<{ status: QueueStatus }>("/api/v1/health/send-to-bot", {});
       setQueue((prev) => ({ ...(prev ?? { attempts: 0, can_retry: false }), status: requested.status }));
       showToast(requested.status === "queued" ? "Собираю — PDF придёт в чат бота после обработки" : "PDF уже находится в очереди");
-      loadQueue();
+      setQueueRefresh((value) => value + 1);
       setBusy(false);
       return;
     } catch {
@@ -132,8 +150,17 @@ export default function Report() {
                 <div className="muted" style={{ marginTop: 6 }}>Нажмите «PDF в чат» ещё раз, чтобы повторить отправку.</div>
               </div>
             )}
-            {(queue?.status === "queued" || queue?.status === "processing" || queue?.status === "retry") && (
+            {queueError && (
+              <div className="card muted" role="status">Не удалось проверить доставку PDF. Повторяем проверку автоматически.</div>
+            )}
+            {(queue?.status === "queued" || queue?.status === "processing") && (
               <div className="card muted">PDF готовится и будет отправлен в чат бота после обработки.</div>
+            )}
+            {queue?.status === "retry" && (
+              <div className="card muted" role="status">PDF пока не удалось отправить. Повторим автоматически — новый запрос не нужен.</div>
+            )}
+            {queue?.status === "sent" && (
+              <div className="card muted" role="status">PDF отправлен в чат бота.</div>
             )}
             {report.bp_avg && (
               <div className="card">
@@ -200,8 +227,8 @@ export default function Report() {
       <div className="foot">
         <div className="btn-row">
           <Button variant="secondary" onClick={() => nav("/health")}><I.back size={18} />Назад</Button>
-          <Button disabled={busy} onClick={downloadPdf}>
-            <I.doc size={18} />{busy ? "Готовим…" : "PDF в чат"}
+          <Button disabled={busy || queueActive} onClick={downloadPdf}>
+            <I.doc size={18} />{busy ? "Готовим…" : queueActive ? "PDF в очереди…" : "PDF в чат"}
           </Button>
         </div>
       </div>

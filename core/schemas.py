@@ -2,7 +2,7 @@
 
 from datetime import date as Date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PrivateAttr
 
 
 class OrmDto(BaseModel):
@@ -49,6 +49,16 @@ class SituationDto(OrmDto):
     icon: str
 
 
+class ContentSourceDto(OrmDto):
+    id: str
+    title: str
+    url: HttpUrl
+    checked_at: Date | None = None
+    checked_by: str | None = None
+    checked_where: str | None = None
+    scope: str
+
+
 class StepDto(OrmDto):
     id: int
     position: int
@@ -61,6 +71,9 @@ class StepDto(OrmDto):
     has_checklist: bool
     note: str | None = None
     source: str = "template"
+    reason: str = Field(default="", description="Почему шаг появился в маршруте пользователя")
+    source_id: str | None = None
+    source_info: ContentSourceDto | None = None
 
 
 class RouteDto(OrmDto):

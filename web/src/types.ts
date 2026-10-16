@@ -27,6 +27,16 @@ export interface Situation {
 
 export type StepSource = "template" | "user" | "doctor";
 
+export interface ContentSource {
+  id: string;
+  title: string;
+  url: string;
+  checked_at: string | null;
+  checked_by: string | null;
+  checked_where: string | null;
+  scope: string;
+}
+
 export interface Step {
   id: number;
   position: number;
@@ -39,6 +49,9 @@ export interface Step {
   has_checklist: boolean;
   note: string | null;
   source: StepSource;
+  reason: string;
+  source_id: string | null;
+  source_info: ContentSource | null;
   completed_at?: string | null;
 }
 

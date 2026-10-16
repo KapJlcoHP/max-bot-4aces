@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { useApp } from "../App";
+import { useNow } from "../hooks/useNow";
+import StepCountdown from "../components/StepCountdown";
 import { fmtDeadline } from "../format";
 import type { Checklist, ChecklistItem, RouteDto, Step } from "../types";
 import { Button, ErrorView, Header, LoadingView, Sheet, useToast } from "../components/ui";
@@ -13,6 +16,8 @@ function StepBadge({ source }: { source: Step["source"] }) {
 }
 
 export default function RoutePage() {
+  const { user } = useApp();
+  const now = useNow();
   const nav = useNavigate();
   const [toast, showToast] = useToast();
   const [route, setRoute] = useState<RouteDto | null>(null);
@@ -185,13 +190,13 @@ export default function RoutePage() {
                           )}
                         </span>
                       </div>
-                      {(s.deadline || s.status === "current") && (
+                      {s.status === "current" && s.description && <div className="desc">{s.description}</div>}
+                      {s.deadline && (
                         <div className="when" style={{ marginTop: 4, display: "block" }}>
-                          {s.status === "current" && s.description
-                            ? s.description
-                            : fmtDeadline(s.deadline, s.deadline_time)}
+                          {fmtDeadline(s.deadline, s.deadline_time)}
                         </div>
                       )}
+                      <StepCountdown step={s} tz={user.tz} now={now} />
                     </div>
                   </div>
                 ))}

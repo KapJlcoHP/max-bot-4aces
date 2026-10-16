@@ -1,0 +1,67 @@
+{
+  "sources": [
+    {
+      "id": "patient_rights_323",
+      "title": "323-ФЗ — основы охраны здоровья и права пациента",
+      "url": "https://minzdrav.gov.ru/documents/7025-federalnyy-zakon-",
+      "checked_at": null,
+      "checked_by": null,
+      "checked_where": null,
+      "scope": "Справочная основа шаблона. Сроки, адреса и назначения в маршруте демонстрационные; конкретный порядок уточняйте в медицинской организации."
+    },
+    {
+      "id": "oms_326",
+      "title": "326-ФЗ — обязательное медицинское страхование",
+      "url": "https://www.mgfoms.ru/documents/basa/652115/",
+      "checked_at": null,
+      "checked_by": null,
+      "checked_where": null,
+      "scope": "Справочная основа шаблона. Сроки, адреса и назначения в маршруте демонстрационные; конкретный порядок уточняйте в медицинской организации."
+    },
+    {
+      "id": "checkup_minzdrav",
+      "title": "Минздрав России — материалы о диспансеризации",
+      "url": "https://minzdrav.gov.ru/special/poleznye-resursy/dispanserizatsiya/informatsionnye-otnosheniya",
+      "checked_at": null,
+      "checked_by": null,
+      "checked_where": null,
+      "scope": "Справочная основа шаблона. Сроки, адреса и назначения в маршруте демонстрационные; конкретный порядок уточняйте в медицинской организации."
+    },
+    {
+      "id": "observation_168n",
+      "title": "Приказ Минздрава № 168н — диспансерное наблюдение взрослых",
+      "url": "https://publication.pravo.gov.ru/Document/View/0001202204210027",
+      "checked_at": null,
+      "checked_by": null,
+      "checked_where": null,
+      "scope": "Справочная основа шаблона. Сроки, адреса и назначения в маршруте демонстрационные; конкретный порядок уточняйте в медицинской организации."
+    },
+    {
+      "id": "rehab_788n",
+      "title": "Приказ Минздрава № 788н — медицинская реабилитация взрослых",
+      "url": "https://kurort.minzdrav.gov.ru/articles/10/22",
+      "checked_at": null,
+      "checked_by": null,
+      "checked_where": null,
+      "scope": "Справочная основа шаблона. Сроки, адреса и назначения в маршруте демонстрационные; конкретный порядок уточняйте в медицинской организации."
+    },
+    {
+      "id": "mse_588",
+      "title": "Постановление Правительства № 588 — признание лица инвалидом",
+      "url": "https://kdc4.mos.ru/upload/iblock/064/ym5d0ethodiix71zvule461ceirbaa4i/588.pdf",
+      "checked_at": null,
+      "checked_by": null,
+      "checked_where": null,
+      "scope": "Справочная основа шаблона. Сроки, адреса и назначения в маршруте демонстрационные; конкретный порядок уточняйте в медицинской организации."
+    },
+    {
+      "id": "medroute_demo",
+      "title": "МедМаршрут — демонстрационный сценарий",
+      "url": "https://github.com/KapJlcoHP/max-bot-4aces/blob/dev/content/SOURCES.md",
+      "checked_at": null,
+      "checked_by": null,
+      "checked_where": null,
+      "scope": "Шаг составлен для демонстрации работы приложения. Сроки и действия приведены для примера."
+    }
+  ]
+}

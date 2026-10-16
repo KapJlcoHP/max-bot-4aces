@@ -41,6 +41,7 @@ def init_db() -> None:
 def _migrate_sqlite() -> None:
     """create_all не ALTER-ит существующие таблицы — досоздаём колонки, появившиеся после релиза."""
     from sqlalchemy import inspect, text  # noqa: PLC0415
+    from core.export_queue import MAX_ATTEMPTS
 
     if not _settings.database_url.startswith("sqlite"):
         return
@@ -52,7 +53,10 @@ def _migrate_sqlite() -> None:
             ("region", "VARCHAR(100) NOT NULL DEFAULT ''"),
             ("attached_clinic_id", "INTEGER NULL"),
         ],
-        "route_steps": [("source", "VARCHAR(16) NOT NULL DEFAULT 'template'")],
+        "route_steps": [
+            ("source", "VARCHAR(16) NOT NULL DEFAULT 'template'"),
+            ("source_id", "VARCHAR(80) NULL"),
+        ],
         "organizations": [
             ("region", "VARCHAR(100) NOT NULL DEFAULT ''"),
             ("lat", "FLOAT NULL"),
@@ -87,6 +91,28 @@ def _migrate_sqlite() -> None:
                 "ON users (attached_clinic_id)"
             ))
 
+        if "route_steps" in inspector.get_table_names() and "routes" in inspector.get_table_names():
+            from core.db.seed import load_scenarios, load_sources
+
+            scenarios, sources = load_scenarios(), load_sources()
+            # Позиция могла измениться после исключения/вставки шагов. Для
+            # старых маршрутов сопоставляем только однозначное название
+            # внутри исходного сценария; ручным шагам источник не приписываем.
+            for step_id, title, situation_key in conn.execute(text(
+                "SELECT s.id, s.title, r.situation_key FROM route_steps s "
+                "JOIN routes r ON r.id = s.route_id "
+                "WHERE s.source = 'template' AND s.source_id IS NULL"
+            )).fetchall():
+                candidates = {
+                    step.get("source_id")
+                    for step in scenarios.get(situation_key, {}).get("steps", [])
+                    if step["title"] == title and step.get("source_id") in sources
+                }
+                if len(candidates) == 1:
+                    conn.execute(text("UPDATE route_steps SET source_id = :source_id WHERE id = :id"), {
+                        "source_id": candidates.pop(), "id": step_id,
+                    })
+
         # Существующие заявки получают явные состояния. Отправленные заявки
         # никогда не должны блокировать новую заявку пользователя.
         if "export_requests" in inspector.get_table_names():
@@ -95,8 +121,8 @@ def _migrate_sqlite() -> None:
             conn.execute(text(
                 "UPDATE export_requests SET status = 'failed', next_attempt_at = NULL, "
                 "last_error = COALESCE(last_error, 'Лимит попыток исчерпан') "
-                "WHERE sent_at IS NULL AND attempts >= 3 AND status NOT IN ('failed', 'sent')"
-            ))
+                "WHERE sent_at IS NULL AND attempts >= :max_attempts AND status NOT IN ('failed', 'sent')"
+            ), {"max_attempts": MAX_ATTEMPTS})
             # При обновлении могли остаться несколько старых активных заявок.
             # Оставляем последнюю, остальные переводим в понятный terminal-state.
             duplicates = conn.execute(text(

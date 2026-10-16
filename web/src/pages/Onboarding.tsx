@@ -164,6 +164,9 @@ export default function Onboarding() {
             <div className="hdr-title" style={{ paddingLeft: 16 }}><h1>Ваши данные</h1></div>
           </div>
           <div className="screen-body ob">
+            <aside className="card tinted" role="note" aria-label="Данные для демонстрации">
+              <p><strong>Не вводите реальные ФИО, документы и диагнозы — данные модельные.</strong></p>
+            </aside>
             <div className="card" style={{ padding: "8px 16px" }}>
               <div style={{ padding: "10px 0" }}>
                 <b style={{ fontSize: 15 }}>Что мы обрабатываем</b>

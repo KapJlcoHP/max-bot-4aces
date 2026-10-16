@@ -176,9 +176,9 @@ def add_health_record(db: Session, user_id: int, type: str, **fields) -> HealthR
         systolic, diastolic, pulse = fields.get("systolic"), fields.get("diastolic"), fields.get("pulse")
         if systolic is None or diastolic is None:
             raise ServiceError("Укажите верхнее и нижнее давление")
-        if not (70 <= systolic <= 250 and 40 <= diastolic <= 150):
+        if not (50 <= systolic <= 260 and 30 <= diastolic <= 150):
             raise ServiceError("Показатели вне допустимого диапазона")
-        if pulse is not None and not (30 <= pulse <= 220):
+        if pulse is not None and not (25 <= pulse <= 220):
             raise ServiceError("Пульс вне допустимого диапазона")
         if diastolic >= systolic:
             raise ServiceError("Нижнее давление не может быть выше верхнего")
@@ -190,7 +190,7 @@ def add_health_record(db: Session, user_id: int, type: str, **fields) -> HealthR
         row.weight_kg = weight
     elif type == "sugar":
         sugar = fields.get("sugar_mmol")
-        if sugar is None or not (1.1 <= sugar <= 35.0):
+        if sugar is None or not (1 <= sugar <= 35):
             raise ServiceError("Показатель вне допустимого диапазона")
         row.sugar_mmol = sugar
         row.meal_tag = fields.get("meal_tag")

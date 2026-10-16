@@ -15,7 +15,7 @@ from core.schemas import (
     StepUpdateIn,
 )
 from core.services import ServiceError, complete_route_step, uncomplete_route_step
-from .common import consented_user, db_session, get_active_route, route_dto
+from .common import consented_user, db_session, get_active_route, route_dto, route_template_title, step_dto
 
 router = APIRouter()
 
@@ -157,9 +157,9 @@ def complete_step(
         RouteStep.route_id == route.id, RouteStep.status != "done"
     ).order_by(RouteStep.position).first()
     return CompleteStepOut(
-        step=StepDto.model_validate(step),
+        step=step_dto(step, route_template_title(route)),
         route=route_dto(route),
-        next_step=StepDto.model_validate(next_step) if next_step else None,
+        next_step=step_dto(next_step, route_template_title(route)) if next_step else None,
     )
 
 
@@ -198,4 +198,4 @@ def update_step(
         ).delete(synchronize_session=False)
     db.commit()
     db.refresh(step)
-    return StepDto.model_validate(step)
+    return step_dto(step, route_template_title(route))

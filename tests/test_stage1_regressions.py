@@ -93,22 +93,36 @@ class Stage1RegressionTests(unittest.TestCase):
             self.assertIsNone(validate_init_data(raw))
 
     def test_pdf_escapes_markup_in_note_and_profile(self):
-        self.db.add(HealthRecord(
-            user_id=self.user.id,
-            type="mood",
-            at=datetime.now(),
-            mood="Нормально",
-            note="АД < 120/80 & пульс <b>70</b>",
-        ))
-        self.db.commit()
-        report = HealthReportOut(notes=[ReportNote(
-            at=datetime.now(),
-            note="АД < 120/80 & пульс <b>70</b>",
-        )])
+        from reportlab.platypus import Paragraph
 
-        pdf = build_health_pdf(self.db, self.user, report, {"mood": True})
+        self.user.first_name = '<b>Пациент</b> <font color="red">Иван</font>'
+        self.user.last_name = 'Иванов & сын <тест>'
+        patient = f"{self.user.first_name} {self.user.last_name}"
 
-        self.assertTrue(pdf.startswith(b"%PDF"))
+        for note in (
+            "боль < 3 и > 10 & «кавычки»",
+            "<b>x</b>",
+            '<font color="red">x</font>',
+            "Буквальная сущность &lt;b&gt;x&lt;/b&gt;",
+        ):
+            with self.subTest(note=note):
+                paragraphs = []
+
+                def capture_paragraph(*args, **kwargs):
+                    paragraph = Paragraph(*args, **kwargs)
+                    paragraphs.append(paragraph)
+                    return paragraph
+
+                report = HealthReportOut(notes=[ReportNote(at=datetime.now(), note=note)])
+                with patch("server.health_pdf.Paragraph", side_effect=capture_paragraph):
+                    pdf = build_health_pdf(self.db, self.user, report, {"mood": True})
+
+                self.assertTrue(pdf.startswith(b"%PDF"))
+                # Проверяем текст после разбора ReportLab: теги должны остаться
+                # видимыми символами, а & не должен экранироваться дважды.
+                rendered_text = "\n".join(p.getPlainText() for p in paragraphs)
+                self.assertIn(f"Пациент: {patient} ·", rendered_text)
+                self.assertIn(f"— «{note}»", rendered_text)
 
     def test_report_and_settings_use_the_same_diary_defaults(self):
         from server.api.v1 import api

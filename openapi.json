@@ -1536,6 +1536,71 @@
         "title": "ConsentIn",
         "description": "Согласие и настройки первого входа сохраняются одной транзакцией."
       },
+      "ContentSourceDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Url"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "checked_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked By"
+          },
+          "checked_where": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked Where"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "url",
+          "scope"
+        ],
+        "title": "ContentSourceDto"
+      },
       "CustomStepIn": {
         "properties": {
           "title": {
@@ -2665,6 +2730,33 @@
             "type": "string",
             "title": "Source",
             "default": "template"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Почему шаг появился в маршруте пользователя",
+            "default": ""
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "source_info": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentSourceDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

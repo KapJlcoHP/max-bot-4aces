@@ -136,7 +136,7 @@ def pdf_in_chat_status(user: User = Depends(consented_user), db: Session = Depen
         "next_attempt_at": user_local(row.next_attempt_at, user.tz) if row.next_attempt_at else None,
         "sent_at": user_local(row.sent_at, user.tz) if row.sent_at else None,
         "error": row.last_error,
-        "hint": "Не удалось доставить PDF. Повторите запрос отправки." if row.status == "failed" else None,
+        "hint": "Не удалось доставить PDF. Нажмите «PDF в чат» ещё раз." if row.status == "failed" else None,
     }
 
 

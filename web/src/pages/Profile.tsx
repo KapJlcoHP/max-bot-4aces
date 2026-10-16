@@ -117,7 +117,7 @@ export default function Profile() {
               className="press"
               before={<div className="ic"><I.info size={18} /></div>}
               title="О приложении"
-              subtitle={`Данные и приватность${consentDate ? ` · согласие от ${consentDate}` : ""}`}
+              subtitle={`Данные и удаление профиля${consentDate ? ` · согласие от ${consentDate}` : ""}`}
               showChevron
               onClick={() => nav("/about")}
             />

@@ -113,16 +113,92 @@ class SchedulerTests(unittest.TestCase):
         )
         self.db.add(step)
         self.db.commit()
-        self.db.add(NotificationLog(user_id=user.id, kind="step", ref_id=step.id, lead="day"))
+        for lead in ("day", "hour", "now"):
+            self.db.add(NotificationLog(user_id=user.id, kind="step", ref_id=step.id, lead=lead))
+        # Одинаковый ref_id у другого типа уведомления не должен затрагиваться.
+        self.db.add(NotificationLog(user_id=user.id, kind="reminder", ref_id=step.id, lead="day"))
         self.db.commit()
 
         api.update_step(step.id, StepUpdateIn(deadline=date(2026, 10, 2)), user=user, db=self.db)
-        self.assertEqual(self.db.query(NotificationLog).filter_by(user_id=user.id, ref_id=step.id).count(), 0)
-        pushes = collect_due(self.db, now=datetime(2026, 10, 1, 10))
-        self.assertEqual([(p.kind, p.lead) for p in pushes], [("step", "day")])
+        self.assertEqual(self.db.query(NotificationLog).filter_by(
+            user_id=user.id, kind="step", ref_id=step.id,
+        ).count(), 0)
+        self.assertEqual(self.db.query(NotificationLog).filter_by(kind="reminder").count(), 1)
+
+        for now, expected in (
+            (datetime(2026, 10, 1, 10), "day"),
+            (datetime(2026, 10, 2, 9), "hour"),
+            (datetime(2026, 10, 2, 10), "now"),
+        ):
+            with self.subTest(lead=expected):
+                pushes = collect_due(self.db, now=now)
+                self.assertEqual([(p.kind, p.lead) for p in pushes], [("step", expected)])
+                mark_sent(self.db, pushes[0])
+                self.assertEqual(collect_due(self.db, now=now), [])
+
+        # Повторное сохранение той же даты не должно разрешать дубли отправки.
+        api.update_step(step.id, StepUpdateIn(deadline=date(2026, 10, 2)), user=user, db=self.db)
+        self.assertEqual(self.db.query(NotificationLog).filter_by(kind="step").count(), 3)
+        self.assertEqual(collect_due(self.db, now=datetime(2026, 10, 2, 10)), [])
 
 
 class DeliveryRetryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_medicine_is_delivered_once_after_ten_minute_network_outage(self):
+        engine = create_engine("sqlite:///:memory:")
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+        sessions = sessionmaker(bind=engine)
+        due_at = datetime(2026, 10, 17, 10)
+        now = due_at
+        with sessions() as db:
+            user = User(max_user_id=403, tz="UTC")
+            db.add(user)
+            db.flush()
+            course = MedCourse(user_id=user.id, name="Medicine", times=["10:00"])
+            db.add(course)
+            db.commit()
+            user_id, max_user_id, course_id = user.id, user.max_user_id, course.id
+
+        attempts = []
+        delivered = []
+        log_counts_during_outage = []
+
+        class Bot:
+            async def send_message(self, **kwargs):
+                attempts.append(now)
+                if now < due_at + timedelta(minutes=10):
+                    with sessions() as db:
+                        log_counts_during_outage.append(db.query(NotificationLog).count())
+                    raise OSError("temporary network outage")
+                delivered.append(kwargs)
+
+        async def advance_clock(seconds):
+            nonlocal now
+            now += timedelta(seconds=seconds)
+            if now >= due_at + timedelta(minutes=12):
+                raise asyncio.CancelledError()
+
+        with (
+            patch("bot.scheduler.SessionLocal", sessions),
+            patch("bot.scheduler._user_now", side_effect=lambda user: now),
+            patch("bot.scheduler.asyncio.sleep", advance_clock),
+            patch("bot.scheduler.log.exception"),
+        ):
+            with self.assertRaises(asyncio.CancelledError):
+                await scheduler_loop(Bot(), None)
+
+        self.assertEqual(attempts, [due_at + timedelta(minutes=i) for i in range(11)])
+        self.assertEqual(log_counts_during_outage, [0] * 10)
+        self.assertEqual(len(delivered), 1)
+        self.assertEqual(delivered[0]["user_id"], max_user_id)
+        with sessions() as db:
+            logged = db.query(NotificationLog).one()
+            self.assertEqual(
+                (logged.user_id, logged.kind, logged.ref_id, logged.lead),
+                (user_id, "med", course_id, "20261017-1000"),
+            )
+            self.assertEqual(collect_due(db, now=now), [])
+
     async def test_sent_message_is_not_resent_after_temporary_database_failure(self):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)

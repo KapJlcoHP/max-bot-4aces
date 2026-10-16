@@ -20,6 +20,11 @@ def load_scenarios() -> dict:
     return json.loads((CONTENT_DIR / "scenarios.json").read_text(encoding="utf-8"))
 
 
+def load_sources() -> dict[str, dict]:
+    items = json.loads((CONTENT_DIR / "sources.json").read_text(encoding="utf-8"))["sources"]
+    return {item["id"]: item for item in items}
+
+
 def load_regions() -> list[dict]:
     """Регионы и их организации — единственный источник content/regions.json:
     добавить регион или организацию = правка файла, код не трогаем."""
@@ -126,6 +131,7 @@ def _build_route(
                 status=status,
                 has_checklist=step.get("has_checklist", False),
                 source="template",
+                source_id=step.get("source_id"),
             )
         )
     for step in custom_steps or []:
