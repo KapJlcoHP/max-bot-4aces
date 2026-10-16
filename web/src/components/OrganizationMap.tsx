@@ -42,34 +42,103 @@ declare global {
 }
 
 let yandexScript: Promise<void> | null = null;
+const MAP_LOAD_ATTEMPTS = 3;
+const MAP_LOAD_TIMEOUT_MS = 15_000;
+const MAP_RETRY_DELAY_MS = 750;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function loadYandexMapsAttempt(apiKey: string, lang: string): Promise<void> {
+  if (window.ymaps3) return Promise.resolve();
+
+  // После неудачной попытки старый script может остаться в DOM уже в
+  // завершённом состоянии. Повторно подписаться на его load нельзя — удаляем
+  // его и создаём новый элемент.
+  document.getElementById("yandex-maps-v3")?.remove();
+
+  return new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    let timer = 0;
+    let settled = false;
+
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      script.removeEventListener("load", onLoad);
+      script.removeEventListener("error", onError);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      script.remove();
+      reject(error);
+    };
+    const onLoad = () => {
+      if (window.ymaps3) {
+        settled = true;
+        cleanup();
+        resolve();
+      } else {
+        fail(new Error("Yandex Maps API не загрузился"));
+      }
+    };
+    const onError = () => fail(new Error("Не удалось загрузить Yandex Maps API"));
+
+    script.id = "yandex-maps-v3";
+    script.async = true;
+    // MAX WebView может выбрать слишком строгую политику referrer.
+    // Яндекс проверяет доменное ограничение JS API по HTTP Referer.
+    script.referrerPolicy = "origin";
+    script.src = `https://api-maps.yandex.ru/v3/?${new URLSearchParams({ apikey: apiKey, lang })}`;
+    script.addEventListener("load", onLoad, { once: true });
+    script.addEventListener("error", onError, { once: true });
+    timer = window.setTimeout(
+      () => fail(new Error("Превышено время загрузки Yandex Maps API")),
+      MAP_LOAD_TIMEOUT_MS,
+    );
+    document.head.appendChild(script);
+  });
+}
 
 function loadYandexMaps(apiKey: string, lang = "ru_RU"): Promise<void> {
   if (window.ymaps3) return Promise.resolve();
   if (yandexScript) return yandexScript;
 
-  yandexScript = new Promise<void>((resolve, reject) => {
-    const existing = document.getElementById("yandex-maps-v3") as HTMLScriptElement | null;
-    const script = existing ?? document.createElement("script");
-    const onLoad = () => (window.ymaps3 ? resolve() : reject(new Error("Yandex Maps API не загрузился")));
-    const onError = () => reject(new Error("Не удалось загрузить Yandex Maps API"));
-
-    script.addEventListener("load", onLoad, { once: true });
-    script.addEventListener("error", onError, { once: true });
-    if (!existing) {
-      script.id = "yandex-maps-v3";
-      script.async = true;
-      // MAX WebView может выбрать слишком строгую политику referrer.
-      // Яндекс проверяет доменное ограничение JS API по HTTP Referer.
-      script.referrerPolicy = "origin";
-      script.src = `https://api-maps.yandex.ru/v3/?${new URLSearchParams({ apikey: apiKey, lang })}`;
-      document.head.appendChild(script);
+  yandexScript = (async () => {
+    let lastError: unknown = new Error("Yandex Maps API недоступен");
+    for (let attempt = 1; attempt <= MAP_LOAD_ATTEMPTS; attempt += 1) {
+      try {
+        await loadYandexMapsAttempt(apiKey, lang);
+        return;
+      } catch (error: unknown) {
+        lastError = error;
+        if (attempt < MAP_LOAD_ATTEMPTS) await wait(MAP_RETRY_DELAY_MS);
+      }
     }
-  }).catch((error: unknown) => {
+    throw lastError;
+  })().finally(() => {
     yandexScript = null;
-    throw error;
   });
 
   return yandexScript;
+}
+
+function waitForYandexReady(ymaps: YandexMapsApi): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(
+      () => reject(new Error("Yandex Maps API долго не готовится")),
+      MAP_LOAD_TIMEOUT_MS,
+    );
+    ymaps.ready.then(() => {
+      window.clearTimeout(timer);
+      resolve();
+    }).catch((error: unknown) => {
+      window.clearTimeout(timer);
+      reject(error);
+    });
+  });
 }
 
 function coordinatesOf(org: Organization): Coordinates | null {
@@ -125,7 +194,7 @@ export default function OrganizationMap({
         await loadYandexMaps(config.api_key, config.lang);
         const ymaps = window.ymaps3;
         if (!ymaps) throw new Error("Yandex Maps API недоступен");
-        await ymaps.ready;
+        await waitForYandexReady(ymaps);
         if (!active || !containerRef.current) return;
 
         const selected = selectedId == null
