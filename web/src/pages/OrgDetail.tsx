@@ -6,6 +6,7 @@ import type { Organization } from "../types";
 import { useApp } from "../App";
 import { Button, Header, LoadingView, useToast } from "../components/ui";
 import { I } from "../icons";
+import OrganizationMap from "../components/OrganizationMap";
 
 export default function OrgDetail() {
   const { orgId } = useParams();
@@ -67,8 +68,14 @@ export default function OrgDetail() {
                   <I.phone size={17} />{org.phone}
                 </a>
                 <p className="kv"><I.clock size={17} />{org.hours}</p>
+                {typeof org.lat === "number" && typeof org.lon === "number" && (
+                  <p className="muted" style={{ marginLeft: 27 }}>Координаты: {org.lat}, {org.lon}</p>
+                )}
               </div>
             </div>
+            <div className="section-h">Расположение на карте</div>
+            <OrganizationMap organizations={[org]} selectedId={org.id} onSelect={() => undefined} />
+            <Button variant="secondary" onClick={() => openExternalLink(mapLink)}>Открыть карту в Яндексе</Button>
             {isClinic && (
               <Button variant={isAttached ? "secondary" : "primary"} disabled={busy} onClick={toggleClinic}>
                 {busy ? "Сохраняем…" : isAttached ? "Открепить" : "Прикрепить к моей поликлинике"}
