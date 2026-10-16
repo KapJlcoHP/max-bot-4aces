@@ -79,28 +79,25 @@ function coordinatesOf(org: Organization): Coordinates | null {
   return [org.lon, org.lat];
 }
 
-function MapFallback({ message }: { message: string }) {
-  return (
-    <div className="map-fallback" role="status">
-      <span className="map-fallback-pin" aria-hidden="true">⌖</span>
-      <span>{message}</span>
-    </div>
-  );
-}
-
 export interface OrganizationMapProps {
   organizations: Organization[];
   selectedId?: number | null;
   onSelect: (id: number) => void;
+  onAvailabilityChange?: (available: boolean) => void;
   className?: string;
 }
 
-/** Неблокирующая карта: при любом сбое список организаций продолжает работать. */
-export default function OrganizationMap({ organizations, selectedId, onSelect, className = "" }: OrganizationMapProps) {
+/** Карта — прогрессивное улучшение: при сбое она полностью исчезает, список продолжает работать. */
+export default function OrganizationMap({
+  organizations,
+  selectedId,
+  onSelect,
+  onAvailabilityChange,
+  className = "",
+}: OrganizationMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const selectRef = useRef(onSelect);
-  const [state, setState] = useState<"loading" | "ready" | "fallback">("loading");
-  const [message, setMessage] = useState("Загружаем карту…");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
 
   useEffect(() => {
     selectRef.current = onSelect;
@@ -114,11 +111,10 @@ export default function OrganizationMap({ organizations, selectedId, onSelect, c
       .filter((item): item is { organization: Organization; coordinates: Coordinates } => item.coordinates !== null);
 
     setState("loading");
-    setMessage("Загружаем карту…");
+    onAvailabilityChange?.(false);
 
     if (mapped.length === 0) {
-      setState("fallback");
-      setMessage("Для этих организаций пока нет координат карты");
+      setState("unavailable");
       return () => { active = false; };
     }
 
@@ -132,16 +128,21 @@ export default function OrganizationMap({ organizations, selectedId, onSelect, c
         await ymaps.ready;
         if (!active || !containerRef.current) return;
 
+        const selected = selectedId == null
+          ? null
+          : mapped.find((item) => item.organization.id === selectedId) ?? null;
         const average = mapped.reduce(
           (sum, item) => [sum[0] + item.coordinates[0], sum[1] + item.coordinates[1]] as Coordinates,
           [0, 0] as Coordinates,
         );
-        const center: Coordinates = [average[0] / mapped.length, average[1] / mapped.length];
+        const center: Coordinates = selected
+          ? selected.coordinates
+          : [average[0] / mapped.length, average[1] / mapped.length];
         // В JS API v3 слои добавляются после создания карты. Передача их
         // третьим аргументом конструктора игнорируется браузером и даёт
         // пустой контейнер без тайлов.
         map = new ymaps.YMap(containerRef.current, {
-          location: { center, zoom: mapped.length === 1 ? 15 : 10 },
+          location: { center, zoom: selected || mapped.length === 1 ? 15 : 10 },
         });
         map.addChild(new ymaps.YMapDefaultSchemeLayer());
         map.addChild(new ymaps.YMapDefaultFeaturesLayer());
@@ -156,12 +157,11 @@ export default function OrganizationMap({ organizations, selectedId, onSelect, c
           map?.addChild(new ymaps.YMapMarker({ coordinates }, marker));
         });
         setState("ready");
+        onAvailabilityChange?.(true);
       } catch (error: unknown) {
         if (!active) return;
-        setState("fallback");
-        setMessage(error instanceof Error && error.message === "Ключ карты не настроен"
-          ? "Карта временно недоступна: ключ не настроен"
-          : "Карту не удалось загрузить — используйте список или маршрут");
+        setState("unavailable");
+        onAvailabilityChange?.(false);
       }
     })();
 
@@ -170,13 +170,8 @@ export default function OrganizationMap({ organizations, selectedId, onSelect, c
       map?.destroy?.();
       map = null;
     };
-  }, [organizations, selectedId]);
+  }, [organizations, selectedId, onAvailabilityChange]);
 
-  return (
-    <div className={`organization-map-wrap ${className}`}>
-      {state === "fallback" && <MapFallback message={message} />}
-      {state === "loading" && <MapFallback message={message} />}
-      <div ref={containerRef} className={`organization-map${state === "ready" ? " is-ready" : ""}`} aria-label="Карта организаций" />
-    </div>
-  );
+  if (state !== "ready") return null;
+  return <div className={`organization-map-wrap ${className}`}><div ref={containerRef} className="organization-map is-ready" aria-label="Карта организаций" /></div>;
 }

@@ -19,8 +19,23 @@ export default function Orgs() {
   const [region, setRegion] = useState(user.region || "Все");
   const [regions, setRegions] = useState<Region[]>([]);
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(user.attached_clinic_id);
+  const [mapAvailable, setMapAvailable] = useState<boolean | null>(null);
   const [error, setError] = useState(false);
   const requestId = useRef(0);
+
+  const handleMapAvailability = useCallback((available: boolean) => {
+    setMapAvailable(available);
+  }, []);
+
+  const focusOrganization = (organization: Organization) => {
+    if (mapAvailable === true) {
+      setSelectedId(organization.id);
+      document.getElementById("organization-map-anchor")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    openExternalLink(`https://yandex.ru/maps/?text=${encodeURIComponent(organization.address)}`);
+  };
 
   const load = useCallback(() => {
     const id = ++requestId.current;
@@ -66,10 +81,14 @@ export default function Orgs() {
       </div>
       <div className="screen-body cards-2">
         {orgs !== null && orgs.length > 0 && !error && (
-          <OrganizationMap
-            organizations={orgs}
-            onSelect={(id) => nav(`/orgs/${id}`)}
-          />
+          <div id="organization-map-anchor">
+            <OrganizationMap
+              organizations={orgs}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onAvailabilityChange={handleMapAvailability}
+            />
+          </div>
         )}
         {error && (
           <div className="state-wrap">
@@ -110,10 +129,10 @@ export default function Orgs() {
                 style={{ height: 42, fontSize: 14 }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  openExternalLink(`https://yandex.ru/maps/?text=${encodeURIComponent(o.address)}`);
+                  focusOrganization(o);
                 }}
               >
-                Показать путь
+                {mapAvailable === true ? "Показать на карте" : "Показать путь"}
               </Button>
             </div>
           </div>
