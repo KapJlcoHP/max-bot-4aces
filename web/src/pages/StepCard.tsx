@@ -52,6 +52,9 @@ export default function StepCard() {
   useEffect(load, [stepId]);
 
   const step: Step | null = useMemo(() => route?.steps.find((s) => String(s.id) === stepId) ?? null, [route, stepId]);
+  const simpleInstruction = step?.description?.trim()
+    || (step ? `Выполните шаг «${step.title}» и отметьте его после завершения.` : "");
+  const simplePlace = step?.place.replace("Поликлиника по месту прикрепления", "Ваша поликлиника");
 
   const remind = async () => {
     if (!step || busy) return;
@@ -225,21 +228,14 @@ export default function StepCard() {
                 {step.status !== "done" && step.deadline && step.deadline_time && <span className="muted">В {step.deadline_time}</span>}
                 <StepCountdown step={step} tz={user.tz} now={now} />
               </div>
-              {step.place && <div className="kv"><I.pin size={18} />{step.place}</div>}
-              {step.description && (
+              {simplePlace && <div className="kv"><I.pin size={18} />{simplePlace}</div>}
+              {simpleInstruction && (
                 <div style={{ marginTop: 14 }}>
-                  <div className="section-h" style={{ marginBottom: 6 }}><b>Что нужно сделать</b></div>
-                  <p className="muted">{step.description}</p>
+                  <div className="section-h" style={{ marginBottom: 6 }}><b>Что делать простыми словами</b></div>
+                  <p className="muted">{simpleInstruction}</p>
                 </div>
               )}
             </div>
-
-            {step.reason && (
-              <details className="card step-origin" key={step.id}>
-                <summary>Почему этот шаг появился</summary>
-                <p className="muted">{step.reason}</p>
-              </details>
-            )}
 
             <div className="card step-source">
               <h3 className="h3">Источник</h3>
