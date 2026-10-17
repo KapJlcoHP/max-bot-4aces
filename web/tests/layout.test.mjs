@@ -13,4 +13,5 @@ test("desktop route shell keeps page app outside the inner screen scroll context
   assert.match(app, /<div className="app-layout">[\s\S]*<Outlet \/>/);
   assert.match(css, /\.app-layout\s*\{[^}]*min-height:\s*100%/);
   assert.match(css, /@media \(min-width: 900px\)[\s\S]*\.header\s*\{[^}]*background:\s*var\(--bg\)/);
+  assert.match(css, /@media \(min-width: 900px\)[\s\S]*\.foot\s*\{[^}]*var\(--desktop-tabbar-gap\)/);
 });

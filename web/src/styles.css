@@ -19,6 +19,7 @@
   --border: #E6EAF0;
   --r: 16px;
   --r-sm: 12px;
+  --desktop-tabbar-gap: 92px;
   --shadow: 0 6px 20px rgba(15, 42, 90, 0.08);
   --shadow-btn: 0 8px 18px rgba(31, 107, 242, 0.28);
 }
@@ -619,7 +620,9 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   /* Keep the sticky header opaque while the inner screen-body scrolls. */
   .header { padding: 22px 0 14px; background: var(--bg); }
   .screen-body { padding: 8px 0 40px; }
-  .foot { padding: 12px 0 24px; }
+  /* На десктопе TabBar плавающий и находится поверх нижнего края приложения.
+     Резервируем место, чтобы sticky-действия экранов не перекрывались навигацией. */
+  .foot { padding: 12px 0 calc(24px + var(--desktop-tabbar-gap)); }
   .greeting h2 { font-size: 32px; }
   .split { display: grid; grid-template-columns: 1.45fr 1fr; gap: 16px; align-items: start; }
   .split .col > .section-h { margin-top: 2px; }
