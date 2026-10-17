@@ -171,7 +171,17 @@ export default function RoutePage() {
                     </div>
                     <div
                       className={`tl-card ${s.status === "done" ? "muted-t" : ""} ${s.status === "current" ? "current-t press" : ""} press`}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Открыть шаг ${s.title}`}
                       onClick={() => nav(`/step/${s.id}`)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          nav(`/step/${s.id}`);
+                        }
+                      }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                         <b>{s.title}</b>

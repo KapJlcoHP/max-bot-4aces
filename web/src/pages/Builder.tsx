@@ -125,8 +125,18 @@ export default function Builder() {
                   <div
                     className="rem-item press"
                     key={s.key}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={selected === s.key}
                     style={selected === s.key ? { outline: "2px solid var(--blue)", outlineOffset: -2, borderRadius: 10, padding: "11px 8px" } : undefined}
                     onClick={() => pick(s.key)}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        pick(s.key);
+                      }
+                    }}
                   >
                     <div className="what">
                       <b>{s.title}</b>
@@ -137,8 +147,18 @@ export default function Builder() {
                 ))}
                 <div
                   className="rem-item press"
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selected === "custom"}
                   style={selected === "custom" ? { outline: "2px solid var(--blue)", outlineOffset: -2, borderRadius: 10, padding: "11px 8px" } : undefined}
                   onClick={() => pick("custom")}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      pick("custom");
+                    }
+                  }}
                 >
                   <div className="what"><b>С нуля</b><small>Без шаблона — только свои шаги</small></div>
                   <Radio checked={selected === "custom"} readOnly aria-label="С нуля" />
@@ -162,7 +182,17 @@ export default function Builder() {
                       <div
                         className="rem-item press"
                         key={s.position}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={!off.has(s.position)}
                         onClick={() => toggleStep(s.position, off.has(s.position))}
+                        onKeyDown={(e) => {
+                          if (e.target !== e.currentTarget) return;
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleStep(s.position, off.has(s.position));
+                          }
+                        }}
                       >
                         <div className="what"><b>{s.title}</b><small>из шаблона</small></div>
                         <Switch

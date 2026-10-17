@@ -92,7 +92,21 @@ export default function Orgs() {
           </div>
         )}
         {orgs?.map((o) => (
-          <div key={o.id} className={`card press${user.attached_clinic_id === o.id ? " selected-clinic" : ""}`} onClick={() => nav(`/orgs/${o.id}`)}>
+          <div
+            key={o.id}
+            className={`card press${user.attached_clinic_id === o.id ? " selected-clinic" : ""}`}
+            role="button"
+            tabIndex={0}
+            aria-label={`Открыть организацию ${o.title}`}
+            onClick={() => nav(`/orgs/${o.id}`)}
+            onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                nav(`/orgs/${o.id}`);
+              }
+            }}
+          >
             <h3 style={{ fontSize: 16, fontWeight: 700 }}>
               {o.title}
               {!user.region && o.region && <span className="badge-mine" style={{ marginLeft: 8 }}>{o.region}</span>}

@@ -117,7 +117,20 @@ export default function Home() {
                 {empty ? (
                   <div className="card muted">После создания маршрута здесь появится прогресс выполнения.</div>
                 ) : (
-                  <div className="card route-status home-route-summary press" onClick={() => nav("/route")}>
+                  <div
+                    className="card route-status home-route-summary press"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Открыть маршрут ${route!.title}`}
+                    onClick={() => nav("/route")}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        nav("/route");
+                      }
+                    }}
+                  >
                     <div className="label"><span>{route!.title}</span></div>
                     <div className="big-nums">
                       <span className="n">{route!.done_steps}</span>

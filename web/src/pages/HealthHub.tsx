@@ -153,7 +153,19 @@ export default function HealthHub() {
               </CellList>
 
               <CellHeader titleStyle="normal">Отчёты</CellHeader>
-              <div className="card tinted press" onClick={() => nav("/health/report")}>
+              <div
+                className="card tinted press"
+                role="button"
+                tabIndex={0}
+                aria-label="Открыть сводку для врача"
+                onClick={() => nav("/health/report")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    nav("/health/report");
+                  }
+                }}
+              >
                 <b style={{ color: "var(--blue)" }}>Сводка для врача</b>
                 <div className="muted" style={{ marginTop: 5 }}>
                   Давление, вес, приёмы лекарств за 30 дней — покажите на приёме вместо слов.

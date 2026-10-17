@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { Children, cloneElement, isValidElement, useEffect, useId, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { Spinner, Switch as MaxSwitch } from "@maxhub/max-ui";import { I, Logo } from "../icons";
 import { initials } from "../format";
 
@@ -95,13 +95,93 @@ export function TabBar() {
 
 /** Нижний лист (bottom sheet) с затемнением. */
 export function Sheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const titleId = `sheet-title-${useId().replace(/:/g, "")}`;
+  const labelledChildren = Children.toArray(children);
+  const headingIndex = labelledChildren.findIndex(
+    (child) => isValidElement(child) && typeof child.type === "string" && /^h[1-6]$/.test(child.type),
+  );
+  const heading = headingIndex >= 0 ? labelledChildren[headingIndex] as ReactElement<{ id?: string }> : null;
+  const labelledBy = heading?.props.id || titleId;
+
+  if (heading) {
+    labelledChildren[headingIndex] = cloneElement(heading, { id: labelledBy });
+  } else {
+    labelledChildren.unshift(<h2 key={titleId} id={titleId} className="sr-only">Диалог</h2>);
+  }
+
+  const restoreFocus = () => {
+    const element = previouslyFocusedRef.current;
+    previouslyFocusedRef.current = null;
+    if (element?.isConnected) element.focus();
+  };
+
+  useEffect(() => {
+    if (!open) {
+      restoreFocus();
+      return;
+    }
+
+    if (!previouslyFocusedRef.current && document.activeElement instanceof HTMLElement) {
+      previouslyFocusedRef.current = document.activeElement;
+    }
+
+    const sheet = sheetRef.current;
+    const firstFocusable = sheet?.querySelector<HTMLElement>(
+      'a[href], area[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
+    );
+    (firstFocusable || sheet)?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(sheet?.querySelectorAll<HTMLElement>(
+        'a[href], area[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
+      ) ?? []);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        sheet?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open]);
+
+  useEffect(() => {
+    return () => restoreFocus();
+  }, []);
+
   if (!open) return null;
   return (
     <>
-      <div className="sheet-backdrop open" onClick={onClose} />
-      <div className="sheet open">
+      <div className="sheet-backdrop open" aria-hidden="true" onClick={onClose} />
+      <div
+        ref={sheetRef}
+        className="sheet open"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={labelledBy}
+        tabIndex={-1}
+      >
         <div className="grab" />
-        {children}
+        {labelledChildren}
       </div>
     </>
   );
@@ -134,7 +214,7 @@ export function ErrorView({ onRetry }: { onRetry: () => void }) {
 
 export function Toast({ text }: { text: string | null }) {
   if (!text) return null;
-  return <div className="toast">{text}</div>;
+  return <div className="toast" role="status" aria-live="polite" aria-atomic="true">{text}</div>;
 }
 
 /** Одноразовый тост: const [toastNode, showToast] = useToast() */
