@@ -19,6 +19,13 @@ interface Picked {
 const CHIPS = ["Анализы", "УЗИ", "Специалист", "Процедуры", "Прививка"];
 
 const toPlainInstruction = (text: string) => [
+  [/^Определена поликлиника по месту прикрепления(.*)$/i, "Поликлиника для обращения уже выбрана$1"],
+  [/^Заявление подаётся в бюро медико-социальной экспертизы по месту жительства\.?$/i, "Передайте заявление и документы в медицинскую комиссию по месту жительства."],
+  [/^Явка в бюро МСЭ в назначенную дату\.?$/i, "Придите на медицинскую комиссию в назначенный день."],
+  [/^Решение и индивидуальная программа реабилитации \(ИПРА\)\.?$/i, "Получите решение комиссии и план дальнейшей помощи."],
+  [/^Для представительства в медорганизациях может понадобиться нотариальная доверенность\.?$/i, "Если близкий будет общаться с врачами вместо вас, заранее узнайте, какие документы ему понадобятся."],
+  [/^Паспорт, СНИЛС, полис ОМС, медицинские документы, характеризующие состояние здоровья\.?$/i, "Возьмите паспорт, страховой номер, медицинский полис и документы о здоровье."],
+  [/^Паспорт, полис ОМС, СНИЛС\. С утра лучше натощак\.?$/i, "Возьмите паспорт, медицинский полис и страховой номер. Утром лучше прийти натощак."],
   [/\bМСЭ\b/g, "медицинская комиссия"],
   [/\bИПРА\b/g, "план дальнейшей помощи"],
   [/посыльн\w* лист/gi, "направление от врача"],
@@ -66,7 +73,6 @@ export default function StepCard() {
   const simpleInstruction = toPlainInstruction(
     step?.description?.trim() || (step ? `Выполните шаг «${step.title}» и отметьте его после завершения.` : ""),
   );
-  const simplePlace = step?.place.replace("Поликлиника по месту прикрепления", "Ваша поликлиника");
 
   const remind = async () => {
     if (!step || busy) return;
@@ -240,13 +246,15 @@ export default function StepCard() {
                 {step.status !== "done" && step.deadline && step.deadline_time && <span className="muted">В {step.deadline_time}</span>}
                 <StepCountdown step={step} tz={user.tz} now={now} />
               </div>
-              {simplePlace && <div className="kv"><I.pin size={18} />{simplePlace}</div>}
-              {simpleInstruction && (
-                <div style={{ marginTop: 14 }}>
-                  <div className="section-h" style={{ marginBottom: 6 }}><b>Что делать простыми словами</b></div>
-                  <p className="muted">{simpleInstruction}</p>
-                </div>
+              {step.place && <div className="kv"><I.pin size={18} />{step.place}</div>}
+              {step.description && (
+                <div className="kv" style={{ fontWeight: 500, color: "var(--muted)", marginTop: 12 }}>{step.description}</div>
               )}
+            </div>
+
+            <div className="card">
+              <h3 className="h3">Простыми словами</h3>
+              <p className="muted" style={{ marginTop: 8 }}>{simpleInstruction}</p>
             </div>
 
             <div className="card step-source">
