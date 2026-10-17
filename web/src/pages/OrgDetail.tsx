@@ -48,7 +48,7 @@ export default function OrgDetail() {
       });
       if (requestId !== loadRequestId.current) return;
       updateUser(updated);
-      showToast("Поликлиника выбрана для маршрута");
+      showToast("Поликлиника прикреплена");
     } catch {
       if (requestId === loadRequestId.current) showToast("Не удалось выбрать поликлинику — попробуйте ещё раз");
     } finally {
@@ -93,9 +93,9 @@ export default function OrgDetail() {
             <Button variant="secondary" onClick={() => openExternalLink(mapLink)}>Открыть карту в Яндексе</Button>
             {isClinic && (
               <>
-                {isAttached && <p className="muted" role="status">Выбрана для маршрута</p>}
+                {isAttached && <p className="muted" role="status">Прикреплена к профилю</p>}
                 <Button variant={isAttached ? "secondary" : "primary"} disabled={busy} onClick={toggleClinic}>
-                  {busy ? "Сохраняем…" : isAttached ? "Сменить поликлинику" : "Выбрать для маршрута"}
+                  {busy ? "Сохраняем…" : isAttached ? "Сменить поликлинику" : "Прикрепить поликлинику"}
                 </Button>
               </>
             )}

@@ -227,7 +227,10 @@ export default function StepCard() {
               </div>
               {step.place && <div className="kv"><I.pin size={18} />{step.place}</div>}
               {step.description && (
-                <div className="kv" style={{ fontWeight: 500, color: "var(--muted)", marginTop: 12 }}>{step.description}</div>
+                <div style={{ marginTop: 14 }}>
+                  <div className="section-h" style={{ marginBottom: 6 }}><b>Что нужно сделать</b></div>
+                  <p className="muted">{step.description}</p>
+                </div>
               )}
             </div>
 

@@ -71,9 +71,9 @@ export default function Profile() {
       await api.patch("/api/v1/me/settings", { attached_clinic_id: null });
       setClinic(null);
       refreshUser();
-      showToast("Поликлиника убрана из маршрута");
+      showToast("Поликлиника откреплена");
     } catch {
-      showToast("Не удалось убрать поликлинику");
+      showToast("Не удалось открепить поликлинику");
     } finally {
       setBusy(false);
     }
@@ -117,7 +117,7 @@ export default function Profile() {
             <CellSimple
               className="press"
               before={<div className="ic"><I.pin size={18} /></div>}
-              title="Поликлиника для маршрута"
+              title="Прикрепленная поликлиника"
               subtitle={clinic ? `${clinic.title} · ${clinic.address}` : "Не выбрана"}
               after={<span className="cell-note">{clinic ? "Сменить" : "Выбрать"}</span>}
               showChevron
@@ -128,10 +128,20 @@ export default function Profile() {
               }}
             />
           </CellList>
-          {clinic && <button type="button" className="card press" style={{ width: "100%", textAlign: "left", border: "none", font: "inherit" }} disabled={busy} onClick={clearClinic}>
-            <div style={{ color: "var(--red)", fontWeight: 700 }}>Убрать поликлинику из маршрута</div>
-            <div className="muted" style={{ marginTop: 5 }}>Это не удалит историю маршрута и медицинские записи.</div>
-          </button>}
+          {clinic && <CellList mode="island">
+            <CellSimple
+              className="press"
+              before={<div className="ic r"><I.trash size={18} /></div>}
+              title="Открепить поликлинику"
+              subtitle="История маршрута и медицинские записи сохранятся"
+              after={<span className="cell-note">Удалить</span>}
+              onClick={clearClinic}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); clearClinic(); }
+              }}
+            />
+          </CellList>}
           <CellList mode="island">
             <CellSimple
               className="press"

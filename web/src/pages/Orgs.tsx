@@ -57,7 +57,7 @@ export default function Orgs() {
     try {
       const updated = await api.patch<typeof user>("/api/v1/me/settings", { attached_clinic_id: clinicId });
       updateUser(updated);
-      showToast("Поликлиника выбрана для маршрута");
+      showToast("Поликлиника прикреплена");
     } catch {
       showToast("Не удалось выбрать поликлинику — попробуйте ещё раз");
     } finally {
@@ -155,7 +155,7 @@ export default function Orgs() {
                 disabled={clinicBusyId !== null}
                 onClick={(e) => chooseClinic(e, o.id)}
               >
-                {clinicBusyId === o.id ? "Сохраняем…" : "Выбрать для маршрута"}
+                {clinicBusyId === o.id ? "Сохраняем…" : "Прикрепить поликлинику"}
               </Button>
             )}
           </div>

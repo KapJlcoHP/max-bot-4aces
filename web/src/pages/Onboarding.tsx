@@ -202,7 +202,7 @@ export default function Onboarding() {
       {step === 2 && (
         <>
           <div className="header">
-            <div className="hdr-title" style={{ paddingLeft: 16 }}><h1>Ваш регион и поликлиника</h1></div>
+            <div className="hdr-title" style={{ paddingLeft: 16 }}><h1>Ваш регион и прикрепленная поликлиника</h1></div>
           </div>
           <div className="screen-body ob">
             <div className="greeting">
@@ -243,7 +243,7 @@ export default function Onboarding() {
               <div className="muted" style={{ marginTop: 4 }}>Продолжите без выбора и добавьте её позже в профиле.</div>
             </div>}
             <div className="muted" style={{ fontSize: 12.5 }}>
-              Мы сохраним поликлинику для вашего маршрута. Это не оформляет официальное прикрепление.
+              Мы сохраним выбранную поликлинику в профиле. Это не оформляет официальное прикрепление.
             </div>
             {formError && <div className="card" role="alert" style={{ color: "var(--red)" }}>{formError}</div>}
           </div>
