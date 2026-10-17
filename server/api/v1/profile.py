@@ -23,7 +23,7 @@ from core.db.models import (
     User,
     utcnow,
 )
-from core.db.seed import load_catalog, load_regions, load_scenarios
+from core.db.seed import load_catalog, load_regions, load_scenarios, refresh_route_clinic
 from core.schemas import ConsentIn, RegionDto, SettingsIn, SituationDto, UserDto
 from server.deps import PendingUser
 from .common import (
@@ -93,6 +93,7 @@ def give_consent_impl(
         user.region = body.region
     if body and "attached_clinic_id" in body.model_fields_set:
         user.attached_clinic_id = attached_clinic_id
+    refresh_route_clinic(db, user)
     if user.consent_at is None:
         user.consent_at = utcnow()
     if diaries is not None:
@@ -170,6 +171,8 @@ def update_settings(body: SettingsIn, user: User = Depends(consented_user), db: 
                 user.attached_clinic_id = None
     if "attached_clinic_id" in body.model_fields_set:
         user.attached_clinic_id = body.attached_clinic_id
+    if body.region is not None or "attached_clinic_id" in body.model_fields_set:
+        refresh_route_clinic(db, user)
     db.commit()
     db.refresh(user)
     return user

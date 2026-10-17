@@ -54,6 +54,53 @@ def _clinic_place(place: str, clinic: Organization | None) -> str:
     return base
 
 
+def _clinic_text(text: str, clinic: Organization | None) -> str:
+    """Replace legacy demo clinic references in template descriptions."""
+    if clinic is None or not text:
+        return text
+    return re.sub(r"поликлиники?\s*№\s*12", clinic.title, text, flags=re.IGNORECASE)
+
+
+def clinic_for_user(db: Session, user: User) -> Organization | None:
+    """Return the selected clinic only when it belongs to the user's region."""
+    if user.attached_clinic_id is None:
+        return None
+    return db.query(Organization).filter(
+        Organization.id == user.attached_clinic_id,
+        Organization.org_type == "Поликлиники",
+        Organization.region == user.region,
+    ).first()
+
+
+def refresh_route_clinic(db: Session, user: User, route: Route | None = None) -> Route | None:
+    """Refresh selected-clinic places in an existing template route.
+
+    Routes may have been created before the user selected a clinic. Rebuild the
+    display fields from the source scenario so selecting or removing a clinic
+    never leaves stale demo text such as «Поликлиника №12» behind.
+    """
+    route = route or db.query(Route).filter(Route.user_id == user.id, Route.active.is_(True)).first()
+    if route is None or route.situation_key == "custom":
+        return route
+    specs = load_scenarios().get(route.situation_key, {}).get("steps", [])
+    clinic = clinic_for_user(db, user)
+    for stored in route.steps:
+        if stored.source != "template":
+            continue
+        spec = next(
+            (
+                item for item in specs
+                if item.get("source_id") == stored.source_id and item.get("title") == stored.title
+            ),
+            None,
+        )
+        if spec is None:
+            continue
+        stored.place = _clinic_place(spec.get("place", ""), clinic)
+        stored.description = _clinic_text(spec.get("description", ""), clinic)
+    return route
+
+
 def seed_organizations(db: Session) -> None:
     """Организации синхронизируем из regions.json при каждом старте:
     обновляем существующие по названию, добавляем новые, удаляем исчезнувшие."""
@@ -103,13 +150,7 @@ def _build_route(
         route = Route(user_id=user.id, situation_key=situation_key, title=spec["route_title"])
         template_steps = [s for i, s in enumerate(spec["steps"], start=1) if i not in exclude]
 
-    clinic = None
-    if user.attached_clinic_id is not None:
-        clinic = db.query(Organization).filter(
-            Organization.id == user.attached_clinic_id,
-            Organization.org_type == "Поликлиники",
-            Organization.region == user.region,
-        ).first()
+    clinic = clinic_for_user(db, user)
 
     db.add(route)
     db.flush()
@@ -124,7 +165,7 @@ def _build_route(
                 route_id=route.id,
                 position=position,
                 title=step["title"],
-                description=step.get("description", ""),
+                description=_clinic_text(step.get("description", ""), clinic),
                 place=_clinic_place(step.get("place", ""), clinic),
                 deadline=deadline,
                 deadline_time=step.get("time"),

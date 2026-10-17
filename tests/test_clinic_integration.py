@@ -133,6 +133,31 @@ class ClinicIntegrationTests(unittest.TestCase):
         self.assertIn(self.ivanovo.title, place)
         self.assertIn(self.ivanovo.address, place)
 
+    def test_existing_route_refreshes_when_clinic_is_selected_or_removed(self):
+        user = User(
+            max_user_id=801007, region="Ивановская область",
+            consent_at=datetime(2026, 1, 1), attached_clinic_id=None,
+        )
+        self.db.add(user)
+        self.db.commit()
+
+        route = api.start_route(api.RouteStartIn(situation_key="chronic"), user=user, db=self.db)
+        visit = next(step for step in route.steps if step.title == "Ближайший визит к врачу")
+        self.assertEqual(visit.place, "Поликлиника по месту прикрепления")
+
+        api.update_settings(
+            SettingsIn(attached_clinic_id=self.ivanovo.id), user=user, db=self.db,
+        )
+        refreshed = api.get_route(user=user, db=self.db)
+        refreshed_visit = next(step for step in refreshed.steps if step.title == "Ближайший визит к врачу")
+        self.assertIn(self.ivanovo.title, refreshed_visit.place)
+        self.assertIn(self.ivanovo.address, refreshed_visit.place)
+
+        api.update_settings(SettingsIn(attached_clinic_id=None), user=user, db=self.db)
+        restored = api.get_route(user=user, db=self.db)
+        restored_visit = next(step for step in restored.steps if step.title == "Ближайший визит к врачу")
+        self.assertEqual(restored_visit.place, "Поликлиника по месту прикрепления")
+
 
 if __name__ == "__main__":
     unittest.main()
