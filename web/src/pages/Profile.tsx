@@ -4,7 +4,7 @@ import { CellList, CellSimple, Radio } from "@maxhub/max-ui";
 import { api } from "../api";
 import { fmtDayMonth } from "../format";
 import { useApp } from "../App";
-import type { Region } from "../types";
+import type { Organization, Region } from "../types";
 import { Button, Header, Sheet, Switch, UserAvatar, useToast } from "../components/ui";
 import { I } from "../icons";
 
@@ -15,7 +15,20 @@ export default function Profile() {
   const [notif, setNotif] = useState(user.notifications_on);
   const [regionSheet, setRegionSheet] = useState(false);
   const [regions, setRegions] = useState<Region[]>([]);
+  const [clinic, setClinic] = useState<Organization | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (user.attached_clinic_id === null) {
+      setClinic(null);
+      return;
+    }
+    let active = true;
+    api.get<Organization>(`/api/v1/orgs/${user.attached_clinic_id}`)
+      .then((item) => { if (active) setClinic(item); })
+      .catch(() => { if (active) setClinic(null); });
+    return () => { active = false; };
+  }, [user.attached_clinic_id]);
 
   useEffect(() => {
     if (!regionSheet || regions.length > 0) return;
@@ -46,6 +59,21 @@ export default function Profile() {
       showToast("Регион сохранён");
     } catch {
       showToast("Не удалось сохранить регион");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clearClinic = async () => {
+    if (busy || user.attached_clinic_id === null) return;
+    setBusy(true);
+    try {
+      await api.patch("/api/v1/me/settings", { attached_clinic_id: null });
+      setClinic(null);
+      refreshUser();
+      showToast("Поликлиника убрана из маршрута");
+    } catch {
+      showToast("Не удалось убрать поликлинику");
     } finally {
       setBusy(false);
     }
@@ -85,6 +113,25 @@ export default function Profile() {
               }}
             />
           </CellList>
+          <CellList mode="island">
+            <CellSimple
+              className="press"
+              before={<div className="ic"><I.pin size={18} /></div>}
+              title="Поликлиника для маршрута"
+              subtitle={clinic ? `${clinic.title} · ${clinic.address}` : "Не выбрана"}
+              after={<span className="cell-note">{clinic ? "Сменить" : "Выбрать"}</span>}
+              showChevron
+              onClick={() => nav(clinic ? `/orgs/${clinic.id}` : "/orgs")}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav(clinic ? `/orgs/${clinic.id}` : "/orgs"); }
+              }}
+            />
+          </CellList>
+          {clinic && <button type="button" className="card press" style={{ width: "100%", textAlign: "left", border: "none", font: "inherit" }} disabled={busy} onClick={clearClinic}>
+            <div style={{ color: "var(--red)", fontWeight: 700 }}>Убрать поликлинику из маршрута</div>
+            <div className="muted" style={{ marginTop: 5 }}>Это не удалит историю маршрута и медицинские записи.</div>
+          </button>}
           <CellList mode="island">
             <CellSimple
               className="press"

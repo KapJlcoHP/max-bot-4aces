@@ -4,6 +4,7 @@ import { useApp } from "../App";
 import type { ConsentPayload, HealthSetting, HealthType, Organization, Region, UserDto } from "../types";
 import { Button, Switch } from "../components/ui";
 import { I } from "../icons";
+import { Input } from "@maxhub/max-ui";
 import OrganizationMap from "../components/OrganizationMap";
 
 const DIARY_META: { key: HealthType; title: string; hint: string; on: boolean }[] = [
@@ -50,6 +51,7 @@ export default function Onboarding() {
   const [clinicsError, setClinicsError] = useState(false);
   const [clinicRetry, setClinicRetry] = useState(0);
   const [attachedClinicId, setAttachedClinicId] = useState<number | null>(null);
+  const [clinicQuery, setClinicQuery] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const clinicsRequestId = useRef(0);
 
@@ -70,6 +72,7 @@ export default function Onboarding() {
   useEffect(() => {
     const requestId = ++clinicsRequestId.current;
     setAttachedClinicId(null);
+    setClinicQuery("");
     setClinics(null);
     setClinicsError(false);
     if (!region) {
@@ -95,14 +98,14 @@ export default function Onboarding() {
 
   const finish = async () => {
     const validRegion = regions.some((item) => item.title === region);
-    const validClinic = clinics?.some((item) => item.id === attachedClinicId) ?? false;
+    const validClinic = attachedClinicId === null || clinics?.some((item) => item.id === attachedClinicId) === true;
     if (!validRegion) {
       setFormError("Выберите регион из списка");
       setStep(2);
       return;
     }
-    if (!validClinic || attachedClinicId === null) {
-      setFormError("Выберите поликлинику, чтобы продолжить");
+    if (!validClinic) {
+      setFormError("Выбранная поликлиника больше недоступна. Выберите другую или продолжите без неё.");
       setStep(2);
       return;
     }
@@ -204,7 +207,7 @@ export default function Onboarding() {
           <div className="screen-body ob">
             <div className="greeting">
               <h2 style={{ fontSize: 21 }}>Выберите регион</h2>
-              <p>Покажем организации рядом и сохраним вашу поликлинику для быстрого доступа.</p>
+              <p>Поликлиника необязательна: её можно выбрать сейчас или добавить позже.</p>
             </div>
             {regionsError && <div className="card" role="alert">Не удалось загрузить регионы. <button type="button" className="cell-h-btn" onClick={loadRegions}>Повторить</button></div>}
             {!regionsError && <select className="tz-select" value={region} disabled={regionsLoading} onChange={(e) => { setRegion(e.target.value); setFormError(null); }} aria-label="Регион">
@@ -213,18 +216,42 @@ export default function Onboarding() {
             </select>}
             {region && clinicsError && <div className="card" role="alert">Не удалось загрузить поликлиники. <button type="button" className="cell-h-btn" onClick={() => setClinicRetry((value) => value + 1)}>Повторить</button></div>}
             {region && !clinicsError && clinicsLoading && <div className="muted">Загружаем поликлиники…</div>}
-            {region && !clinicsLoading && !clinicsError && clinics && clinics.length === 0 && <div className="card" role="alert">В выбранном регионе пока нет поликлиник.</div>}
-            {clinics && clinics.length > 0 && <>
-              <select className="tz-select" value={attachedClinicId ?? ""} onChange={(e) => { setAttachedClinicId(e.target.value ? Number(e.target.value) : null); setFormError(null); }} aria-label="Поликлиника">
-                <option value="">Выберите поликлинику</option>
-                {clinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.title}</option>)}
-              </select>
-              <OrganizationMap organizations={clinics} selectedId={attachedClinicId} onSelect={(id) => { setAttachedClinicId(id); setFormError(null); }} />
-            </>}
+            {region && !clinicsLoading && !clinicsError && clinics && clinics.length === 0 && <div className="card" role="status">В выбранном регионе пока нет поликлиник.</div>}
+            {clinics && clinics.length > 0 && (() => {
+              const normalizedQuery = clinicQuery.trim().toLocaleLowerCase();
+              const visibleClinics = normalizedQuery
+                ? clinics.filter((clinic) => clinic.id === attachedClinicId || `${clinic.title} ${clinic.address}`.toLocaleLowerCase().includes(normalizedQuery))
+                : clinics;
+              return <>
+                <Input
+                  value={clinicQuery}
+                  onChange={(e) => setClinicQuery(e.target.value)}
+                  placeholder="Поиск по названию или адресу"
+                  aria-label="Поиск поликлиники"
+                />
+                <select className="tz-select" value={attachedClinicId ?? ""} onChange={(e) => { setAttachedClinicId(e.target.value ? Number(e.target.value) : null); setFormError(null); }} aria-label="Поликлиника">
+                  <option value="">Поликлиника не выбрана</option>
+                  {visibleClinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.title} — {clinic.address}</option>)}
+                </select>
+                {visibleClinics.length > 0
+                  ? <OrganizationMap organizations={visibleClinics} selectedId={attachedClinicId} onSelect={(id) => { setAttachedClinicId(id); setFormError(null); }} />
+                  : <div className="card" role="status">По вашему запросу поликлиники не найдены.</div>}
+              </>;
+            })()}
+            {region && <div className="card tinted" role="note">
+              <b>Моей поликлиники нет в списке?</b>
+              <div className="muted" style={{ marginTop: 4 }}>Продолжите без выбора и добавьте её позже в профиле.</div>
+            </div>}
+            <div className="muted" style={{ fontSize: 12.5 }}>
+              Мы сохраним поликлинику для вашего маршрута. Это не оформляет официальное прикрепление.
+            </div>
             {formError && <div className="card" role="alert" style={{ color: "var(--red)" }}>{formError}</div>}
           </div>
           <div className="steps"><i /><i /><i className="on" /><i /></div>
-          <div className="foot"><Button disabled={regionsLoading || clinicsLoading || !attachedClinicId} onClick={() => { setFormError(null); setStep(3); }}>Продолжить</Button></div>
+          <div className="foot">
+            {attachedClinicId === null && <Button type="button" variant="secondary" disabled={regionsLoading || clinicsLoading} onClick={() => { setFormError(null); setStep(3); }}>Выбрать поликлинику позже</Button>}
+            {attachedClinicId !== null && <Button type="button" disabled={regionsLoading || clinicsLoading} onClick={() => { setFormError(null); setStep(3); }}>Продолжить</Button>}
+          </div>
         </>
       )}
 

@@ -79,7 +79,10 @@ def orgs(
     if org_type and org_type != "Все":
         query = query.filter(Organization.org_type == org_type)
     if q:
-        query = query.filter(Organization.title.ilike(f"%{q}%"))
+        pattern = f"%{q}%"
+        query = query.filter(
+            (Organization.title.ilike(pattern)) | (Organization.address.ilike(pattern))
+        )
     return [OrganizationDto.model_validate(o) for o in query.all()]
 
 

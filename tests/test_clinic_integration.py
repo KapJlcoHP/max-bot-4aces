@@ -73,6 +73,29 @@ class ClinicIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(created.attached_clinic_id, self.ivanovo.id)
 
+    def test_pending_consent_can_continue_without_a_clinic(self):
+        pending = PendingUser(
+            max_user_id=801005, first_name="Новый", last_name="Пользователь",
+            email="user801005@demo.local", avatar_url="", region="Ивановская область",
+        )
+
+        created = api.give_consent(
+            ConsentIn(region="Ивановская область", attached_clinic_id=None),
+            user=pending, db=self.db,
+        )
+
+        self.assertIsNone(created.attached_clinic_id)
+
+    def test_org_search_matches_address(self):
+        pending = PendingUser(
+            max_user_id=801006, first_name="Новый", last_name="Пользователь",
+            email="user801006@demo.local", avatar_url="", region="Ивановская область",
+        )
+
+        rows = api.orgs(q="ул. Тестовая, 1", region="Ивановская область", user=pending, db=self.db)
+
+        self.assertEqual([row.title for row in rows], [self.ivanovo.title])
+
     def test_settings_region_change_clears_foreign_clinic(self):
         user = User(
             max_user_id=801002, region="Ивановская область",

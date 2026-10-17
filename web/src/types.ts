@@ -113,7 +113,7 @@ export interface MapConfig {
 export interface ConsentPayload {
   tz: string;
   region: string;
-  attached_clinic_id: number;
+  attached_clinic_id: number | null;
   diaries: HealthSetting[];
 }
 
