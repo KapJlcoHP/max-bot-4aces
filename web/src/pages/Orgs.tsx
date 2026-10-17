@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MouseEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { openExternalLink } from "../bridge";
 import { useApp } from "../App";
@@ -9,20 +8,23 @@ import { Input } from "@maxhub/max-ui";
 import { Button, Header, LoadingView, useToast } from "../components/ui";
 import { I } from "../icons";
 import OrganizationMap from "../components/OrganizationMap";
+import { canChooseClinic, ClinicConfirmation, CLINIC_NOTICE, useClinicChoice } from "../components/ClinicChoice";
 
 const CHIPS = ["Все", "Больницы", "Поликлиники", "Диспансеры", "Центры"];
 
 export default function Orgs() {
   const nav = useNavigate();
-  const { user, updateUser } = useApp();
+  const { user } = useApp();
+  const changeMode = new URLSearchParams(useLocation().search).get("mode") === "change";
   const [toast, showToast] = useToast();
   const [q, setQ] = useState("");
-  const [type, setType] = useState("Все");
+  const [type, setType] = useState(changeMode ? "Поликлиники" : "Все");
   const [region, setRegion] = useState(user.region || "Все");
   const [regions, setRegions] = useState<Region[]>([]);
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   const [error, setError] = useState(false);
-  const [clinicBusyId, setClinicBusyId] = useState<number | null>(null);
+  const choice = useClinicChoice(changeMode, showToast);
+  const detailPath = (id: number) => `/orgs/${id}${changeMode ? "?mode=change" : ""}`;
   const requestId = useRef(0);
 
   const load = useCallback(() => {
@@ -31,12 +33,12 @@ export default function Orgs() {
     setOrgs(null);
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
-    if (type !== "Все") params.set("org_type", type);
-    if (region !== "Все") params.set("region", region);
+    if (changeMode || type !== "Все") params.set("org_type", changeMode ? "Поликлиники" : type);
+    if (changeMode || region !== "Все") params.set("region", changeMode ? user.region : region);
     api.get<Organization[]>(`/api/v1/orgs?${params}`)
       .then((results) => { if (id === requestId.current) setOrgs(results); })
       .catch(() => { if (id === requestId.current) setError(true); });
-  }, [q, type, region]);
+  }, [q, type, region, changeMode, user.region]);
 
   useEffect(() => {
     api.get<Region[]>("/api/v1/regions").then((items) => {
@@ -50,33 +52,20 @@ export default function Orgs() {
     return () => window.clearTimeout(timer);
   }, [load, q]);
 
-  const chooseClinic = async (event: MouseEvent, clinicId: number) => {
-    event.stopPropagation();
-    if (clinicBusyId !== null) return;
-    setClinicBusyId(clinicId);
-    try {
-      const updated = await api.patch<typeof user>("/api/v1/me/settings", { attached_clinic_id: clinicId });
-      updateUser(updated);
-      showToast("Поликлиника прикреплена");
-    } catch {
-      showToast("Не удалось выбрать поликлинику — попробуйте ещё раз");
-    } finally {
-      setClinicBusyId(null);
-    }
-  };
-
   return (
     <div className="app">
       <div>
-        <Header title="Организации" subtitle={region === "Все" ? "Все регионы" : `Регион: ${region}`} back="/" />
+        <Header title={changeMode ? "Выбор поликлиники" : "Организации"} subtitle={`Регион: ${changeMode ? user.region : region}`} back={changeMode ? "/profile" : "/"} />
+        {changeMode && <div className="card" role="status"><b>Выберите поликлинику вашего региона</b><p>Текущий выбор сохранится до подтверждения нового.</p><p className="muted">{CLINIC_NOTICE}</p><Button variant="secondary" onClick={() => nav("/profile")}>Отмена</Button></div>}
+        {choice.conflicted && <div role="alert">Обновите профиль перед новым выбором.<Button onClick={() => choice.refresh().catch(() => showToast("Не удалось обновить профиль"))}>Обновить профиль</Button></div>}
         <div className="org-search">
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск поликлиники, больницы…" iconBefore={<I.search size={18} />} aria-label="Поиск организаций" />
           <div className="chips" style={{ marginTop: 12 }}>
             {CHIPS.map((c) => (
-              <button key={c} className={`chip${type === c ? " on" : ""}`} onClick={() => setType(c)}>{c}</button>
+               <button key={c} disabled={changeMode} className={`chip${type === c ? " on" : ""}`} onClick={() => setType(c)}>{c}</button>
             ))}
           </div>
-          <select className="tz-select" value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Регион">
+          <select className="tz-select" disabled={changeMode} value={changeMode ? user.region : region} onChange={(e) => setRegion(e.target.value)} aria-label="Регион">
             <option value="Все">Все регионы</option>
             {regions.map((item) => <option key={item.key} value={item.title}>{item.title}</option>)}
           </select>
@@ -86,7 +75,7 @@ export default function Orgs() {
         {orgs !== null && orgs.length > 0 && !error && (
           <OrganizationMap
             organizations={orgs}
-            onSelect={(id) => nav(`/orgs/${id}`)}
+            onSelect={(id) => nav(detailPath(id))}
           />
         )}
         {error && (
@@ -104,7 +93,7 @@ export default function Orgs() {
             <I.building size={64} />
             <h2>Организации не найдены</h2>
             <p>Попробуйте изменить запрос или фильтр</p>
-              <Button style={{ marginTop: 14 }} onClick={() => { setQ(""); setType("Все"); setRegion("Все"); }}>
+              <Button style={{ marginTop: 14 }} onClick={() => { setQ(""); setType(changeMode ? "Поликлиники" : "Все"); setRegion(changeMode ? user.region : "Все"); }}>
               Сбросить фильтры
             </Button>
           </div>
@@ -116,12 +105,12 @@ export default function Orgs() {
             role="button"
             tabIndex={0}
             aria-label={`Открыть организацию ${o.title}`}
-            onClick={() => nav(`/orgs/${o.id}`)}
+            onClick={() => nav(detailPath(o.id))}
             onKeyDown={(e) => {
               if (e.target !== e.currentTarget) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                nav(`/orgs/${o.id}`);
+                nav(detailPath(o.id));
               }
             }}
           >
@@ -148,20 +137,22 @@ export default function Orgs() {
                 Показать путь
               </Button>
             </div>
-            {o.org_type === "Поликлиники" && user.attached_clinic_id !== o.id && (
+            {user.attached_clinic_id === o.id && <p role="status">Текущая поликлиника</p>}
+            {canChooseClinic(o, user, changeMode) && (
               <Button
                 variant="secondary"
                 style={{ height: 42, fontSize: 14, marginTop: 10 }}
-                disabled={clinicBusyId !== null}
-                onClick={(e) => chooseClinic(e, o.id)}
+                disabled={choice.busy || choice.conflicted}
+                onClick={(e) => { e.stopPropagation(); choice.choose(o); }}
               >
-                {clinicBusyId === o.id ? "Сохраняем…" : "Прикрепить поликлинику"}
+                Выбрать поликлинику
               </Button>
             )}
           </div>
         ))}
       </div>
       {toast}
+      <ClinicConfirmation choice={choice} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { openExternalLink } from "../bridge";
 import type { Organization } from "../types";
@@ -7,15 +7,17 @@ import { useApp } from "../App";
 import { Button, Header, LoadingView, useToast } from "../components/ui";
 import { I } from "../icons";
 import OrganizationMap from "../components/OrganizationMap";
+import { canChooseClinic, ClinicConfirmation, CLINIC_NOTICE, useClinicChoice } from "../components/ClinicChoice";
 
 export default function OrgDetail() {
   const { orgId } = useParams();
   const nav = useNavigate();
-  const { user, updateUser } = useApp();
+  const { user } = useApp();
+  const changeMode = new URLSearchParams(useLocation().search).get("mode") === "change";
   const [org, setOrg] = useState<Organization | null>(null);
   const [error, setError] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [toast, showToast] = useToast();
+  const choice = useClinicChoice(changeMode, showToast);
   const loadRequestId = useRef(0);
 
   useEffect(() => {
@@ -34,35 +36,15 @@ export default function OrgDetail() {
   const isClinic = org?.org_type === "Поликлиники";
   const isAttached = Boolean(org && user.attached_clinic_id === org.id);
 
-  const toggleClinic = async () => {
-    if (!org || !isClinic || busy) return;
-    if (isAttached) {
-      nav("/orgs");
-      return;
-    }
-    const requestId = loadRequestId.current;
-    setBusy(true);
-    try {
-      const updated = await api.patch<typeof user>("/api/v1/me/settings", {
-        attached_clinic_id: org.id,
-      });
-      if (requestId !== loadRequestId.current) return;
-      updateUser(updated);
-      showToast("Поликлиника прикреплена");
-    } catch {
-      if (requestId === loadRequestId.current) showToast("Не удалось выбрать поликлинику — попробуйте ещё раз");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const mapLink = org && org.lat !== null && org.lon !== null
     ? `https://yandex.ru/maps/?pt=${org.lon},${org.lat}&z=16&l=map`
     : org ? `https://yandex.ru/maps/?text=${encodeURIComponent(org.address)}` : "";
 
   return (
     <div className="app">
-      <Header title={org?.title ?? "Организация"} subtitle="Подробная информация" back="/orgs" />
+      <Header title={org?.title ?? "Организация"} subtitle="Подробная информация" back={changeMode ? "/orgs?mode=change" : "/orgs"} />
+      {changeMode && <div className="card"><p>Режим выбора поликлиники. Текущий выбор сохранится до подтверждения.</p><p className="muted">{CLINIC_NOTICE}</p><Button variant="secondary" onClick={() => nav("/profile")}>Отмена</Button></div>}
+      {choice.conflicted && <div role="alert">Обновите профиль перед новым выбором.<Button onClick={() => choice.refresh().catch(() => showToast("Не удалось обновить профиль"))}>Обновить профиль</Button></div>}
       <div className="screen-body">
         {error && (
           <div className="state-wrap">
@@ -93,10 +75,10 @@ export default function OrgDetail() {
             <Button variant="secondary" onClick={() => openExternalLink(mapLink)}>Открыть карту в Яндексе</Button>
             {isClinic && (
               <>
-                {isAttached && <p className="muted" role="status">Прикреплена к профилю</p>}
-                <Button variant={isAttached ? "secondary" : "primary"} disabled={busy} onClick={toggleClinic}>
-                  {busy ? "Сохраняем…" : isAttached ? "Сменить поликлинику" : "Прикрепить поликлинику"}
-                </Button>
+                {isAttached && <p className="muted" role="status">Текущая поликлиника</p>}
+                {canChooseClinic(org, user, changeMode) && <Button disabled={choice.busy || choice.conflicted} onClick={() => choice.choose(org)}>Выбрать поликлинику</Button>}
+                {!changeMode && user.attached_clinic_id !== null && <Button variant="secondary" onClick={() => nav("/orgs?mode=change")}>Сменить поликлинику</Button>}
+                {org.region !== user.region && <p className="muted">Для выбора доступны только поликлиники региона профиля.</p>}
               </>
             )}
             <div className="card">
@@ -125,6 +107,7 @@ export default function OrgDetail() {
         </div>
       )}
       {toast}
+      <ClinicConfirmation choice={choice} />
     </div>
   );
 }

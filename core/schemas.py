@@ -63,6 +63,14 @@ class ConsentIn(OrmDto):
     attached_clinic_id: int | None = None
 
 
+class ClinicChangeIn(OrmDto):
+    """Явный подтверждённый выбор с проверкой состояния профиля из открытого окна."""
+
+    attached_clinic_id: int = Field(gt=0)
+    expected_clinic_id: int | None = Field(..., gt=0)
+    expected_region: str = Field(min_length=1)
+
+
 class SituationDto(OrmDto):
     key: str
     title: str
@@ -356,6 +364,9 @@ class SettingsIn(OrmDto):
     email: str | None = None
     region: str | None = None
     attached_clinic_id: int | None = None
+    confirm_clinic_reset: bool = False
+    expected_clinic_id: int | None = Field(default=None, gt=0)
+    expected_region: str | None = None
 
 
 RouteDto.model_rebuild()

@@ -22,6 +22,7 @@ from bot.keyboards import (
 from core.db.models import HealthSetting, MedCourse, RouteStep, User
 from core.db.demo import fill_demo, has_any_data, is_demo_data, wipe_data
 from core.db.session import SessionLocal
+from core.db.seed import project_step_clinic
 from core.diary_settings import diary_settings
 from core.services import (
     ServiceError,
@@ -104,8 +105,9 @@ async def status_command(event: MessageCreated):
             )
             return
         parts = [f"📍 Текущий шаг: **{step.title}**"]
-        if step.place:
-            parts.append(f"Где: {step.place}")
+        place = project_step_clinic(step).get("place", step.place)
+        if place:
+            parts.append(f"Где: {place}")
         when = " · ".join(
             filter(None, [step.deadline.strftime("%d.%m") if step.deadline else "", step.deadline_time or ""])
         )

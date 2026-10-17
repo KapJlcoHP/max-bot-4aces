@@ -3,6 +3,7 @@
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -24,7 +25,7 @@ from core.db.models import (
     utcnow,
 )
 from core.db.seed import load_catalog, load_regions, load_scenarios, refresh_route_clinic
-from core.schemas import ConsentIn, RegionDto, SettingsIn, SituationDto, UserDto
+from core.schemas import ClinicChangeIn, ConsentIn, RegionDto, SettingsIn, SituationDto, UserDto
 from server.deps import PendingUser
 from .common import (
     apply_diary_settings,
@@ -35,6 +36,66 @@ from .common import (
 )
 
 router = APIRouter()
+
+
+def _clinic_conflict():
+    raise HTTPException(status_code=409, detail="Профиль изменился. Обновите данные и подтвердите выбор заново")
+
+
+def _profile_state(db: Session, user: User):
+    # Read columns, not a possibly stale ORM identity loaded by authentication.
+    return db.query(User.region, User.attached_clinic_id).filter(User.id == user.id).one()
+
+
+def _validate_clinic(db: Session, clinic_id: int, region: str):
+    if clinic_id <= 0 or not region:
+        raise HTTPException(status_code=422, detail="Выберите регион и поликлинику")
+    clinic = db.get(Organization, clinic_id)
+    if clinic is None or clinic.org_type != "Поликлиники":
+        raise HTTPException(status_code=422, detail="Поликлиника не найдена")
+    if clinic.region != region:
+        raise HTTPException(status_code=422, detail="Поликлиника не найдена в выбранном регионе")
+    return clinic
+
+
+def _save_profile(db: Session, user: User, state, values: dict):
+    result = db.execute(update(User).where(
+        User.id == user.id, User.region == state.region,
+        User.attached_clinic_id.is_(None) if state.attached_clinic_id is None
+        else User.attached_clinic_id == state.attached_clinic_id,
+    ).values(**values).execution_options(synchronize_session=False))
+    if result.rowcount != 1:
+        db.rollback()
+        _clinic_conflict()
+    db.refresh(user)
+    if "region" in values or "attached_clinic_id" in values:
+        refresh_route_clinic(db, user)
+
+
+@router.post("/me/clinic", response_model=UserDto, responses={409: {"description": "Профиль изменился; обновите данные и подтвердите выбор заново"}})
+def change_clinic(body: ClinicChangeIn, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    if not body.expected_region.strip():
+        raise HTTPException(status_code=422, detail="Выберите регион")
+    state = _profile_state(db, user)
+    if state.region != body.expected_region:
+        _clinic_conflict()
+    _validate_clinic(db, body.attached_clinic_id, state.region)
+    # A repeated successful request is safe, but never replays over a different choice.
+    if state.attached_clinic_id != body.attached_clinic_id and state.attached_clinic_id != body.expected_clinic_id:
+        _clinic_conflict()
+    try:
+        _save_profile(db, user, state, {"attached_clinic_id": body.attached_clinic_id})
+    except HTTPException as error:
+        if error.status_code != 409:
+            raise
+        current = _profile_state(db, user)
+        if current.region != body.expected_region or current.attached_clinic_id != body.attached_clinic_id:
+            raise
+        # Another window completed this exact operation between SELECT and UPDATE.
+        db.refresh(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 def give_consent_impl(
@@ -87,15 +148,24 @@ def give_consent_impl(
             user = db.query(User).filter(User.max_user_id == pending.max_user_id).first()
             if user is None:
                 raise
+    state = _profile_state(db, user)
+    values = {}
     if body and body.tz:
-        user.tz = body.tz
+        values["tz"] = body.tz
     if body and body.region is not None:
-        user.region = body.region
+        if state.attached_clinic_id is not None and state.region != body.region:
+            _clinic_conflict()
+        values["region"] = body.region
     if body and "attached_clinic_id" in body.model_fields_set:
-        user.attached_clinic_id = attached_clinic_id
-    refresh_route_clinic(db, user)
+        if state.attached_clinic_id is not None and attached_clinic_id != state.attached_clinic_id:
+            _clinic_conflict()
+        if attached_clinic_id is not None:
+            _validate_clinic(db, attached_clinic_id, values.get("region", state.region))
+            values["attached_clinic_id"] = attached_clinic_id
     if user.consent_at is None:
-        user.consent_at = utcnow()
+        values["consent_at"] = utcnow()
+    if values:
+        _save_profile(db, user, state, values)
     if diaries is not None:
         apply_diary_settings(db, user.id, diaries)
     db.commit()
@@ -145,42 +215,37 @@ def delete_my_data(user: User | PendingUser = Depends(current_user), db: Session
 
 @router.patch("/me/settings", response_model=UserDto)
 def update_settings(body: SettingsIn, user: User = Depends(consented_user), db: Session = Depends(db_session)):
-    target_region = body.region if body.region is not None else user.region
+    state = _profile_state(db, user)
+    target_region = body.region if body.region is not None else state.region
+    values = {}
     if body.region is not None:
         known = {r["title"] for r in load_regions()}
         if body.region not in known:
             raise HTTPException(status_code=422, detail="Неизвестный регион")
-    if "attached_clinic_id" in body.model_fields_set and body.attached_clinic_id is not None:
-        clinic = db.query(Organization).filter(
-            Organization.id == body.attached_clinic_id,
-            Organization.org_type == "Поликлиники",
-            Organization.region == target_region,
-        ).first()
-        if clinic is None:
-            raise HTTPException(status_code=422, detail="Поликлиника не найдена в выбранном регионе")
-
-    if body.notifications_on is not None:
-        user.notifications_on = body.notifications_on
-    if body.notify_day_before is not None:
-        user.notify_day_before = body.notify_day_before
-    if body.notify_hour_before is not None:
-        user.notify_hour_before = body.notify_hour_before
-    if body.notify_at_deadline is not None:
-        user.notify_at_deadline = body.notify_at_deadline
-    if body.step_day_before_time is not None:
-        user.step_day_before_time = body.step_day_before_time
-    if body.email is not None:
-        user.email = body.email
-    if body.region is not None:
-        user.region = body.region
-        if user.attached_clinic_id is not None:
-            current_clinic = db.get(Organization, user.attached_clinic_id)
-            if current_clinic is None or current_clinic.org_type != "Поликлиники" or current_clinic.region != body.region:
-                user.attached_clinic_id = None
     if "attached_clinic_id" in body.model_fields_set:
-        user.attached_clinic_id = body.attached_clinic_id
-    if body.region is not None or "attached_clinic_id" in body.model_fields_set:
-        refresh_route_clinic(db, user)
+        if state.attached_clinic_id is not None and body.attached_clinic_id != state.attached_clinic_id:
+            _clinic_conflict()
+        if body.attached_clinic_id is not None:
+            _validate_clinic(db, body.attached_clinic_id, target_region)
+            values["attached_clinic_id"] = body.attached_clinic_id
+    for field in ("notifications_on", "notify_day_before", "notify_hour_before", "notify_at_deadline", "step_day_before_time", "email"):
+        if getattr(body, field) is not None:
+            values[field] = getattr(body, field)
+    if body.region is not None:
+        values["region"] = body.region
+        if body.expected_region is not None and (
+            body.expected_region != state.region or body.expected_clinic_id != state.attached_clinic_id
+        ):
+            _clinic_conflict()
+        if state.attached_clinic_id is not None:
+            current_clinic = db.get(Organization, state.attached_clinic_id)
+            if current_clinic is None or current_clinic.org_type != "Поликлиники" or current_clinic.region != body.region:
+                if (not body.confirm_clinic_reset or "expected_clinic_id" not in body.model_fields_set
+                        or body.expected_clinic_id != state.attached_clinic_id or body.expected_region != state.region):
+                    _clinic_conflict()
+                values["attached_clinic_id"] = None
+    if values:
+        _save_profile(db, user, state, values)
     db.commit()
     db.refresh(user)
     return user

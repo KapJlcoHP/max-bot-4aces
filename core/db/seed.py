@@ -1,10 +1,10 @@
 """Загрузка контента и построение маршрутов. Персональные данные пользователь заводит сам."""
 
 import json
-import re
 from pathlib import Path
 
-from sqlalchemy.orm import Session
+from sqlalchemy import update
+from sqlalchemy.orm import Session, object_session
 
 from core.db.models import ChecklistItem, Organization, Route, RouteStep, User
 
@@ -39,25 +39,13 @@ def pilot_region() -> str:
 
 
 def _clinic_place(place: str, clinic: Organization | None) -> str:
-    """Подставить выбранную поликлинику только в шаблонные места прикрепления."""
-    if clinic is None or not place:
-        return place
-    if not re.search(r"поликлиник|прикреплен", place, flags=re.IGNORECASE):
-        return place
-    base = f"{clinic.title}, {clinic.address}"
-    # Сохраняем кабинет/дополнительную часть исходного места.
-    if "," in place and "прикреп" not in place.lower():
-        suffix = place.split(",", 1)[1].strip()
-        if suffix:
-            base = f"{base}, {suffix}"
-    return base
+    """Only explicitly bound scenario fields receive the profile clinic."""
+    label = f"{clinic.title}, {clinic.address}" if clinic else "Поликлиника не выбрана — выберите в профиле"
+    return place.replace("{clinic}", label)
 
 
 def _clinic_text(text: str, clinic: Organization | None) -> str:
-    """Replace legacy demo clinic references in template descriptions."""
-    if clinic is None or not text:
-        return text
-    return re.sub(r"поликлиники?\s*№\s*12", clinic.title, text, flags=re.IGNORECASE)
+    return _clinic_place(text, clinic)
 
 
 def clinic_for_user(db: Session, user: User) -> Organization | None:
@@ -71,32 +59,69 @@ def clinic_for_user(db: Session, user: User) -> Organization | None:
     ).first()
 
 
-def refresh_route_clinic(db: Session, user: User, route: Route | None = None) -> Route | None:
-    """Refresh selected-clinic places in an existing template route.
-
-    Routes may have been created before the user selected a clinic. Rebuild the
-    display fields from the source scenario so selecting or removing a clinic
-    never leaves stale demo text such as «Поликлиника №12» behind.
-    """
-    route = route or db.query(Route).filter(Route.user_id == user.id, Route.active.is_(True)).first()
-    if route is None or route.situation_key == "custom":
-        return route
+def clinic_step_display(db: Session, user: User, route: Route, stored: RouteStep) -> dict[str, str]:
+    """Read-only projection, including pre-binding saved routes; preserve personal edits/history."""
+    result = {"place": stored.place, "description": stored.description}
+    if not route.active or stored.status == "done" or stored.source != "template":
+        return result
     specs = load_scenarios().get(route.situation_key, {}).get("steps", [])
+    matches = [s for s in specs if s["title"] == stored.title and s.get("source_id") == stored.source_id]
+    # Ambiguous identity cannot establish a binding. Nor can duplicate saved steps.
+    if len(matches) != 1 or sum(s.title == stored.title and s.source_id == stored.source_id and s.source == "template" for s in route.steps) != 1:
+        return result
+    spec = matches[0]
     clinic = clinic_for_user(db, user)
-    for stored in route.steps:
-        if stored.source != "template":
+    old_clinics = None
+    for field in result:
+        template = spec.get(field, "")
+        if "{clinic}" not in template:
             continue
-        spec = next(
-            (
-                item for item in specs
-                if item.get("source_id") == stored.source_id and item.get("title") == stored.title
-            ),
-            None,
-        )
-        if spec is None:
-            continue
-        stored.place = _clinic_place(spec.get("place", ""), clinic)
-        stored.description = _clinic_text(spec.get("description", ""), clinic)
+        value = result[field] or ""
+        allowed = {template, _clinic_place(template, None)}
+        if old_clinics is None:
+            old_clinics = db.query(Organization).filter(Organization.org_type == "Поликлиники").all()
+        allowed.update(_clinic_place(template, org) for org in old_clinics)
+        if field == "place":
+            allowed.update({"", "Поликлиника по месту прикрепления", "Поликлиника №12, каб. 304"})
+            # The previous formatter incorrectly retained a fictional cabinet.
+            allowed.update(f"{org.title}, {org.address}, каб. 304" for org in old_clinics)
+        elif route.situation_key == "doctor":
+            legacy = {
+                "Выбрать поликлинику": "Определена поликлиника по месту прикрепления — №12.",
+                "Записаться на приём": "Выбрано удобное время через личный кабинет поликлиники №12.",
+            }.get(stored.title)
+            if legacy:
+                allowed.add(legacy)
+                allowed.update(legacy.replace("поликлиники №12", org.title) for org in old_clinics)
+        if value in allowed:
+            result[field] = _clinic_place(template, clinic)
+    return result
+
+
+def project_step_clinic(stored: RouteStep) -> dict[str, str]:
+    db = object_session(stored)
+    if db is None:
+        return {}
+    route = db.get(Route, stored.route_id)
+    user = db.get(User, route.user_id) if route else None
+    return clinic_step_display(db, user, route, stored) if user else {}
+
+
+def refresh_route_clinic(db: Session, user: User, route: Route | None = None) -> Route | None:
+    route = route or db.query(Route).filter(Route.user_id == user.id, Route.active.is_(True)).first()
+    if route is not None:
+        for stored in route.steps:
+            changes = {field: value for field, value in clinic_step_display(db, user, route, stored).items()
+                       if getattr(stored, field) != value}
+            if not changes:
+                continue
+            # A concurrently completed/edited step is a fact, not template content.
+            db.execute(update(RouteStep).where(
+                RouteStep.id == stored.id, RouteStep.status != "done", RouteStep.source == "template",
+                RouteStep.place == stored.place, RouteStep.description == stored.description,
+                RouteStep.route_id.in_(db.query(Route.id).filter(Route.active.is_(True), Route.user_id == user.id)),
+            ).values(**changes).execution_options(synchronize_session=False))
+            db.refresh(stored)
     return route
 
 

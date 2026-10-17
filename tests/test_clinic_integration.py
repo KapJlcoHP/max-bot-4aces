@@ -105,7 +105,8 @@ class ClinicIntegrationTests(unittest.TestCase):
         self.db.commit()
 
         updated = api.update_settings(
-            SettingsIn(region="Владимирская область"), user=user, db=self.db,
+            SettingsIn(region="Владимирская область", confirm_clinic_reset=True,
+                       expected_region=user.region, expected_clinic_id=self.ivanovo.id), user=user, db=self.db,
         )
         self.assertEqual(updated.region, "Владимирская область")
         self.assertIsNone(updated.attached_clinic_id)
@@ -171,7 +172,7 @@ class ClinicIntegrationTests(unittest.TestCase):
 
         route = api.start_route(api.RouteStartIn(situation_key="chronic"), user=user, db=self.db)
         visit = next(step for step in route.steps if step.title == "Ближайший визит к врачу")
-        self.assertEqual(visit.place, "Поликлиника по месту прикрепления")
+        self.assertIn("Поликлиника не выбрана", visit.place)
 
         api.update_settings(
             SettingsIn(attached_clinic_id=self.ivanovo.id), user=user, db=self.db,
@@ -181,10 +182,11 @@ class ClinicIntegrationTests(unittest.TestCase):
         self.assertIn(self.ivanovo.title, refreshed_visit.place)
         self.assertIn(self.ivanovo.address, refreshed_visit.place)
 
-        api.update_settings(SettingsIn(attached_clinic_id=None), user=user, db=self.db)
+        api.update_settings(SettingsIn(region="Владимирская область", confirm_clinic_reset=True,
+                                       expected_region=user.region, expected_clinic_id=self.ivanovo.id), user=user, db=self.db)
         restored = api.get_route(user=user, db=self.db)
         restored_visit = next(step for step in restored.steps if step.title == "Ближайший визит к врачу")
-        self.assertEqual(restored_visit.place, "Поликлиника по месту прикрепления")
+        self.assertIn("Поликлиника не выбрана", restored_visit.place)
 
 
 if __name__ == "__main__":

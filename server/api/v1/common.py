@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from core.db.models import HealthSetting, Route, RouteStep, User
 from core.db.session import SessionLocal
-from core.db.seed import load_catalog, load_sources
+from core.db.seed import load_catalog, load_sources, project_step_clinic
 from core.schemas import ContentSourceDto, HealthSettingDto, RouteDto, StepDto
 from core.diary_settings import DIARIES
 from server.deps import AuthError, PendingUser, get_authenticated_user
@@ -45,6 +45,8 @@ def route_template_title(route: Route) -> str:
 
 def step_dto(step: RouteStep, template_title: str, sources: dict[str, dict] | None = None) -> StepDto:
     dto = StepDto.model_validate(step)
+    for field, value in project_step_clinic(step).items():
+        setattr(dto, field, value)
     if step.source == "template":
         dto.reason = f"Входит в маршрут «{template_title}», который вы выбрали при создании маршрута."
         if step.source_id:

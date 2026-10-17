@@ -16,6 +16,12 @@ export interface UserDto {
   consent_at: string | null;
 }
 
+export interface ClinicChangePayload {
+  attached_clinic_id: number;
+  expected_clinic_id: number | null;
+  expected_region: string;
+}
+
 export interface Region {
   key: string;
   title: string;

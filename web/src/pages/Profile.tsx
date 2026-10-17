@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CellList, CellSimple, Radio } from "@maxhub/max-ui";
 import { api } from "../api";
@@ -33,6 +33,8 @@ export default function Profile() {
   const [regions, setRegions] = useState<Region[]>([]);
   const [clinic, setClinic] = useState<Organization | null>(null);
   const [busy, setBusy] = useState(false);
+  const regionLock = useRef(false);
+  const [regionChange, setRegionChange] = useState<{ title: string; expected_region: string; expected_clinic_id: number | null; clinicLabel: string } | null>(null);
   const [stepReminderBusy, setStepReminderBusy] = useState<StepReminderKey | null>(null);
   const [stepDayBeforeTimeBusy, setStepDayBeforeTimeBusy] = useState(false);
 
@@ -100,37 +102,44 @@ export default function Profile() {
     setStepReminderSheet(true);
   };
 
-  const pickRegion = async (title: string) => {
-    if (busy || title === user.region) {
-      setRegionSheet(false);
-      return;
-    }
+  const saveRegion = async (change: NonNullable<typeof regionChange>) => {
+    if (regionLock.current) return;
+    regionLock.current = true;
     setBusy(true);
     try {
-      await api.patch("/api/v1/me/settings", { region: title });
-      refreshUser();
+      const updated = await api.patch<UserDto>("/api/v1/me/settings", {
+        region: change.title, expected_region: change.expected_region,
+        expected_clinic_id: change.expected_clinic_id, confirm_clinic_reset: change.expected_clinic_id !== null,
+      });
+      updateUser(updated);
+      setRegionChange(null);
       setRegionSheet(false);
       showToast("Регион сохранён");
-    } catch {
-      showToast("Не удалось сохранить регион");
+    } catch (error) {
+      if (error && typeof error === "object" && "status" in error && error.status === 409) {
+        setRegionChange(null);
+        setRegionSheet(false);
+        try { updateUser(await api.get<UserDto>("/api/v1/me")); } catch { /* Old profile remains visible. */ }
+        showToast("Профиль изменился. Проверьте данные и выберите регион заново");
+      } else showToast("Не удалось сохранить регион");
     } finally {
+      regionLock.current = false;
       setBusy(false);
     }
   };
 
-  const clearClinic = async () => {
-    if (busy || user.attached_clinic_id === null) return;
-    setBusy(true);
-    try {
-      await api.patch("/api/v1/me/settings", { attached_clinic_id: null });
-      setClinic(null);
-      refreshUser();
-      showToast("Поликлиника откреплена");
-    } catch {
-      showToast("Не удалось открепить поликлинику");
-    } finally {
-      setBusy(false);
+  const pickRegion = (title: string) => {
+    if (regionLock.current) return;
+    if (title === user.region) {
+      setRegionSheet(false);
+      return;
     }
+    const change = { title, expected_region: user.region, expected_clinic_id: user.attached_clinic_id,
+      clinicLabel: clinic ? `${clinic.title} · ${clinic.address}` : "Текущая поликлиника" };
+    if (user.attached_clinic_id !== null) {
+      setRegionSheet(false);
+      setRegionChange(change);
+    } else void saveRegion(change);
   };
 
   const consentDate = fmtDayMonth(user.consent_at);
@@ -191,30 +200,16 @@ export default function Profile() {
               className="press"
               before={<div className="ic"><I.pin size={18} /></div>}
               title="Прикрепленная поликлиника"
-              subtitle={clinic ? `${clinic.title} · ${clinic.address}` : "Не выбрана"}
-              after={<span className="cell-note">{clinic ? "Сменить" : "Выбрать"}</span>}
+              subtitle={clinic ? `${clinic.title} · ${clinic.address}` : user.attached_clinic_id !== null ? "Поликлиника выбрана · данные недоступны" : "Не выбрана"}
+              after={<span className="cell-note">{user.attached_clinic_id !== null ? "Сменить" : "Выбрать"}</span>}
               showChevron
-              onClick={() => nav(clinic ? `/orgs/${clinic.id}` : "/orgs")}
+              onClick={() => nav("/orgs?mode=change")}
               onKeyDown={(e) => {
                 if (e.target !== e.currentTarget) return;
-                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav(clinic ? `/orgs/${clinic.id}` : "/orgs"); }
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav("/orgs?mode=change"); }
               }}
             />
           </CellList>
-          {clinic && <CellList mode="island">
-            <CellSimple
-              className="press"
-              before={<div className="ic r"><I.trash size={18} /></div>}
-              title="Открепить поликлинику"
-              subtitle="История маршрута и медицинские записи сохранятся"
-              after={<span className="cell-note">Удалить</span>}
-              onClick={clearClinic}
-              onKeyDown={(e) => {
-                if (e.target !== e.currentTarget) return;
-                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); clearClinic(); }
-              }}
-            />
-          </CellList>}
           <CellList mode="island">
             <CellSimple
               className="press"
@@ -293,6 +288,13 @@ export default function Profile() {
           {regions.length === 0 && <div className="muted" style={{ padding: "8px 0" }}>Список регионов недоступен</div>}
         </div>
         <Button variant="secondary" onClick={() => setRegionSheet(false)}>Закрыть</Button>
+      </Sheet>
+      <Sheet open={regionChange !== null} onClose={() => { if (!regionLock.current) setRegionChange(null); }}>
+        <h3>Изменить регион?</h3>
+        <p>Новый регион: {regionChange?.title}</p>
+        <p>{regionChange?.clinicLabel} будет убрана из профиля. Выберите поликлинику нового региона после сохранения. История и медицинские записи сохранятся.</p>
+        <Button disabled={busy} onClick={() => { if (regionChange) void saveRegion(regionChange); }}>{busy ? "Сохраняем…" : "Изменить регион и сбросить поликлинику"}</Button>
+        <Button variant="secondary" disabled={busy} onClick={() => setRegionChange(null)}>Отмена</Button>
       </Sheet>
       <Sheet open={stepReminderSheet} onClose={() => setStepReminderSheet(false)}>
         <h3>Напоминания о шагах</h3>

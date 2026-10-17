@@ -129,8 +129,9 @@ class SeedStageATests(unittest.TestCase):
                     self.assertIsNone(step.deadline)
                     self.assertIsNone(step.deadline_time)
                     self.assertEqual(step.title, spec["title"])
-                    self.assertEqual(step.description, spec.get("description", ""))
-                    self.assertEqual(step.place, spec.get("place", ""))
+                    unselected = "Поликлиника не выбрана — выберите в профиле"
+                    self.assertEqual(step.description, spec.get("description", "").replace("{clinic}", unselected))
+                    self.assertEqual(step.place, spec.get("place", "").replace("{clinic}", unselected))
                     self.assertEqual(step.source_id, spec.get("source_id"))
 
     def test_custom_dates_and_existing_route_dates_survive_new_route_and_seed(self):

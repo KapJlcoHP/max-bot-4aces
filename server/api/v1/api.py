@@ -71,6 +71,7 @@ _EXPORT_TTL = health._EXPORT_TTL
 me = profile.me
 delete_my_data = profile.delete_my_data
 update_settings = profile.update_settings
+change_clinic = profile.change_clinic
 regions = profile.regions
 catalog = profile.catalog
 catalog_steps = profile.catalog_steps
