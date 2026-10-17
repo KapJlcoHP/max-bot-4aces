@@ -16,11 +16,9 @@ from core.db.models import (
     BpRecord, ChecklistItem, ExportRequest, FamilyMember, HealthRecord, HealthSetting,
     MedCourse, MedIntake, NotificationLog, Reminder, Route, RouteStep, User,
 )
-from core.db.seed import build_route_for, pilot_region
+from core.db.seed import build_route_for, load_scenarios, pilot_region
 from core.services import complete_route_step
 from core.time import db_utc, user_zone
-
-TODAY = date.today()
 
 
 def has_any_data(db: Session, user_id: int) -> bool:
@@ -106,9 +104,13 @@ def wipe_data(db: Session, user: User, commit: bool = True) -> None:
         db.commit()
 
 
-def _at(days_ago: int, hh: int, mm: int, tz: str | None = None) -> datetime:
+def _at(
+    days_ago: int, hh: int, mm: int, tz: str | None = None,
+    *, reference_date: date | None = None,
+) -> datetime:
     """Временная точка демо: пользовательское настенное время -> UTC-naive."""
-    return db_utc(datetime.combine(TODAY - timedelta(days=days_ago), dtime(hh, mm)), user_zone(tz))
+    today = reference_date if reference_date is not None else datetime.now(user_zone(tz)).date()
+    return db_utc(datetime.combine(today - timedelta(days=days_ago), dtime(hh, mm)), user_zone(tz))
 
 
 def fill_demo(db: Session, user: User) -> None:
@@ -118,6 +120,7 @@ def fill_demo(db: Session, user: User) -> None:
     if has_any_data(db, user.id):
         raise ValueError("В аккаунте уже есть пользовательские данные")
 
+    today = datetime.now(user_zone(user.tz)).date()
     rng = random.Random(42)
     if not user.region:
         user.region = pilot_region()  # в БД хранится заголовок региона, не его ключ
@@ -130,10 +133,15 @@ def fill_demo(db: Session, user: User) -> None:
             .order_by(RouteStep.position)
             .all()
         )
+        # Только демо назначает синтетические даты/время из сценария.
+        # Обычный build_route_for создаёт действия без расписания.
+        for step, spec in zip(steps, load_scenarios()["chronic"]["steps"]):
+            step.deadline = today + timedelta(days=spec["in_days"]) if "in_days" in spec else None
+            step.deadline_time = spec.get("time")
         for i, step in enumerate(steps[:3]):
             complete_route_step(
                 db, user.id, step.id,
-                done_date=TODAY - timedelta(days=6 - i * 2),
+                done_date=today - timedelta(days=6 - i * 2),
                 commit=False,
             )
 
@@ -145,12 +153,12 @@ def fill_demo(db: Session, user: User) -> None:
             dia = int(rng.gauss(90 - drift * 0.6, 4))
             pulse = int(rng.gauss(74, 5))
             bp_rows.append(HealthRecord(
-                user_id=user.id, type="bp", at=_at(day, 8, 10, user.tz),
+                user_id=user.id, type="bp", at=_at(day, 8, 10, user.tz, reference_date=today),
                 systolic=sys, diastolic=dia, pulse=pulse, tag="утром",
             ))
             if rng.random() < 0.4:
                 bp_rows.append(HealthRecord(
-                    user_id=user.id, type="bp", at=_at(day, 19, 30, user.tz),
+                    user_id=user.id, type="bp", at=_at(day, 19, 30, user.tz, reference_date=today),
                     systolic=sys - rng.randint(0, 8),
                     diastolic=dia - rng.randint(0, 5),
                     pulse=pulse + rng.randint(-4, 4), tag="вечером",
@@ -158,7 +166,7 @@ def fill_demo(db: Session, user: User) -> None:
         for day in range(28, -1, -3):
             weight = 84.8 - (28 - day) * 0.06 + rng.uniform(-0.25, 0.25)
             bp_rows.append(HealthRecord(
-                user_id=user.id, type="weight", at=_at(day, 8, 5, user.tz),
+                user_id=user.id, type="weight", at=_at(day, 8, 5, user.tz, reference_date=today),
                 weight_kg=round(weight, 1), tag="утром",
             ))
         for day in range(28, -1, -2):
@@ -166,7 +174,7 @@ def fill_demo(db: Session, user: User) -> None:
                 pre = rng.random() < 0.5
                 value = round(rng.gauss(5.4 if pre else 6.6, 0.45), 1)
                 bp_rows.append(HealthRecord(
-                    user_id=user.id, type="sugar", at=_at(day, 9 if pre else 11, 40, user.tz),
+                    user_id=user.id, type="sugar", at=_at(day, 9 if pre else 11, 40, user.tz, reference_date=today),
                     sugar_mmol=value, meal_tag="до еды" if pre else "после еды",
                 ))
         for day, mood, pain, note in (
@@ -176,7 +184,7 @@ def fill_demo(db: Session, user: User) -> None:
             (2, "Нормально", 3, None),
         ):
             bp_rows.append(HealthRecord(
-                user_id=user.id, type="mood", at=_at(day, 21, 15, user.tz),
+                user_id=user.id, type="mood", at=_at(day, 21, 15, user.tz, reference_date=today),
                 mood=mood, pain=pain, note=note,
             ))
         db.add_all(bp_rows)
@@ -200,11 +208,11 @@ def fill_demo(db: Session, user: User) -> None:
         courses = [
             MedCourse(
                 user_id=user.id, name="Эналаприл 10 мг", times=["08:00", "20:00"],
-                created_at=_at(29, 8, 0, user.tz), until=TODAY + timedelta(days=27),
+                created_at=_at(29, 8, 0, user.tz, reference_date=today), until=today + timedelta(days=27),
             ),
             MedCourse(
                 user_id=user.id, name="Аторвастатин 20 мг", times=["21:00"],
-                created_at=_at(29, 8, 0, user.tz), until=TODAY + timedelta(days=27),
+                created_at=_at(29, 8, 0, user.tz, reference_date=today), until=today + timedelta(days=27),
             ),
         ]
         db.add_all(courses)
@@ -215,20 +223,20 @@ def fill_demo(db: Session, user: User) -> None:
                     if rng.random() < 0.93:
                         db.add(MedIntake(
                             course_id=course.id, user_id=user.id,
-                            day=TODAY - timedelta(days=day), at_time=at_time,
-                            taken_at=_at(day, int(at_time[:2]), int(at_time[3:]), user.tz),
+                            day=today - timedelta(days=day), at_time=at_time,
+                            taken_at=_at(day, int(at_time[:2]), int(at_time[3:]), user.tz, reference_date=today),
                         ))
 
         # --- будущие визиты, чтобы боту было что напоминать ---
         db.add(Reminder(
             user_id=user.id, title="Кардиолог — плановый приём",
             place="Консультативно-диагностический центр, каб. 12",
-            at=db_utc(datetime.combine(TODAY + timedelta(days=6), dtime(10, 0)), user_zone(user.tz)),
+            at=db_utc(datetime.combine(today + timedelta(days=6), dtime(10, 0)), user_zone(user.tz)),
         ))
         db.add(Reminder(
             user_id=user.id, title="УЗИ почек натощак",
             place="Поликлиника по месту прикрепления",
-            at=db_utc(datetime.combine(TODAY + timedelta(days=12), dtime(9, 0)), user_zone(user.tz)),
+            at=db_utc(datetime.combine(today + timedelta(days=12), dtime(9, 0)), user_zone(user.tz)),
         ))
         db.commit()
     except Exception:

@@ -2,7 +2,6 @@
 
 import json
 import re
-from datetime import date, timedelta
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -103,28 +102,39 @@ def refresh_route_clinic(db: Session, user: User, route: Route | None = None) ->
 
 def seed_organizations(db: Session) -> None:
     """Организации синхронизируем из regions.json при каждом старте:
-    обновляем существующие по названию, добавляем новые, удаляем исчезнувшие."""
-    by_title = {
-        item["title"]: {**item, "region": region["title"]}
+    идентичность — (регион, название); ID существующих организаций сохраняем."""
+    by_identity = {
+        (region["title"], item["title"]): {**item, "region": region["title"]}
         for region in load_regions()
         for item in region.get("organizations", [])
     }
-    existing = {org.title: org for org in db.query(Organization).all()}
-    for title, item in by_title.items():
-        if title in existing:
-            org = existing.pop(title)
+    existing: dict[tuple[str, str], list[Organization]] = {}
+    for org in db.query(Organization).order_by(Organization.id).all():
+        existing.setdefault((org.region, org.title), []).append(org)
+    for identity, item in by_identity.items():
+        matches = existing.pop(identity, [])
+        if matches:
+            # Самый ранний ID — стабильная каноническая строка. Остальные
+            # дубликаты ниже объединяем, не теряя допустимые прикрепления.
+            org = matches.pop(0)
             for key, value in item.items():
                 setattr(org, key, value)
         else:
-            db.add(Organization(**item))
-    for org in existing.values():
-        # Не оставляем пользователя со ссылкой на организацию, которая исчезла
-        # из справочника. Это сохраняет инвариант «прикреплена только актуальная
-        # поликлиника» перед удалением устаревшей строки.
-        db.query(User).filter(User.attached_clinic_id == org.id).update(
-            {User.attached_clinic_id: None}, synchronize_session=False
-        )
-        db.delete(org)
+            org = Organization(**item)
+            db.add(org)
+        for duplicate in matches:
+            for user in db.query(User).filter(User.attached_clinic_id == duplicate.id).all():
+                user.attached_clinic_id = (
+                    org.id if org.org_type == "Поликлиники" and user.region == org.region
+                    else None
+                )
+            db.delete(duplicate)
+    for obsolete in existing.values():
+        for org in obsolete:
+            # Исчезнувшее название не угадываем по другим полям/регионам.
+            for user in db.query(User).filter(User.attached_clinic_id == org.id).all():
+                user.attached_clinic_id = None
+            db.delete(org)
     db.commit()
 
 
@@ -139,7 +149,6 @@ def _build_route(
 
     exclude_positions — 1-based позиции шагов шаблона, которые пользователь выключил в конструкторе.
     """
-    today = date.today()
     exclude = set(exclude_positions or [])
 
     if situation_key == "custom":
@@ -157,7 +166,6 @@ def _build_route(
 
     position = 0
     for step in template_steps:
-        deadline = today + timedelta(days=step["in_days"]) if "in_days" in step else None
         status = "current" if position == 0 else "pending"
         position += 1
         db.add(
@@ -167,8 +175,8 @@ def _build_route(
                 title=step["title"],
                 description=_clinic_text(step.get("description", ""), clinic),
                 place=_clinic_place(step.get("place", ""), clinic),
-                deadline=deadline,
-                deadline_time=step.get("time"),
+                deadline=None,
+                deadline_time=None,
                 status=status,
                 has_checklist=step.get("has_checklist", False),
                 source="template",
