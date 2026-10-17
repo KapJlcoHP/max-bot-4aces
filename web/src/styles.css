@@ -616,7 +616,8 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   .app.white .foot { max-width: 560px; margin-left: auto; margin-right: auto; width: 100%; }
   .app.narrow .screen-body,
   .app.narrow .foot { max-width: 720px; margin-left: auto; margin-right: auto; width: 100%; }
-  .header { padding: 22px 0 14px; background: transparent; }
+  /* Keep the sticky header opaque while the inner screen-body scrolls. */
+  .header { padding: 22px 0 14px; background: var(--bg); }
   .screen-body { padding: 8px 0 40px; }
   .foot { padding: 12px 0 24px; }
   .greeting h2 { font-size: 32px; }
