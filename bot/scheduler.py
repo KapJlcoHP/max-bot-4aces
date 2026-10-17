@@ -235,7 +235,7 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
 
         # --- дневники здоровья: время пуша настало, записи сегодня ещё нет ---
         for s in diary_settings(db, user.id).values():
-            if not s.push_time or s.diary not in DIARY_TITLES:
+            if not s.enabled or not s.push_time or s.diary not in DIARY_TITLES:
                 continue
             setting_row = (
                 db.query(HealthSetting)
