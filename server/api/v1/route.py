@@ -1,10 +1,13 @@
 """Маршруты пользователя и конструктор шагов."""
 
+import hashlib
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from core.db.models import NotificationLog, Route, RouteStep, User, utcnow
+from core.db.models import NotificationLog, Route, RouteAssignmentReceipt, RouteStep, User, utcnow
 from core.db.seed import build_route_for, load_catalog
 from core.schemas import (
     CompleteStepIn,
@@ -12,10 +15,15 @@ from core.schemas import (
     RouteDto,
     RouteStartIn,
     StepAddIn,
+    StepAssignmentsIn,
+    StepAssignmentsOut,
     StepDto,
     StepUpdateIn,
 )
-from core.services import ServiceError, complete_route_step, uncomplete_route_step
+from core.services import (
+    ServiceError, complete_route_step, insert_route_steps, lock_route_writes,
+    normalize_route_steps, uncomplete_route_step,
+)
 from core.time import normalize_clock_time, strict_local_utc
 from .common import consented_user, db_session, get_active_route, route_dto, route_template_title, step_dto
 
@@ -62,6 +70,7 @@ def get_route(user: User = Depends(consented_user), db: Session = Depends(db_ses
 
 @router.delete("/route")
 def delete_route(user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    lock_route_writes(db, user.id)
     route = get_active_route(db, user.id)
     if route is None:
         raise HTTPException(status_code=404, detail="Активный маршрут не найден")
@@ -75,6 +84,7 @@ def start_route(body: RouteStartIn, user: User = Depends(consented_user), db: Se
     known = {s["key"] for s in load_catalog()} | {"custom"}
     if body.situation_key not in known:
         raise HTTPException(status_code=404, detail="Неизвестная ситуация")
+    lock_route_writes(db, user.id)
     route = build_route_for(
         db,
         user,
@@ -86,8 +96,9 @@ def start_route(body: RouteStartIn, user: User = Depends(consented_user), db: Se
     for step in route.steps:
         if step.status == "current":
             step.activated_at = utcnow()
+    result = route_dto(route)
     db.commit()
-    return route_dto(route)
+    return result
 
 
 @router.post("/route/steps", response_model=RouteDto)
@@ -102,6 +113,7 @@ def add_step(
         raise HTTPException(status_code=422, detail="Название шага не может быть пустым")
     if body.source not in ("user", "doctor"):
         raise HTTPException(status_code=422, detail="Недопустимый источник шага")
+    lock_route_writes(db, user.id)
     route = get_active_route(db, user.id)
     if route is None:
         raise HTTPException(status_code=404, detail="Активный маршрут не найден")
@@ -121,17 +133,8 @@ def add_step(
             RouteStep.route_id == route.id
         ).order_by(RouteStep.position.desc()).first()
 
-    position = anchor.position + 1 if anchor is not None else 1
-    has_unfinished = db.query(RouteStep).filter(
-        RouteStep.route_id == route.id, RouteStep.status != "done"
-    ).first() is not None
-    if anchor is not None:
-        db.query(RouteStep).filter(
-            RouteStep.route_id == route.id, RouteStep.position >= position
-        ).update({"position": RouteStep.position + 1}, synchronize_session=False)
     step = RouteStep(
         route_id=route.id,
-        position=position,
         title=title,
         description="",
         place=body.place or "",
@@ -139,18 +142,17 @@ def add_step(
         deadline_time=body.deadline_time,
         reminder_mode=mode,
         reminder_at=moment,
-        activated_at=utcnow() if not has_unfinished else None,
-        status="pending" if has_unfinished else "current",
         source=body.source,
     )
-    db.add(step)
+    insert_route_steps(db, route, anchor, [step])
+    result = route_dto(route)
     db.commit()
-    db.refresh(route)
-    return route_dto(route)
+    return result
 
 
 @router.delete("/route/steps/{step_id}", response_model=RouteDto | None)
 def delete_step(step_id: int, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    lock_route_writes(db, user.id)
     route = get_active_route(db, user.id)
     if route is None:
         raise HTTPException(status_code=404, detail="Активный маршрут не найден")
@@ -165,23 +167,71 @@ def delete_step(step_id: int, user: User = Depends(consented_user), db: Session 
         db.commit()
         return None
 
-    was_current = step.status == "current"
-    position = step.position
     db.delete(step)
     db.flush()
-    db.query(RouteStep).filter(
-        RouteStep.route_id == route.id, RouteStep.position > position
-    ).update({"position": RouteStep.position - 1}, synchronize_session=False)
-    if was_current:
-        next_step = db.query(RouteStep).filter(
-            RouteStep.route_id == route.id, RouteStep.status != "done"
-        ).order_by(RouteStep.position).first()
-        if next_step is not None:
-            next_step.status = "current"
-            next_step.activated_at = utcnow()
+    normalize_route_steps(db, route)
+    result = route_dto(route)
     db.commit()
-    db.refresh(route)
-    return route_dto(route)
+    return result
+
+
+@router.post("/route/steps/{step_id}/assignments", response_model=StepAssignmentsOut)
+def assign_steps(
+    step_id: int,
+    body: StepAssignmentsIn,
+    user: User = Depends(consented_user),
+    db: Session = Depends(db_session),
+):
+    # Canonical validated input: omitted/null optional fields and equivalent
+    # clock spellings represent the same operation; anchor is part of identity.
+    payload = {"step_id": step_id, **body.model_dump(mode="json", exclude={"request_id"})}
+    fingerprint = hashlib.sha256(json.dumps(
+        payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"),
+    ).encode()).hexdigest()
+    try:
+        lock_route_writes(db, user.id)
+        receipt = db.query(RouteAssignmentReceipt).filter_by(
+            user_id=user.id, request_id=str(body.request_id),
+        ).first()
+        if receipt is not None:
+            if receipt.fingerprint != fingerprint:
+                raise HTTPException(status_code=409, detail="request_id уже использован для другого запроса")
+            result = StepAssignmentsOut.model_validate(receipt.response)
+            db.commit()
+            return result
+
+        route = get_active_route(db, user.id)
+        if route is None:
+            raise HTTPException(status_code=404, detail="Активный маршрут не найден")
+        step = db.query(RouteStep).filter_by(id=step_id, route_id=route.id).first()
+        if step is None:
+            raise HTTPException(status_code=404, detail="Шаг не найден")
+        expected = "current" if body.complete else "done"
+        if step.status != expected:
+            raise HTTPException(status_code=409, detail="Состояние шага изменилось. Обновите маршрут")
+
+        if body.complete:
+            step.status = "done"
+            step.completed_at = utcnow()
+        additions = [RouteStep(**item.model_dump(), description="", source="doctor")
+                     for item in body.assignments]
+        insert_route_steps(db, route, step, additions)
+        snapshot = route_dto(route)
+        result = StepAssignmentsOut(
+            step=next(s for s in snapshot.steps if s.id == step_id),
+            route=snapshot,
+            next_step=next((s for s in snapshot.steps if s.status == "current"), None),
+            added_step_ids=[s.id for s in additions],
+        )
+        db.add(RouteAssignmentReceipt(
+            user_id=user.id, request_id=str(body.request_id), fingerprint=fingerprint,
+            response=result.model_dump(mode="json"),
+        ))
+        db.commit()
+        return result
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post("/route/steps/{step_id}/complete", response_model=CompleteStepOut)
@@ -198,6 +248,7 @@ def complete_step(
             step_id,
             note=(body.note if body else None),
             done_date=(body.date if body else None),
+            commit=False,
         )
     except ServiceError as e:
         raise HTTPException(status_code=e.status, detail=str(e)) from e
@@ -205,21 +256,25 @@ def complete_step(
     next_step = db.query(RouteStep).filter(
         RouteStep.route_id == route.id, RouteStep.status != "done"
     ).order_by(RouteStep.position).first()
-    return CompleteStepOut(
+    result = CompleteStepOut(
         step=step_dto(step, route_template_title(route)),
         route=route_dto(route),
         next_step=step_dto(next_step, route_template_title(route)) if next_step else None,
     )
+    db.commit()
+    return result
 
 
 @router.post("/route/steps/{step_id}/uncomplete", response_model=RouteDto)
 def uncomplete_step(step_id: int, user: User = Depends(consented_user), db: Session = Depends(db_session)):
     try:
-        uncomplete_route_step(db, user.id, step_id)
+        uncomplete_route_step(db, user.id, step_id, commit=False)
     except ServiceError as e:
         raise HTTPException(status_code=e.status, detail=str(e)) from e
     route = get_active_route(db, user.id)
-    return route_dto(route)
+    result = route_dto(route)
+    db.commit()
+    return result
 
 
 @router.patch("/route/steps/{step_id}", response_model=StepDto, responses={409: {"description": "Шаг выполнен или изменился одновременно; обновите маршрут"}})
@@ -229,6 +284,7 @@ def update_step(
     user: User = Depends(consented_user),
     db: Session = Depends(db_session),
 ):
+    lock_route_writes(db, user.id)
     route = get_active_route(db, user.id)
     if route is None:
         raise HTTPException(status_code=404, detail="Активный маршрут не найден")

@@ -476,6 +476,55 @@
         }
       }
     },
+    "/api/v1/route/steps/{step_id}/assignments": {
+      "post": {
+        "summary": "Assign Steps",
+        "operationId": "assign_steps_api_v1_route_steps__step_id__assignments_post",
+        "parameters": [
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Step Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepAssignmentsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepAssignmentsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/route/steps/{step_id}/complete": {
       "post": {
         "summary": "Complete Step",
@@ -1726,6 +1775,52 @@
         "title": "CustomStepIn",
         "description": "Свой шаг при создании маршрута из конструктора."
       },
+      "DoctorAssignmentIn": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "deadline_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Местное время события в поясе профиля; нормализуется в HH:MM. Требует даты."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Time"
+          },
+          "place": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Place",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "DoctorAssignmentIn"
+      },
       "FamilyAddIn": {
         "properties": {
           "name": {
@@ -2894,6 +2989,68 @@
         ],
         "title": "StepAddIn",
         "description": "Новый шаг маршрута: назначение врача (source=doctor) или свой пункт (source=user)."
+      },
+      "StepAssignmentsIn": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete"
+          },
+          "assignments": {
+            "items": {
+              "$ref": "#/components/schemas/DoctorAssignmentIn"
+            },
+            "type": "array",
+            "title": "Assignments"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request_id",
+          "complete",
+          "assignments"
+        ],
+        "title": "StepAssignmentsIn"
+      },
+      "StepAssignmentsOut": {
+        "properties": {
+          "step": {
+            "$ref": "#/components/schemas/StepDto"
+          },
+          "route": {
+            "$ref": "#/components/schemas/RouteDto"
+          },
+          "next_step": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "added_step_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Added Step Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "step",
+          "route",
+          "added_step_ids"
+        ],
+        "title": "StepAssignmentsOut"
       },
       "StepDto": {
         "properties": {

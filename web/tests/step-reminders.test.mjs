@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reminderHarness } from "./step-reminders-harness.mjs";
+import { ApiError, reminderHarness } from "./step-reminders-harness.mjs";
 import { reminderWallTime } from "../src/stepReminderTime.ts";
 
 const user = { tz: "Asia/Tokyo", notifications_on: true, notify_day_before: true,
@@ -235,11 +235,11 @@ test("builder sends optional event time and keeps saved draft steps on failure",
   assert.deepEqual(page.navigation, []);
 });
 
-test("doctor assignment carries optional time and remains editable after submission failure", async () => {
+test("doctor assignment carries optional time and remains editable after HTTP validation rejection", async () => {
   const value = { ...step, status: "done" };
   const page = reminderHarness("pages/StepCard.tsx", { user, params: { stepId: "4" }, api: {
     get: async () => ({ ...route, done_steps: 1, steps: [value] }),
-    post: async () => { throw new Error("offline"); },
+    post: async () => { throw new ApiError(422, "Проверьте назначение"); },
   } });
   await page.flush();
   page.click("Записать назначения врача");
@@ -253,7 +253,278 @@ test("doctor assignment carries optional time and remains editable after submiss
   await page.flush();
   await page.click("Готово — добавить 1");
   await page.flush();
-  assert.equal(page.calls.find((c) => c.method === "post").payload.deadline_time, "17:30");
+  assert.equal(page.calls.find((c) => c.method === "post").payload.assignments[0].deadline_time, "17:30");
   assert.equal(page.input("Срок: МРТ: время (необязательно)").props.value, "17:30");
+  assert.equal(page.input("Срок: МРТ").props.disabled, false);
   assert.deepEqual(page.navigation, []);
 });
+
+function stepCard(value = step, api = {}) {
+  return reminderHarness("pages/StepCard.tsx", { user, params: { stepId: String(value.id) }, api: {
+    get: async () => ({ ...route, steps: [value] }),
+    post: async () => ({ step: { ...value, status: "done" }, route, next_step: null, added_step_ids: [] }),
+    ...api,
+  } });
+}
+const posts = (page) => page.calls.filter((call) => call.method === "post");
+async function addAssignment(page, title, date = "", time = "") {
+  page.change("Название назначения", title);
+  page.change("Срок", date);
+  await page.flush();
+  if (time) { page.change("Срок: время (необязательно)", time); await page.flush(); }
+  page.input("Добавить назначение").props.onClick();
+  await page.flush();
+}
+
+test("completion opens a staged sheet; cancel and backdrop close make no requests or navigation", async () => {
+  const page = stepCard({ ...step, reason: "Исходное основание" });
+  await page.flush();
+  await page.click("Я это сделал");
+  await page.flush();
+  assert.match(page.text(), /только после подтверждения/);
+  await addAssignment(page, "Черновик");
+  page.click("Отмена");
+  await page.flush();
+  assert.equal(page.all().filter((n) => n.type === "Sheet").length, 0);
+  page.click("Я это сделал");
+  await page.flush();
+  assert.match(page.text(), /Черновик/);
+  page.find((n) => n.type === "Sheet").props.onClose();
+  await page.flush();
+  assert.equal(page.all().filter((n) => n.type === "Sheet").length, 0);
+  assert.equal(posts(page).length, 0);
+  assert.deepEqual(page.navigation, []);
+  assert.match(page.text(), /Почему этот шаг появился/);
+  assert.match(page.text(), /Исходное основание/);
+});
+
+test("atomic assignment submission preserves displayed order, duplicate titles and optional date/time", async () => {
+  const pending = deferred();
+  const page = stepCard(step, { post: () => pending.promise });
+  await page.flush();
+  page.click("Я это сделал");
+  await page.flush();
+  page.click("Анализы");
+  await page.flush();
+  await addAssignment(page, "МРТ", "2030-01-04", "17:30");
+  await addAssignment(page, "МРТ", "2030-01-05");
+  const save = page.button("Готово — добавить 3").props.onClick;
+  const noAssignments = page.button("Без назначений").props.onClick;
+  const cancel = page.button("Отмена").props.onClick;
+  const close = page.find((n) => n.type === "Sheet").props.onClose;
+  const first = save(), duplicate = save(), other = noAssignments();
+  cancel(); close();
+  await page.flush();
+  assert.equal(posts(page).length, 1);
+  const { path, payload } = posts(page)[0];
+  assert.equal(path, "/api/v1/route/steps/4/assignments");
+  assert.match(payload.request_id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  assert.deepEqual(clean(payload), { request_id: payload.request_id, complete: true, assignments: [
+    { title: "МРТ", deadline: "2030-01-05", deadline_time: null },
+    { title: "МРТ", deadline: "2030-01-04", deadline_time: "17:30" },
+    { title: "Анализы", deadline: null, deadline_time: null },
+  ] });
+  assert.equal(page.all().filter((n) => n.type === "Sheet").length, 1);
+  assert.deepEqual(page.navigation, []);
+  assert.deepEqual(page.toasts, []);
+  assert.equal(page.button("Отправляем…").props.disabled, true);
+  pending.resolve({ step: { ...step, status: "done" }, route, next_step: null, added_step_ids: [12, 13, 14] });
+  await Promise.all([first, duplicate, other]);
+  await page.flush();
+  assert.deepEqual(page.navigation, ["/route"]);
+  assert.deepEqual(page.toasts, ["Добавлено шагов: 3"]);
+  assert.equal(page.all().filter((n) => n.type === "Sheet").length, 0);
+});
+
+test("explicit no-assignments atomically completes and synchronously guards double clicks", async () => {
+  const pending = deferred();
+  const page = stepCard(step, { post: () => pending.promise });
+  await page.flush();
+  page.click("Я это сделал");
+  await page.flush();
+  await addAssignment(page, "Не добавлять");
+  const handler = page.button("Без назначений").props.onClick;
+  const first = handler(), second = handler();
+  await page.flush();
+  assert.equal(posts(page).length, 1);
+  assert.deepEqual(clean(posts(page)[0].payload.assignments), []);
+  assert.equal(posts(page)[0].payload.complete, true);
+  assert.deepEqual(page.navigation, []);
+  assert.deepEqual(page.toasts, []);
+  pending.resolve({ step: { ...step, status: "done" }, route, next_step: null, added_step_ids: [] });
+  await Promise.all([first, second]);
+  await page.flush();
+  assert.deepEqual(page.toasts, ["Шаг выполнен"]);
+  assert.deepEqual(page.navigation, ["/route"]);
+});
+
+test("lost response freezes draft and retries identical UUID/body; stale edit/save handlers cannot duplicate", async () => {
+  let attempts = 0;
+  const page = stepCard(step, { post: async () => {
+    if (++attempts === 1) throw new Error("Response lost after commit");
+    return { step: { ...step, status: "done" }, route, next_step: null, added_step_ids: [7] };
+  } });
+  await page.flush();
+  page.click("Я это сделал");
+  await page.flush();
+  await addAssignment(page, "МРТ", "2030-01-04", "17:30");
+  const oldSave = page.button("Готово — добавить 1").props.onClick;
+  const oldNoAssignments = page.button("Без назначений").props.onClick;
+  const oldAdd = page.input("Добавить назначение").props.onClick;
+  const oldClose = page.find((n) => n.type === "Sheet").props.onClose;
+  await oldSave();
+  await page.flush();
+  assert.match(page.text(), /могли сохраниться/);
+  assert.match(page.text(), /повтор не создаст дубликаты/);
+  assert.equal(page.input("Срок: МРТ").props.disabled, true);
+  assert.equal(page.input("Название назначения").props.disabled, true);
+  page.change("Название назначения", "Другое");
+  page.change("Срок: МРТ", "2030-01-09");
+  oldAdd(); oldClose();
+  await oldSave(); await oldNoAssignments();
+  await page.flush();
+  assert.equal(posts(page).length, 1);
+  assert.equal(page.input("Срок: МРТ").props.value, "2030-01-04");
+  assert.equal(page.input("Название назначения").props.value, "");
+  assert.deepEqual(page.navigation, []);
+  await page.click("Повторить исходную отправку");
+  await page.flush();
+  assert.equal(posts(page).length, 2);
+  assert.deepEqual(clean(posts(page)[0]), clean(posts(page)[1]));
+  assert.deepEqual(page.navigation, ["/route"]);
+});
+
+test("completed anchor batches with complete=false and exits after confirmed success", async () => {
+  const page = stepCard({ ...step, status: "done" }, { post: async () => ({
+    step: { ...step, status: "done" }, route: { ...route, steps: [{ ...step, status: "done" }] }, next_step: null, added_step_ids: [6],
+  }) });
+  await page.flush();
+  page.click("Записать назначения врача");
+  await page.flush();
+  await addAssignment(page, "УЗИ");
+  await page.click("Готово — добавить 1");
+  await page.flush();
+  assert.equal(posts(page).length, 1);
+  assert.equal(posts(page)[0].payload.complete, false);
+  assert.equal(posts(page)[0].payload.assignments[0].title, "УЗИ");
+  assert.deepEqual(page.navigation, ["/route"]);
+  assert.equal(page.all().filter((n) => n.type === "Sheet").length, 0);
+  assert.equal(page.all().filter((n) => n.props?.className === "picked-item").length, 0);
+});
+
+test("authentication error after a lost response retains the original retry key", async () => {
+  let attempts = 0;
+  const page = stepCard(step, { post: async () => {
+    if (++attempts === 1) throw new Error("Response lost");
+    if (attempts === 2) throw new ApiError(401, "Войдите заново");
+    return { step: { ...step, status: "done" }, route, next_step: null, added_step_ids: [7] };
+  } });
+  await page.flush();
+  page.click("Я это сделал");
+  await page.flush();
+  await addAssignment(page, "УЗИ");
+  await page.click("Готово — добавить 1");
+  await page.flush();
+  await page.click("Повторить исходную отправку");
+  await page.flush();
+  assert.equal(page.input("Название назначения").props.disabled, true);
+  await page.click("Повторить исходную отправку");
+  await page.flush();
+  assert.equal(posts(page).length, 3);
+  assert.deepEqual(clean(posts(page)[0]), clean(posts(page)[1]));
+  assert.deepEqual(clean(posts(page)[0]), clean(posts(page)[2]));
+  assert.deepEqual(page.navigation, ["/route"]);
+});
+
+test("definitive validation rejection preserves editable draft and allows corrected new request", async () => {
+  let attempts = 0;
+  const page = stepCard(step, { post: async () => {
+    if (++attempts === 1) throw new ApiError(422, "Неверная дата");
+    return { step: { ...step, status: "done" }, route, next_step: null, added_step_ids: [6] };
+  } });
+  await page.flush();
+  page.click("Я это сделал");
+  await page.flush();
+  await addAssignment(page, "УЗИ", "2030-01-04");
+  await page.click("Готово — добавить 1");
+  await page.flush();
+  assert.match(page.text(), /Неверная дата/);
+  assert.equal(page.input("Срок: УЗИ").props.disabled, false);
+  page.change("Срок: УЗИ", "2030-01-05");
+  await page.flush();
+  await page.click("Готово — добавить 1");
+  await page.flush();
+  assert.notEqual(posts(page)[0].payload.request_id, posts(page)[1].payload.request_id);
+  assert.equal(posts(page)[1].payload.assignments[0].deadline, "2030-01-05");
+});
+
+test("state conflict can refresh the route instead of retrying forever", async () => {
+  let loaded = 0;
+  const page = stepCard(step, {
+    get: async () => ({ ...route, steps: [{ ...step, status: ++loaded === 1 ? "current" : "done" }] }),
+    post: async () => { throw new ApiError(409, "Состояние шага изменилось. Обновите маршрут"); },
+  });
+  await page.flush();
+  page.click("Я это сделал");
+  await page.flush();
+  await page.click("Без назначений");
+  await page.flush();
+  assert.match(page.text(), /Состояние шага изменилось/);
+  assert.doesNotMatch(page.text(), /могли сохраниться/);
+  assert.equal(page.button("Отмена").props.disabled, false);
+  page.click("Обновить маршрут");
+  await page.flush();
+  assert.equal(loaded, 2);
+  assert.equal(posts(page).length, 1);
+  assert.equal(page.all().filter((n) => n.type === "Sheet").length, 0);
+  assert.ok(page.button("Записать назначения врача"));
+});
+
+test("completed route retains timeline, step access and adding another step", async () => {
+  const finishedRoute = { ...route, done_steps: 1, steps: [{ ...step, status: "done" }] };
+  const page = reminderHarness("pages/RoutePage.tsx", { user, api: {
+    get: async (path) => path.endsWith("checklist") ? { total: 0 } : finishedRoute,
+    post: async () => route,
+  } });
+  await page.flush();
+  assert.match(page.text(), /Маршрут завершён/);
+  assert.doesNotMatch(page.text(), /Продолжить — шаг/);
+  page.input("Открыть шаг Приём").props.onClick();
+  assert.deepEqual(page.navigation, ["/step/4"]);
+  page.click("Добавить шаг");
+  await page.flush();
+  page.change("Название шага", "Продолжение");
+  await page.flush();
+  await page.click("Добавить в маршрут");
+  await page.flush();
+  assert.equal(posts(page).length, 1);
+  assert.equal(posts(page)[0].payload.title, "Продолжение");
+});
+
+for (const change of ["step", "session", "unmount"]) {
+  test(`late batch response cannot navigate or toast after ${change} change`, async () => {
+    const pending = deferred();
+    const page = stepCard(step, { get: async () => ({ ...route, steps: [step, { ...step, id: 5 }] }), post: () => pending.promise });
+    await page.flush();
+    page.click("Я это сделал");
+    await page.flush();
+    await addAssignment(page, "Черновик");
+    const sending = page.click("Готово — добавить 1");
+    await page.flush();
+    if (change === "step") page.setParams({ stepId: "5" });
+    if (change === "session") page.setUser({ ...user, id: 99 });
+    if (change === "unmount") page.unmount();
+    else await page.flush();
+    pending.resolve({ step: { ...step, status: "done" }, route, next_step: null, added_step_ids: [6] });
+    await sending;
+    await page.flush();
+    assert.deepEqual(page.navigation, []);
+    assert.deepEqual(page.toasts, []);
+    if (change !== "unmount") {
+      page.click("Я это сделал");
+      await page.flush();
+      assert.equal(page.all().filter((n) => n.props?.className === "picked-item").length, 0);
+      assert.equal(page.input("Название назначения").props.value, "");
+    }
+  });
+}

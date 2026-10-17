@@ -39,6 +39,7 @@ class User(Base):
 
     routes: Mapped[list["Route"]] = relationship(back_populates="user")
     attached_clinic: Mapped["Organization | None"] = relationship(foreign_keys=[attached_clinic_id])
+    assignment_receipts: Mapped[list["RouteAssignmentReceipt"]] = relationship(cascade="all, delete-orphan")
 
 
 class Route(Base):
@@ -91,6 +92,20 @@ class ChecklistItem(Base):
     title: Mapped[str] = mapped_column(String(200))
     collected: Mapped[bool] = mapped_column(Boolean, default=False)
     position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class RouteAssignmentReceipt(Base):
+    """Durable result, deliberately independent of route/step lifetime."""
+
+    __tablename__ = "route_assignment_receipts"
+    __table_args__ = (UniqueConstraint("user_id", "request_id", name="uq_route_assignment_request"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    request_id: Mapped[str] = mapped_column(String(36))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    response: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Organization(Base):

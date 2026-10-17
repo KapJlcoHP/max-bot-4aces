@@ -3,6 +3,11 @@ import { readFile } from "node:fs/promises";
 import { setImmediate } from "node:timers/promises";
 import vm from "node:vm";
 import ts from "typescript";
+import { webcrypto } from "node:crypto";
+
+export class ApiError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
 
 const files = ["components/StepScheduleEditor.tsx", "components/EventDateTimeInputs.tsx", "stepReminderTime.ts", "pages/StepCard.tsx", "pages/RoutePage.tsx", "pages/Builder.tsx"];
 const compiled = Object.fromEntries(await Promise.all(files.map(async (file) => [file, ts.transpileModule(await readFile(new URL(`../src/${file}`, import.meta.url), "utf8"), {
@@ -12,8 +17,8 @@ const compiled = Object.fromEntries(await Promise.all(files.map(async (file) => 
 // As in onboarding-r1: exercise actual TSX hook state and handlers without a
 // browser/network. Stateless date inputs are expanded from their real source.
 export function reminderHarness(file, { props = {}, user = {}, params = {}, api = {} } = {}) {
-  const hooks = [], effects = [], calls = [], navigation = [], saved = [], toasts = [];
-  let cursor = 0, dirty = true, tree;
+  const hooks = [], effects = [], cleanups = new Map(), calls = [], navigation = [], saved = [], toasts = [];
+  let cursor = 0, dirty = true, tree, mounted = true, currentUser = user;
   const react = {
     useState(initial) {
       const index = cursor++;
@@ -28,7 +33,10 @@ export function reminderHarness(file, { props = {}, user = {}, params = {}, api 
     useEffect(effect, dependencies = []) {
       const index = cursor++, previous = hooks[index];
       hooks[index] = dependencies;
-      if (!previous || dependencies.some((value, i) => !Object.is(value, previous[i]))) effects.push(effect);
+      if (!previous || dependencies.some((value, i) => !Object.is(value, previous[i]))) effects.push(() => {
+        cleanups.get(index)?.();
+        cleanups.set(index, effect());
+      });
     },
     useMemo(compute, dependencies) {
       const index = cursor++, previous = hooks[index];
@@ -54,8 +62,8 @@ export function reminderHarness(file, { props = {}, user = {}, params = {}, api 
     react,
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "Fragment" },
     "react-router-dom": { useNavigate: () => (path) => navigation.push(path), useParams: () => params },
-    "../api": { api: apiMock },
-    "../App": { useApp: () => ({ user }) },
+    "../api": { api: apiMock, ApiError },
+    "../App": { useApp: () => ({ user: currentUser }) },
     "../hooks/useNow": { useNow: () => new Date("2030-01-02T10:00:00Z") },
     "../components/StepCountdown": { default: "StepCountdown" },
     "../components/StepScheduleEditor": { default: "StepScheduleEditor" },
@@ -68,7 +76,7 @@ export function reminderHarness(file, { props = {}, user = {}, params = {}, api 
   };
   function load(source) {
     const exports = {};
-    vm.runInNewContext(compiled[source], { exports, Date, Intl, Error, require(name) {
+    vm.runInNewContext(compiled[source], { exports, Date, Intl, Error, crypto: webcrypto, require(name) {
       assert.ok(name in imports, `Unexpected import ${name} in ${source}`);
       return imports[name];
     } }, { filename: source });
@@ -102,7 +110,7 @@ export function reminderHarness(file, { props = {}, user = {}, params = {}, api 
     calls, navigation, saved, toasts, find,
     async flush() {
       for (let i = 0; i < 25; i++) {
-        if (dirty) render();
+        if (dirty && mounted) render();
         await setImmediate();
         if (!dirty) return;
       }
@@ -116,5 +124,8 @@ export function reminderHarness(file, { props = {}, user = {}, params = {}, api 
     confirm() { find((node) => node.type === "input" && node.props.type === "checkbox").props.onChange({ target: { checked: true } }); },
     all() { return nodes(tree); },
     text() { return text(tree); },
+    setParams(value) { Object.assign(params, value); dirty = true; },
+    setUser(value) { currentUser = value; dirty = true; },
+    unmount() { mounted = false; for (const cleanup of cleanups.values()) cleanup?.(); cleanups.clear(); },
   };
 }

@@ -2,6 +2,7 @@
 
 from datetime import date as Date, datetime
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, HttpUrl, PrivateAttr, model_validator
 
@@ -132,6 +133,39 @@ class CompleteStepOut(OrmDto):
     step: StepDto
     route: "RouteDto"
     next_step: StepDto | None = None
+
+
+class DoctorAssignmentIn(OrmDto):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    title: str = Field(min_length=1, max_length=200)
+    deadline: Date | None = None
+    deadline_time: _StepClockTime | None = None
+    place: str = Field(default="", max_length=200)
+
+    @model_validator(mode="after")
+    def validate_schedule(self):
+        if self.deadline is None and self.deadline_time is not None:
+            raise ValueError("Время шага требует даты")
+        return self
+
+
+class StepAssignmentsIn(OrmDto):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: UUID
+    complete: bool = Field(strict=True)
+    assignments: list[DoctorAssignmentIn]
+
+    @model_validator(mode="after")
+    def validate_batch(self):
+        if not self.complete and not self.assignments:
+            raise ValueError("Добавьте хотя бы одно назначение")
+        return self
+
+
+class StepAssignmentsOut(CompleteStepOut):
+    added_step_ids: list[int]
 
 
 class StepUpdateIn(OrmDto):

@@ -5,6 +5,8 @@
 
 from datetime import date, datetime, time as dtime
 from zoneinfo import ZoneInfo
+
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from core.db.models import (
@@ -36,6 +38,63 @@ def active_route(db: Session, user_id: int) -> Route | None:
 # ---------- маршрут ----------
 
 
+def lock_route_writes(db: Session, user_id: int) -> None:
+    """Hold until commit/rollback: SQLite writer lock, PostgreSQL user row lock.
+
+    Take this before reading route state, including when auth has already read
+    the user. A real UPDATE also works with SQLite's deferred transactions.
+    Refresh loaded route objects after waiting; expire_on_commit may be False.
+    """
+    with db.no_autoflush:
+        db.execute(
+            update(User).where(User.id == user_id).values(id=User.id)
+            .execution_options(synchronize_session=False)
+        )
+        # Composed callers (e.g. demo setup, commit=False) may have staged
+        # changes. Persist them under the lock before refreshing stale reads.
+        db.flush()
+        for obj in list(db.identity_map.values()):
+            if isinstance(obj, (Route, RouteStep)) and obj not in db.new and obj not in db.deleted:
+                db.expire(obj)
+
+
+def ordered_route_steps(db: Session, route: Route) -> list[RouteStep]:
+    return db.query(RouteStep).filter(RouteStep.route_id == route.id).order_by(
+        RouteStep.position, RouteStep.id,
+    ).populate_existing().all()
+
+
+def normalize_route_steps(db: Session, route: Route, steps: list[RouteStep] | None = None) -> None:
+    """Historical done rows stay done; exactly the first unfinished is current."""
+    steps = ordered_route_steps(db, route) if steps is None else steps
+    found_current = False
+    for position, step in enumerate(steps, 1):
+        step.position = position
+        if step.status == "done":
+            continue
+        status = "pending" if found_current else "current"
+        if status == "current" and step.status != "current":
+            step.activated_at = utcnow()
+        step.status = status
+        found_current = True
+    db.flush()
+    # A preloaded relationship and bulk-shifted positions must not leak stale DTOs.
+    db.expire(route, ["steps"])
+
+
+def insert_route_steps(
+    db: Session, route: Route, anchor: RouteStep | None, additions: list[RouteStep],
+) -> None:
+    steps = ordered_route_steps(db, route)
+    index = steps.index(anchor) + 1 if anchor is not None else len(steps)
+    for step in additions:
+        step.route_id = route.id
+        step.status = "pending"
+        db.add(step)
+    steps[index:index] = additions
+    normalize_route_steps(db, route, steps)
+
+
 def complete_route_step(
     db: Session,
     user_id: int,
@@ -45,6 +104,7 @@ def complete_route_step(
     commit: bool = True,
 ) -> RouteStep:
     """Шаг → done, следующий незавершённый → current. Возвращает выполненный шаг."""
+    lock_route_writes(db, user_id)
     route = active_route(db, user_id)
     if route is None:
         raise ServiceError("Активный маршрут не найден", 404)
@@ -66,23 +126,16 @@ def complete_route_step(
             user_zone(owner.tz if owner else None),
         )
 
-    next_step = (
-        db.query(RouteStep)
-        .filter(RouteStep.route_id == route.id, RouteStep.status != "done")
-        .order_by(RouteStep.position)
-        .first()
-    )
-    if next_step is not None:
-        next_step.status = "current"
-        next_step.activated_at = utcnow()
+    normalize_route_steps(db, route)
     if commit:
         db.commit()
         db.refresh(step)
     return step
 
 
-def uncomplete_route_step(db: Session, user_id: int, step_id: int) -> RouteStep:
+def uncomplete_route_step(db: Session, user_id: int, step_id: int, commit: bool = True) -> RouteStep:
     """Отменить выполнение: возвращаемся к этому шагу маршрута."""
+    lock_route_writes(db, user_id)
     route = active_route(db, user_id)
     if route is None:
         raise ServiceError("Активный маршрут не найден", 404)
@@ -92,18 +145,12 @@ def uncomplete_route_step(db: Session, user_id: int, step_id: int) -> RouteStep:
     if step.status != "done":
         raise ServiceError("Шаг ещё не выполнен", 409)
 
-    current_steps = (
-        db.query(RouteStep)
-        .filter(RouteStep.route_id == route.id, RouteStep.status == "current")
-        .all()
-    )
-    for current in current_steps:
-        current.status = "pending"
-    step.status = "current"
-    step.activated_at = utcnow()
+    step.status = "pending"
     step.completed_at = None
-    db.commit()
-    db.refresh(step)
+    normalize_route_steps(db, route)
+    if commit:
+        db.commit()
+        db.refresh(step)
     return step
 
 

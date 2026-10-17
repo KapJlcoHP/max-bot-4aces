@@ -162,7 +162,7 @@ export default function RoutePage() {
           <div className="route-complete">
             <div className="big-check"><I.check size={46} strokeWidth={2.4} /></div>
             <h2>Маршрут завершён!</h2>
-            <p>Все шаги пройдены. Можно построить маршрут для новой ситуации.</p>
+            <p>Все шаги пройдены. История доступна ниже: можно открыть шаг, отменить выполнение или записать новые назначения. Также можно добавить шаг или построить новый маршрут.</p>
             <Button onClick={() => nav("/builder")}>Свой маршрут</Button>
           </div>
         )}
@@ -172,7 +172,7 @@ export default function RoutePage() {
           <Button variant="secondary" onClick={() => nav(`/step/${undated.id}`)}>Указать дату</Button>
         </aside>}
 
-        {route && !finished && (
+        {route && (
           <div className="split">
             <div className="col">
               <div className="tl" style={{ marginTop: 4 }}>

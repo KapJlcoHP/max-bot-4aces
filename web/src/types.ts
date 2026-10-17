@@ -86,6 +86,21 @@ export interface CompleteStepResult {
   next_step: Step | null;
 }
 
+export interface StepAssignmentsIn {
+  request_id: string;
+  complete: boolean;
+  assignments: {
+    title: string;
+    deadline: string | null;
+    deadline_time: string | null;
+    place?: string;
+  }[];
+}
+
+export interface StepAssignmentsResult extends CompleteStepResult {
+  added_step_ids: number[];
+}
+
 export interface CustomStepIn {
   title: string;
   deadline?: string | null;
