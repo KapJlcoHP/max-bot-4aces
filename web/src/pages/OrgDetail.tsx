@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { openExternalLink } from "../bridge";
 import type { Organization } from "../types";
@@ -10,16 +10,25 @@ import OrganizationMap from "../components/OrganizationMap";
 
 export default function OrgDetail() {
   const { orgId } = useParams();
+  const nav = useNavigate();
   const { user, updateUser } = useApp();
   const [org, setOrg] = useState<Organization | null>(null);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, showToast] = useToast();
+  const loadRequestId = useRef(0);
 
   useEffect(() => {
+    const requestId = ++loadRequestId.current;
     setOrg(null);
     setError(false);
-    api.get<Organization>(`/api/v1/orgs/${orgId}`).then(setOrg).catch(() => setError(true));
+    api.get<Organization>(`/api/v1/orgs/${orgId}`)
+      .then((result) => {
+        if (requestId === loadRequestId.current) setOrg(result);
+      })
+      .catch(() => {
+        if (requestId === loadRequestId.current) setError(true);
+      });
   }, [orgId]);
 
   const isClinic = org?.org_type === "Поликлиники";
@@ -27,15 +36,21 @@ export default function OrgDetail() {
 
   const toggleClinic = async () => {
     if (!org || !isClinic || busy) return;
+    if (isAttached) {
+      nav("/orgs");
+      return;
+    }
+    const requestId = loadRequestId.current;
     setBusy(true);
     try {
       const updated = await api.patch<typeof user>("/api/v1/me/settings", {
-        attached_clinic_id: isAttached ? null : org.id,
+        attached_clinic_id: org.id,
       });
+      if (requestId !== loadRequestId.current) return;
       updateUser(updated);
-      showToast(isAttached ? "Поликлиника откреплена" : "Поликлиника прикреплена");
+      showToast("Поликлиника выбрана для маршрута");
     } catch {
-      showToast("Не удалось изменить прикрепление — попробуйте ещё раз");
+      if (requestId === loadRequestId.current) showToast("Не удалось выбрать поликлинику — попробуйте ещё раз");
     } finally {
       setBusy(false);
     }
@@ -77,9 +92,12 @@ export default function OrgDetail() {
             <OrganizationMap organizations={[org]} selectedId={org.id} onSelect={() => undefined} />
             <Button variant="secondary" onClick={() => openExternalLink(mapLink)}>Открыть карту в Яндексе</Button>
             {isClinic && (
-              <Button variant={isAttached ? "secondary" : "primary"} disabled={busy} onClick={toggleClinic}>
-                {busy ? "Сохраняем…" : isAttached ? "Открепить" : "Прикрепить к моей поликлинике"}
-              </Button>
+              <>
+                {isAttached && <p className="muted" role="status">Выбрана для маршрута</p>}
+                <Button variant={isAttached ? "secondary" : "primary"} disabled={busy} onClick={toggleClinic}>
+                  {busy ? "Сохраняем…" : isAttached ? "Сменить поликлинику" : "Выбрать для маршрута"}
+                </Button>
+              </>
             )}
             <div className="card">
               <h3 className="h3" style={{ textTransform: "uppercase", fontSize: 12.5, letterSpacing: "0.05em", color: "var(--muted)" }}>

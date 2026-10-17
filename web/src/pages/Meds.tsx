@@ -197,7 +197,7 @@ export default function Meds() {
             {times.map((t) => (
               <span className="chip-time" key={t}>
                 {t}
-                <button onClick={() => removeTimeChip(t)} aria-label={`Убр��ть ${t}`}>✕</button>
+                <button onClick={() => removeTimeChip(t)} aria-label={`Убрать время приёма ${t}`}>✕</button>
               </span>
             ))}
           </div>

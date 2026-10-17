@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Line } from "react-chartjs-2";
 import { CategoryScale, Chart as ChartJS, LinearScale, LineElement, PointElement, Tooltip } from "chart.js";
@@ -94,6 +94,7 @@ export default function HealthDiary() {
   const [pain, setPain] = useState(2);
   const [tag, setTag] = useState("утром");
   const [note, setNote] = useState("");
+  const loadRequestId = useRef(0);
 
   const resetForm = () => {
     setSys("");
@@ -110,10 +111,17 @@ export default function HealthDiary() {
   };
 
   const load = useCallback(() => {
+    const requestId = ++loadRequestId.current;
     setStatus("loading");
     api.get<HealthRecord[]>(`/api/v1/health/${type}/records?limit=500`)
-      .then((r) => { setRecords(r); setStatus("ready"); })
-      .catch(() => setStatus("error"));
+      .then((r) => {
+        if (requestId !== loadRequestId.current) return;
+        setRecords(r);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (requestId === loadRequestId.current) setStatus("error");
+      });
   }, [type]);
 
   useEffect(load, [type]);
@@ -179,7 +187,9 @@ export default function HealthDiary() {
   }, [records, type, range]);
 
   const submit = async () => {
+    if (busy) return;
     setBusy(true);
+    const requestId = loadRequestId.current;
     try {
       if (type === "bp") {
         const systolic = toFormNumber(sys);
@@ -205,27 +215,34 @@ export default function HealthDiary() {
       } else {
         await api.post("/api/v1/health/mood", { mood, pain, note: note || null, tag: "вечером" });
       }
+      if (requestId !== loadRequestId.current) return;
       setSheet(false);
       resetForm();
       showToast("Запись сохранена");
       load();
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Не удалось сохранить запись");
+      if (requestId === loadRequestId.current) {
+        showToast(e instanceof Error ? e.message : "Не удалось сохранить запись");
+      }
     } finally {
       setBusy(false);
     }
   };
 
   const confirmDelRec = async () => {
-    if (!delRec) return;
+    if (!delRec || busy) return;
+    const record = delRec;
+    const deleteType = type;
+    const requestId = loadRequestId.current;
     setBusy(true);
     try {
-      await api.del(`/api/v1/health/${type}/${delRec.id}`);
+      await api.del(`/api/v1/health/${deleteType}/${record.id}`);
+      if (requestId !== loadRequestId.current) return;
       setDelRec(null);
       showToast("Запись удалена");
       load();
     } catch {
-      showToast("Не удалось удалить запись");
+      if (requestId === loadRequestId.current) showToast("Не удалось удалить запись");
     } finally {
       setBusy(false);
     }

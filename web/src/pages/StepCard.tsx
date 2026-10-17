@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useApp } from "../App";
@@ -32,62 +32,90 @@ export default function StepCard() {
   const [ownName, setOwnName] = useState("");
   const [ownDate, setOwnDate] = useState("");
   const [ownAttempted, setOwnAttempted] = useState(false);
+  const [deadlineBusy, setDeadlineBusy] = useState(false);
+  const loadRequestId = useRef(0);
+  const deadlineRequestId = useRef(0);
 
   const load = () => {
+    const requestId = ++loadRequestId.current;
     setStatus("loading");
     api.get<RouteDto | null>("/api/v1/route")
-      .then((r) => { setRoute(r); setStatus("ready"); })
-      .catch(() => setStatus("error"));
+      .then((r) => {
+        if (requestId !== loadRequestId.current) return;
+        setRoute(r);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (requestId === loadRequestId.current) setStatus("error");
+      });
   };
   useEffect(load, [stepId]);
 
   const step: Step | null = useMemo(() => route?.steps.find((s) => String(s.id) === stepId) ?? null, [route, stepId]);
 
   const remind = async () => {
-    if (!step) return;
+    if (!step || busy) return;
+    const routeRequestId = loadRequestId.current;
+    setBusy(true);
     try {
       await api.post("/api/v1/reminders", { title: step.title, place: step.place });
+      if (routeRequestId !== loadRequestId.current) return;
       showToast("Напоминание создано — бот пришлёт его в MAX");
     } catch {
-      showToast("Не удалось создать напоминание");
+      if (routeRequestId === loadRequestId.current) showToast("Не удалось создать напоминание");
+    } finally {
+      setBusy(false);
     }
   };
 
   const complete = async () => {
-    if (!step) return;
+    if (!step || busy) return;
+    const routeRequestId = loadRequestId.current;
     setBusy(true);
     try {
       await api.post<CompleteStepResult>(`/api/v1/route/steps/${step.id}/complete`, {});
+      if (routeRequestId !== loadRequestId.current) return;
       setAssignSheet(true); // «врач назначил — записал»: сразу предлагаем записать назначения
     } catch {
-      showToast("Не удалось отметить шаг");
+      if (routeRequestId === loadRequestId.current) showToast("Не удалось отметить шаг");
     } finally {
       setBusy(false);
     }
   };
 
   const uncomplete = async () => {
-    if (!step) return;
+    if (!step || busy) return;
+    const routeRequestId = loadRequestId.current;
     setBusy(true);
     try {
       await api.post<RouteDto>(`/api/v1/route/steps/${step.id}/uncomplete`);
+      if (routeRequestId !== loadRequestId.current) return;
       showToast("Выполнение отменено");
       nav("/route");
     } catch {
-      showToast("Не удалось отменить выполнение");
+      if (routeRequestId === loadRequestId.current) showToast("Не удалось отменить выполнение");
     } finally {
       setBusy(false);
     }
   };
 
   const saveDeadline = async (value: string | null) => {
-    if (!step) return;
+    if (!step || deadlineBusy) return;
+    const requestId = ++deadlineRequestId.current;
+    const currentStepId = step.id;
+    const routeRequestId = loadRequestId.current;
+    setDeadlineBusy(true);
     try {
-      await api.patch<Step>(`/api/v1/route/steps/${step.id}`, { deadline: value });
+      await api.patch<Step>(`/api/v1/route/steps/${currentStepId}`, { deadline: value });
+      if (requestId !== deadlineRequestId.current || routeRequestId !== loadRequestId.current) return;
       showToast(value ? "Срок обновлён" : "Срок убран");
       load();
     } catch {
-      showToast("Не удалось изменить срок");
+      if (requestId === deadlineRequestId.current && routeRequestId === loadRequestId.current) {
+        showToast("Не удалось изменить срок");
+      }
+    } finally {
+      if (requestId === deadlineRequestId.current) setDeadlineBusy(false);
     }
   };
 
@@ -113,6 +141,8 @@ export default function StepCard() {
   };
 
   const saveAssignments = async () => {
+    if (busy) return;
+    const routeRequestId = loadRequestId.current;
     setBusy(true);
     try {
       let afterId = step?.id;
@@ -123,11 +153,12 @@ export default function StepCard() {
         );
         afterId = res.steps.find((s) => s.title === p.title)?.id ?? afterId;
       }
+      if (routeRequestId !== loadRequestId.current) return;
       setAssignSheet(false);
       showToast(picked.length ? `Добавлено шагов: ${picked.length}` : "Шаг выполнен");
       nav("/route");
     } catch {
-      showToast("Не удалось добавить назначения");
+      if (routeRequestId === loadRequestId.current) showToast("Не удалось добавить назначения");
     } finally {
       setBusy(false);
     }
@@ -180,6 +211,7 @@ export default function StepCard() {
                     className="step-date"
                     type="date"
                     aria-label="Срок шага"
+                    disabled={deadlineBusy}
                     value={step.deadline ?? ""}
                     onChange={(e) => saveDeadline(e.target.value || null)}
                   />
@@ -269,7 +301,7 @@ export default function StepCard() {
       {step && step.status !== "done" && (
         <div className="foot">
           <div className="btn-row">
-            <Button variant="secondary" onClick={remind}><I.bell size={18} />Напомнить</Button>
+            <Button variant="secondary" disabled={busy} onClick={remind}><I.bell size={18} />Напомнить</Button>
             <Button disabled={busy} onClick={complete}>{busy ? "Отмечаем…" : "Я это сделал"}</Button>
           </div>
         </div>

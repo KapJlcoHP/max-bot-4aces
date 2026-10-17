@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Radio } from "@maxhub/max-ui";
 import { api } from "../api";
@@ -25,27 +25,39 @@ export default function Builder() {
   const [ownAttempted, setOwnAttempted] = useState(false);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
+  const catalogRequestId = useRef(0);
+  const templateRequestId = useRef(0);
 
   const load = useCallback(() => {
+    const requestId = ++catalogRequestId.current;
     setStatus("loading");
     api.get<Situation[]>("/api/v1/catalog")
-      .then((s) => { setSituations(s); setStatus("ready"); })
-      .catch(() => setStatus("error"));
+      .then((s) => {
+        if (requestId !== catalogRequestId.current) return;
+        setSituations(s);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (requestId === catalogRequestId.current) setStatus("error");
+      });
   }, []);
 
   useEffect(load, []);
 
   const pick = async (key: string) => {
+    const requestId = ++templateRequestId.current;
     setSelected(key);
     setOff(new Set());
     if (key === "custom") {
       setTemplateSteps([]);
       return;
     }
+    setTemplateSteps([]);
     try {
-      setTemplateSteps(await api.get<TemplateStep[]>(`/api/v1/catalog/${key}/steps`));
+      const steps = await api.get<TemplateStep[]>(`/api/v1/catalog/${key}/steps`);
+      if (requestId === templateRequestId.current) setTemplateSteps(steps);
     } catch {
-      setTemplateSteps([]);
+      if (requestId === templateRequestId.current) setTemplateSteps([]);
     }
   };
 
@@ -71,7 +83,7 @@ export default function Builder() {
     });
 
   const create = async () => {
-    if (!selected) return;
+    if (!selected || busy) return;
     setBusy(true);
     try {
       await api.post<RouteDto>("/api/v1/route/start", {
