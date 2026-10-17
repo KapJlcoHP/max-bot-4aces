@@ -128,6 +128,30 @@ class SchedulerTests(unittest.TestCase):
         self.db.commit()
         self.assertEqual(collect_due(self.db, now=due_at - timedelta(days=1)), [])
 
+    def test_step_day_lead_uses_user_selected_time(self):
+        due_at = datetime(2026, 9, 29, 10)
+        user = User(max_user_id=307, tz="UTC", step_day_before_time="17:00")
+        self.db.add(user)
+        self.db.flush()
+        route = Route(user_id=user.id, situation_key="test", title="Test")
+        self.db.add(route)
+        self.db.flush()
+        self.db.add(RouteStep(
+            route_id=route.id,
+            position=1,
+            title="Step",
+            status="current",
+            deadline=due_at.date(),
+            deadline_time="10:00",
+        ))
+        self.db.commit()
+
+        self.assertEqual(collect_due(self.db, now=datetime(2026, 9, 28, 16)), [])
+        self.assertEqual(
+            [(push.kind, push.lead) for push in collect_due(self.db, now=datetime(2026, 9, 28, 17))],
+            [("step", "day")],
+        )
+
     def test_notification_dedup_is_scoped_to_user(self):
         users = [User(max_user_id=302, tz="UTC"), User(max_user_id=303, tz="UTC")]
         self.db.add_all(users)

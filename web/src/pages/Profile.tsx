@@ -29,10 +29,12 @@ export default function Profile() {
     hour: user.notify_hour_before ?? true,
     now: user.notify_at_deadline ?? true,
   });
+  const [stepDayBeforeTime, setStepDayBeforeTime] = useState(user.step_day_before_time ?? "09:00");
   const [regions, setRegions] = useState<Region[]>([]);
   const [clinic, setClinic] = useState<Organization | null>(null);
   const [busy, setBusy] = useState(false);
   const [stepReminderBusy, setStepReminderBusy] = useState<StepReminderKey | null>(null);
+  const [stepDayBeforeTimeBusy, setStepDayBeforeTimeBusy] = useState(false);
 
   useEffect(() => {
     if (user.attached_clinic_id === null) {
@@ -76,6 +78,26 @@ export default function Profile() {
     } finally {
       setStepReminderBusy(null);
     }
+  };
+
+  const saveStepDayBeforeTime = async (value: string) => {
+    if (stepDayBeforeTimeBusy || !value || value === (user.step_day_before_time ?? "09:00")) return;
+    setStepDayBeforeTimeBusy(true);
+    try {
+      const updated = await api.patch<UserDto>("/api/v1/me/settings", { step_day_before_time: value });
+      updateUser(updated);
+      showToast("Время напоминания сохранено");
+    } catch {
+      setStepDayBeforeTime(user.step_day_before_time ?? "09:00");
+      showToast("Не удалось сохранить время");
+    } finally {
+      setStepDayBeforeTimeBusy(false);
+    }
+  };
+
+  const openStepReminderSheet = () => {
+    setStepDayBeforeTime(user.step_day_before_time ?? "09:00");
+    setStepReminderSheet(true);
   };
 
   const pickRegion = async (title: string) => {
@@ -143,10 +165,10 @@ export default function Profile() {
               subtitle={enabledStepReminders || "Напоминания о сроках отключены"}
               after={<span className="cell-note">Настроить</span>}
               showChevron
-              onClick={() => setStepReminderSheet(true)}
+              onClick={openStepReminderSheet}
               onKeyDown={(e) => {
                 if (e.target !== e.currentTarget) return;
-                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setStepReminderSheet(true); }
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openStepReminderSheet(); }
               }}
             />
           </CellList>
@@ -284,6 +306,19 @@ export default function Profile() {
                 onChange={(on) => toggleStepReminder(key, field, on)}
                 label={label}
               />
+              {key === "day" && (
+                <label className="push-time">
+                  <small>Время напоминания</small>
+                  <input
+                    type="time"
+                    value={stepDayBeforeTime}
+                    disabled={!stepReminders.day || stepDayBeforeTimeBusy}
+                    onChange={(e) => setStepDayBeforeTime(e.target.value)}
+                    onBlur={(e) => saveStepDayBeforeTime(e.target.value)}
+                    aria-label="Время напоминания за день до срока"
+                  />
+                </label>
+              )}
             </div>
           ))}
         </div>

@@ -22,6 +22,7 @@ class UserDto(OrmDto):
     notify_day_before: bool = True
     notify_hour_before: bool = True
     notify_at_deadline: bool = True
+    step_day_before_time: str = "09:00"
     tz: str = "Europe/Moscow"
     region: str = ""
     attached_clinic_id: int | None = None
@@ -309,6 +310,7 @@ class SettingsIn(OrmDto):
     notify_day_before: bool | None = None
     notify_hour_before: bool | None = None
     notify_at_deadline: bool | None = None
+    step_day_before_time: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     email: str | None = None
     region: str | None = None
     attached_clinic_id: int | None = None

@@ -116,13 +116,14 @@ class ClinicIntegrationTests(unittest.TestCase):
         self.db.commit()
 
         updated = api.update_settings(
-            SettingsIn(notify_day_before=False, notify_at_deadline=False),
+            SettingsIn(notify_day_before=False, notify_at_deadline=False, step_day_before_time="18:30"),
             user=user,
             db=self.db,
         )
         self.assertFalse(updated.notify_day_before)
         self.assertTrue(updated.notify_hour_before)
         self.assertFalse(updated.notify_at_deadline)
+        self.assertEqual(updated.step_day_before_time, "18:30")
 
         updated = api.update_settings(
             SettingsIn(notify_hour_before=False), user=user, db=self.db,

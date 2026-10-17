@@ -9,6 +9,7 @@ export interface UserDto {
   notify_day_before: boolean;
   notify_hour_before: boolean;
   notify_at_deadline: boolean;
+  step_day_before_time: string;
   tz: string;
   region: string;
   attached_clinic_id: number | null;

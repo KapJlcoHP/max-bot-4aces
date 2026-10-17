@@ -27,6 +27,7 @@ class User(Base):
     notify_day_before: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_hour_before: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_at_deadline: Mapped[bool] = mapped_column(Boolean, default=True)
+    step_day_before_time: Mapped[str] = mapped_column(String(5), default="09:00")
     consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 152-ФЗ: дата согласия
     avatar_url: Mapped[str] = mapped_column(String(500), default="")  # фото из MAX, если платформа его отдала
     tz: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")  # IANA-зона с телефона — «настенные» времена пушей

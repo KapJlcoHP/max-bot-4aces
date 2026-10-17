@@ -127,14 +127,13 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
                 slot = _parse_time(step.deadline_time) or dtime(12, 0)
                 due_at = datetime.combine(step.deadline, slot)
                 has_time = step.deadline_time is not None
-                for lead, start, end in (
-                    ("day", due_at - timedelta(days=1), due_at - timedelta(hours=1)),
-                    ("hour", due_at - timedelta(hours=1), due_at),
-                ):
-                    if (lead == "day" and not user.notify_day_before) or (
-                        lead == "hour" and not user.notify_hour_before
-                    ):
-                        continue
+                leads = []
+                if user.notify_day_before:
+                    day_time = _parse_time(user.step_day_before_time) or dtime(9, 0)
+                    leads.append(("day", datetime.combine(due_at.date() - timedelta(days=1), day_time), due_at - timedelta(hours=1)))
+                if user.notify_hour_before:
+                    leads.append(("hour", due_at - timedelta(hours=1), due_at))
+                for lead, start, end in leads:
                     if start <= user_now < end and not logged("step", step.id, lead):
                         pushes.append(
                             Push(

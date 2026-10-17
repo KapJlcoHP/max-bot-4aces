@@ -167,6 +167,8 @@ def update_settings(body: SettingsIn, user: User = Depends(consented_user), db: 
         user.notify_hour_before = body.notify_hour_before
     if body.notify_at_deadline is not None:
         user.notify_at_deadline = body.notify_at_deadline
+    if body.step_day_before_time is not None:
+        user.step_day_before_time = body.step_day_before_time
     if body.email is not None:
         user.email = body.email
     if body.region is not None:

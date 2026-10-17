@@ -55,6 +55,7 @@ def _migrate_sqlite() -> None:
             ("notify_day_before", "BOOLEAN NOT NULL DEFAULT 1"),
             ("notify_hour_before", "BOOLEAN NOT NULL DEFAULT 1"),
             ("notify_at_deadline", "BOOLEAN NOT NULL DEFAULT 1"),
+            ("step_day_before_time", "VARCHAR(5) NOT NULL DEFAULT '09:00'"),
         ],
         "route_steps": [
             ("source", "VARCHAR(16) NOT NULL DEFAULT 'template'"),

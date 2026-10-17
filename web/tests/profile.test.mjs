@@ -14,6 +14,9 @@ test("profile exposes configurable step reminder leads", async () => {
     assert.match(profile, new RegExp(field));
     assert.match(types, new RegExp(`${field}: boolean`));
   }
+  assert.match(profile, /step_day_before_time/);
+  assert.match(types, /step_day_before_time: string/);
+  assert.match(profile, /type="time"/);
   assert.match(profile, /\/api\/v1\/me\/settings/);
   assert.match(profile, /За день до срока/);
   assert.match(profile, /За час до срока/);
