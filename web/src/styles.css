@@ -79,14 +79,12 @@ body {
   font-family: inherit;
 }
 .avatar.red { background: var(--red-tint); color: var(--red); }
-.hdr-back, .hdr-home {
+.hdr-back {
   display: flex; align-items: center; gap: 6px;
   background: none; border: none; cursor: pointer; color: var(--text);
-  padding: 4px; font-family: inherit; border-radius: 8px;
+  padding: 4px; margin-left: -4px; font-family: inherit;
 }
-.hdr-back { margin-left: -4px; }
-.hdr-back svg, .hdr-home svg { flex: 0 0 auto; }
-.hdr-back:focus-visible, .hdr-home:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+.hdr-back svg { flex: 0 0 auto; }
 .hdr-title { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .hdr-title h1 { font-size: 19px; font-weight: 800; line-height: 1.15; }
 .hdr-title small { color: var(--muted); font-size: 12.5px; font-weight: 500; }
