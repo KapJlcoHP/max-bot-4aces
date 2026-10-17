@@ -402,5 +402,5 @@ async def diary_text_input(event: MessageCreated):
             return
     _DIALOGS.pop(max_user_id, None)
     username = _username(event)
-    kb = open_app_keyboard(username, app_payload="health") if username else None
+    kb = open_app_keyboard(username, payload="health") if username else None
     await event.message.answer(f"✅ Записал: {saved}. 💙", attachments=[kb.as_markup()] if kb else None)
