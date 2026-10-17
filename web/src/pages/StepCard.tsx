@@ -18,6 +18,17 @@ interface Picked {
 
 const CHIPS = ["Анализы", "УЗИ", "Специалист", "Процедуры", "Прививка"];
 
+const toPlainInstruction = (text: string) => [
+  [/\bМСЭ\b/g, "медицинская комиссия"],
+  [/\bИПРА\b/g, "план дальнейшей помощи"],
+  [/посыльн\w* лист/gi, "направление от врача"],
+  [/медико-социальн\w* экспертиз\w*/gi, "медицинская комиссия"],
+  [/полис ОМС/gi, "медицинский полис"],
+  [/\bСНИЛС\b/g, "страховой номер"],
+  [/по месту прикрепления/gi, "в вашей поликлинике"],
+  [/нотариальн\w* доверенн\w*/gi, "документ для представителя"],
+].reduce((result, [pattern, replacement]) => result.replace(pattern as RegExp, replacement as string), text);
+
 export default function StepCard() {
   const { user } = useApp();
   const now = useNow();
@@ -52,8 +63,9 @@ export default function StepCard() {
   useEffect(load, [stepId]);
 
   const step: Step | null = useMemo(() => route?.steps.find((s) => String(s.id) === stepId) ?? null, [route, stepId]);
-  const simpleInstruction = step?.description?.trim()
-    || (step ? `Выполните шаг «${step.title}» и отметьте его после завершения.` : "");
+  const simpleInstruction = toPlainInstruction(
+    step?.description?.trim() || (step ? `Выполните шаг «${step.title}» и отметьте его после завершения.` : ""),
+  );
   const simplePlace = step?.place.replace("Поликлиника по месту прикрепления", "Ваша поликлиника");
 
   const remind = async () => {
