@@ -68,6 +68,7 @@ class StepDto(OrmDto):
     deadline: Date | None = None
     deadline_time: str | None = None
     status: str
+    completed_at: datetime | None = None
     has_checklist: bool
     note: str | None = None
     source: str = "template"

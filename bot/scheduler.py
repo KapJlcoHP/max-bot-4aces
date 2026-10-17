@@ -31,7 +31,7 @@ from core.db.models import (
 from core.db.session import SessionLocal
 from core.diary_settings import diary_settings
 from core.services import active_route
-from core.time import db_utc, local_day_bounds, user_local, user_zone
+from core.time import db_utc, local_day_bounds, normalize_clock_time, user_local, user_zone
 
 log = logging.getLogger("bot.scheduler")
 
@@ -74,10 +74,10 @@ def _when_desc(due: datetime, now: datetime, has_time: bool) -> str:
 
 
 def _parse_time(value: str) -> dtime | None:
-    try:
-        return dtime.fromisoformat(str(value).strip())
-    except (TypeError, ValueError):
+    normalized = normalize_clock_time(value)
+    if normalized is None:
         return None
+    return dtime.fromisoformat(normalized)
 
 
 def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
@@ -204,13 +204,14 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
             if c.until is not None and c.until < today:
                 continue
             taken_slots = {
-                i.at_time
+                normalize_clock_time(i.at_time) or i.at_time
                 for i in db.query(MedIntake)
                 .filter(MedIntake.course_id == c.id, MedIntake.day == today, MedIntake.taken_at.is_not(None))
                 .all()
             }
-            for t in c.times or []:
-                slot = _parse_time(t)
+            for raw_time in c.times or []:
+                t = normalize_clock_time(raw_time)
+                slot = _parse_time(raw_time)
                 if slot is None:
                     continue
                 slot_at = datetime.combine(today, slot)

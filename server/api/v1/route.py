@@ -106,7 +106,7 @@ def add_step(
     return route_dto(route)
 
 
-@router.delete("/route/steps/{step_id}", response_model=RouteDto)
+@router.delete("/route/steps/{step_id}", response_model=RouteDto | None)
 def delete_step(step_id: int, user: User = Depends(consented_user), db: Session = Depends(db_session)):
     route = get_active_route(db, user.id)
     if route is None:
@@ -116,6 +116,11 @@ def delete_step(step_id: int, user: User = Depends(consented_user), db: Session 
         raise HTTPException(status_code=404, detail="Шаг не найден")
     if step.status == "done":
         raise HTTPException(status_code=409, detail="Пройденный шаг удалить нельзя")
+
+    if db.query(RouteStep).filter(RouteStep.route_id == route.id).count() == 1:
+        db.delete(route)
+        db.commit()
+        return None
 
     was_current = step.status == "current"
     position = step.position

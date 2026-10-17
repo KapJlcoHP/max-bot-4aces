@@ -79,6 +79,18 @@ class SecurityHeaderTests(unittest.TestCase):
         self.assertEqual(response.json(), {"detail": "Internal Server Error"})
         self.assert_security_headers(response)
 
+    def test_unknown_api_path_does_not_return_spa_html(self):
+        response = self.client.get("/api/v1/does-not-exist")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json(), {"detail": "Not Found"})
+        self.assert_security_headers(response)
+
+    def test_static_path_escape_is_rejected(self):
+        response = self.client.get("/%2e%2e/etc/passwd")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json(), {"detail": "Not Found"})
+        self.assert_security_headers(response)
+
     def test_cors_preflight_also_has_security_headers(self):
         response = self.client.options("/api/v1/health", headers={
             "Origin": "http://localhost:5173", "Access-Control-Request-Method": "GET",

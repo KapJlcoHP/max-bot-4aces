@@ -7,11 +7,30 @@ DateTime, поэтому функции ниже явно восстанавли
 """
 
 from datetime import date, datetime, time, timedelta, timezone
+import re
 from zoneinfo import ZoneInfo
 
 
 UTC = timezone.utc
 DEFAULT_TZ = "Europe/Moscow"
+
+
+def normalize_clock_time(value: str) -> str | None:
+    """Normalize a local clock value to the app's canonical ``HH:MM`` form.
+
+    Medication schedules have minute precision.  Accept the forms users and
+    older clients commonly send (``8:00``, ``08:00`` and ``08:00:00``), but
+    reject invalid values and non-zero seconds instead of silently changing the
+    scheduled minute.
+    """
+    match = re.fullmatch(r"\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*", str(value))
+    if match is None:
+        return None
+    hour, minute = int(match.group(1)), int(match.group(2))
+    second = int(match.group(3) or 0)
+    if hour > 23 or minute > 59 or second != 0:
+        return None
+    return f"{hour:02d}:{minute:02d}"
 
 
 def user_zone(tz: str | None) -> ZoneInfo:

@@ -84,11 +84,9 @@ export default function RoutePage() {
     if (!delStep) return;
     setBusy(true);
     try {
-      const updated = await api.del<RouteDto>(`/api/v1/route/steps/${delStep.id}`);
+      const updated = await api.del<RouteDto | null>(`/api/v1/route/steps/${delStep.id}`);
       setDelStep(null);
-      if (updated.total_steps === 0) {
-        // последний шаг убрали — маршрут пуст, удаляем целиком
-        await api.del("/api/v1/route");
+      if (updated === null) {
         setRoute(null);
       } else {
         setRoute(updated);

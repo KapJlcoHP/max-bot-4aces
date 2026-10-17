@@ -24,14 +24,19 @@ export default function App() {
   const location = useLocation();
 
   const load = () => {
-    setStatus("loading");
+    const initialLoad = user === null;
+    if (initialLoad) setStatus("loading");
     api
       .get<UserDto>("/api/v1/me")
       .then((u) => {
         setUser(u);
         setStatus("ready");
       })
-      .catch((e) => setStatus(e?.status === 401 ? "auth-error" : "error"));
+      .catch((e) => {
+        // A background refresh must not replace the already rendered screen
+        // with an error page; the initial load still reports auth/network errors.
+        if (initialLoad) setStatus(e?.status === 401 ? "auth-error" : "error");
+      });
   };
 
   useEffect(load, []);

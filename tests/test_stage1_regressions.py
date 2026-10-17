@@ -221,6 +221,43 @@ class Stage1RegressionTests(unittest.TestCase):
         self.assertEqual(build.call_args.args[1].id, worker_user_id)
         engine.dispose()
 
+    def test_step_dto_exposes_completed_at_and_uncomplete_clears_it(self):
+        from server.api.v1 import api
+
+        route = api.start_route(
+            RouteStartIn(
+                situation_key="custom",
+                custom_steps=[CustomStepIn(title="Приём врача")],
+            ),
+            user=self.user,
+            db=self.db,
+        )
+        step_id = route.steps[0].id
+
+        completed = api.complete_step(step_id, body=None, user=self.user, db=self.db)
+        self.assertIsNotNone(completed.step.completed_at)
+
+        restored = api.uncomplete_step(step_id, user=self.user, db=self.db)
+        self.assertIsNone(restored.steps[0].completed_at)
+
+    def test_deleting_last_step_removes_route_in_one_operation(self):
+        from server.api.v1 import api
+
+        route = api.start_route(
+            RouteStartIn(
+                situation_key="custom",
+                custom_steps=[CustomStepIn(title="Единственный шаг")],
+            ),
+            user=self.user,
+            db=self.db,
+        )
+
+        result = api.delete_step(route.steps[0].id, user=self.user, db=self.db)
+
+        self.assertIsNone(result)
+        self.assertIsNone(self.db.query(Route).filter_by(id=route.id).first())
+        self.assertEqual(self.db.query(RouteStep).filter_by(route_id=route.id).count(), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

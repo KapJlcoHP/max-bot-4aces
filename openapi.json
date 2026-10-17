@@ -359,7 +359,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RouteDto"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RouteDto"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Delete Step Api V1 Route Steps  Step Id  Delete"
                 }
               }
             }
@@ -2710,6 +2718,18 @@
           "status": {
             "type": "string",
             "title": "Status"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
           },
           "has_checklist": {
             "type": "boolean",

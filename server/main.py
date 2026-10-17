@@ -62,9 +62,16 @@ def health():
 if (WEB_DIST / "index.html").exists():
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa(full_path: str):
-        """Статика собранного мини-апа; неизвестные пути отдаём index.html (SPA-роутинг)."""
+        """Статика мини-апа; API и небезопасные пути не попадают в SPA fallback."""
         candidate = (WEB_DIST / full_path).resolve()
-        if full_path and candidate.is_file() and str(candidate).startswith(str(WEB_DIST.resolve())):
+        web_root = WEB_DIST.resolve()
+        try:
+            candidate.relative_to(web_root)
+        except ValueError:
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        if full_path == "api" or full_path.startswith("api/"):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        if full_path and candidate.is_file():
             return FileResponse(candidate)
         return FileResponse(WEB_DIST / "index.html")
 else:
