@@ -1,9 +1,10 @@
 """Маршруты пользователя и конструктор шагов."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from core.db.models import NotificationLog, RouteStep, User
+from core.db.models import NotificationLog, Route, RouteStep, User, utcnow
 from core.db.seed import build_route_for, load_catalog
 from core.schemas import (
     CompleteStepIn,
@@ -15,10 +16,42 @@ from core.schemas import (
     StepUpdateIn,
 )
 from core.services import ServiceError, complete_route_step, uncomplete_route_step
-from core.time import normalize_clock_time
+from core.time import normalize_clock_time, strict_local_utc
 from .common import consented_user, db_session, get_active_route, route_dto, route_template_title, step_dto
 
 router = APIRouter()
+
+
+def reminder_setting(body, user, deadline, clock, step=None, schedule_changed=False):
+    fields = body.model_fields_set
+    mode = body.reminder_mode if "reminder_mode" in fields else (step.reminder_mode if step else "profile")
+    moment = step.reminder_at if step else None
+    if "reminder_at" in fields:
+        try:
+            moment = strict_local_utc(body.reminder_at, user.tz) if body.reminder_at is not None else None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if "deadline" in fields and deadline is None:
+        if ("reminder_mode" in fields and mode != "profile") or body.reminder_at is not None:
+            raise HTTPException(status_code=422, detail="Напоминание требует даты события")
+        return "profile", None
+    if mode == "day" and deadline is None:
+        raise HTTPException(status_code=422, detail="Напоминание за день требует даты события")
+    if mode == "hour" and (deadline is None or clock is None):
+        raise HTTPException(status_code=422, detail="Напоминание за час требует даты и точного времени события")
+    if mode == "custom":
+        if deadline is None or moment is None:
+            raise HTTPException(status_code=422, detail="Укажите дату события и время напоминания")
+        if step and step.reminder_mode == "custom" and schedule_changed and not {"reminder_mode", "reminder_at"} <= fields:
+            raise HTTPException(status_code=422, detail="Срок изменён. Подтвердите время напоминания заново или выберите другой режим")
+        unchanged = step and not schedule_changed and (mode, moment) == (step.reminder_mode, step.reminder_at)
+        if not unchanged and moment <= utcnow():
+            raise HTTPException(status_code=422, detail="Время напоминания должно быть в будущем")
+    else:
+        if "reminder_at" in fields and body.reminder_at is not None:
+            raise HTTPException(status_code=422, detail="Отдельное время допустимо только в режиме «В другое время»")
+        moment = None
+    return mode, moment
 
 
 @router.get("/route", response_model=RouteDto | None)
@@ -48,7 +81,12 @@ def start_route(body: RouteStartIn, user: User = Depends(consented_user), db: Se
         body.situation_key,
         exclude_positions=body.exclude_positions,
         custom_steps=[s.model_dump() for s in body.custom_steps],
+        commit=False,
     )
+    for step in route.steps:
+        if step.status == "current":
+            step.activated_at = utcnow()
+    db.commit()
     return route_dto(route)
 
 
@@ -68,6 +106,7 @@ def add_step(
     if route is None:
         raise HTTPException(status_code=404, detail="Активный маршрут не найден")
 
+    mode, moment = reminder_setting(body, user, body.deadline, body.deadline_time)
     anchor = None
     if after_step_id:
         anchor = db.query(RouteStep).filter(RouteStep.id == after_step_id, RouteStep.route_id == route.id).first()
@@ -98,6 +137,9 @@ def add_step(
         place=body.place or "",
         deadline=body.deadline,
         deadline_time=body.deadline_time,
+        reminder_mode=mode,
+        reminder_at=moment,
+        activated_at=utcnow() if not has_unfinished else None,
         status="pending" if has_unfinished else "current",
         source=body.source,
     )
@@ -136,6 +178,7 @@ def delete_step(step_id: int, user: User = Depends(consented_user), db: Session 
         ).order_by(RouteStep.position).first()
         if next_step is not None:
             next_step.status = "current"
+            next_step.activated_at = utcnow()
     db.commit()
     db.refresh(route)
     return route_dto(route)
@@ -179,7 +222,7 @@ def uncomplete_step(step_id: int, user: User = Depends(consented_user), db: Sess
     return route_dto(route)
 
 
-@router.patch("/route/steps/{step_id}", response_model=StepDto)
+@router.patch("/route/steps/{step_id}", response_model=StepDto, responses={409: {"description": "Шаг выполнен или изменился одновременно; обновите маршрут"}})
 def update_step(
     step_id: int,
     body: StepUpdateIn,
@@ -209,9 +252,27 @@ def update_step(
     old_clock = normalize_clock_time(step.deadline_time) if step.deadline_time else None
     new_clock = normalize_clock_time(deadline_time) if deadline_time else None
     schedule_changed = (step.deadline, old_clock or step.deadline_time) != (deadline, new_clock or deadline_time)
-    step.deadline = deadline
-    step.deadline_time = deadline_time
-    if schedule_changed:
+    mode, moment = reminder_setting(body, user, deadline, new_clock, step, schedule_changed)
+    reminder_changed = (step.reminder_mode, step.reminder_at) != (mode, moment)
+    result = db.execute(update(RouteStep).where(
+        RouteStep.id == step.id,
+        RouteStep.route_id == route.id,
+        RouteStep.status != "done",
+        RouteStep.reminder_revision == step.reminder_revision,
+        RouteStep.route_id.in_(db.query(Route.id).filter(
+            Route.user_id == user.id, Route.active.is_(True),
+        )),
+    ).values(
+        deadline=deadline,
+        deadline_time=new_clock if "deadline_time" in fields else deadline_time,
+        reminder_mode=mode,
+        reminder_at=moment,
+        reminder_revision=step.reminder_revision + int(schedule_changed or reminder_changed),
+    ).execution_options(synchronize_session=False))
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Шаг изменился. Обновите маршрут перед повторным сохранением")
+    if schedule_changed or reminder_changed:
         db.query(NotificationLog).filter(
             NotificationLog.user_id == user.id,
             NotificationLog.kind == "step",

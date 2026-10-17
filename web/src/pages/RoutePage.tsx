@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useApp } from "../App";
 import { useNow } from "../hooks/useNow";
 import StepCountdown from "../components/StepCountdown";
+import EventDateTimeInputs from "../components/EventDateTimeInputs";
 import { fmtDeadline } from "../format";
 import type { Checklist, ChecklistItem, RouteDto, Step } from "../types";
 import { Button, ErrorView, Header, LoadingView, Sheet, useToast } from "../components/ui";
@@ -26,6 +27,8 @@ export default function RoutePage() {
   const [sheet, setSheet] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDate, setNewDate] = useState("");
+  const [newTime, setNewTime] = useState("");
+  const adding = useRef(false);
   const [busy, setBusy] = useState(false);
   const [delStep, setDelStep] = useState<Step | null>(null);
   const [delRoute, setDelRoute] = useState(false);
@@ -60,22 +63,26 @@ export default function RoutePage() {
   };
 
   const addStep = async () => {
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim() || adding.current) return;
+    adding.current = true;
     setBusy(true);
     try {
       await api.post<RouteDto>("/api/v1/route/steps", {
         title: newTitle.trim(),
         deadline: newDate || null,
+        deadline_time: newDate && newTime ? newTime : null,
         source: "user",
       });
       setSheet(false);
       setNewTitle("");
       setNewDate("");
+      setNewTime("");
       showToast("Шаг добавлен в маршрут");
       load();
     } catch {
       showToast("Не удалось добавить шаг");
     } finally {
+      adding.current = false;
       setBusy(false);
     }
   };
@@ -124,6 +131,7 @@ export default function RoutePage() {
 
   const finished = route !== null && route.total_steps > 0 && route.done_steps >= route.total_steps;
   const current = route?.steps.find((s) => s.status === "current") ?? null;
+  const undated = route?.steps.find((s) => s.status !== "done" && !s.deadline);
 
   return (
     <div className="app">
@@ -158,6 +166,11 @@ export default function RoutePage() {
             <Button onClick={() => nav("/builder")}>Свой маршрут</Button>
           </div>
         )}
+
+        {route && !finished && undated && <aside className="card tinted" aria-label="Сроки маршрута">
+          <p className="muted">У некоторых шагов не указана дата. Укажите свои сроки — например, дату приёма. Если срок пока неизвестен, оставьте поле пустым.</p>
+          <Button variant="secondary" onClick={() => nav(`/step/${undated.id}`)}>Указать дату</Button>
+        </aside>}
 
         {route && !finished && (
           <div className="split">
@@ -250,21 +263,15 @@ export default function RoutePage() {
 
       <Sheet open={sheet} onClose={() => setSheet(false)}>
         <h3>Добавить шаг</h3>
-        <div className="sub">Назначение врача или свой пункт — бот напомнит</div>
-        <div className="own-row">
+        <div className="sub">Проверьте фактическую дату; неизвестную можно оставить пустой. Время необязательно ({user.tz}). Уведомления получает только текущий шаг.</div>
+        <div className="own-row" style={{ flexWrap: "wrap" }}>
           <input
             placeholder="Например, МРТ"
             aria-label="Название шага"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
           />
-          <input
-            className="date"
-            type="date"
-            aria-label="Срок"
-            value={newDate}
-            onChange={(e) => setNewDate(e.target.value)}
-          />
+          <EventDateTimeInputs date={newDate} time={newTime} onChange={(d, t) => { setNewDate(d); setNewTime(t); }} />
           <button className="add" onClick={addStep} disabled={busy || !newTitle.trim()} aria-label="Добавить">+</button>
         </div>
         <Button style={{ marginTop: 14 }} disabled={busy || !newTitle.trim()} onClick={addStep}>

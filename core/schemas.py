@@ -1,11 +1,11 @@
 """Pydantic-DTO, общие для server и bot."""
 
 from datetime import date as Date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, HttpUrl, PrivateAttr, model_validator
 
-from core.time import normalize_clock_time
+from core.time import as_utc, normalize_clock_time
 
 
 def _normalize_step_clock(value: str) -> str:
@@ -20,6 +20,9 @@ _StepClockTime = Annotated[
     AfterValidator(_normalize_step_clock),
     Field(description="Местное время события в поясе профиля; нормализуется в HH:MM. Требует даты."),
 ]
+
+StepReminderMode = Literal["profile", "day", "hour", "custom"]
+_UtcMoment = Annotated[datetime, AfterValidator(as_utc)]
 
 
 class OrmDto(BaseModel):
@@ -96,6 +99,9 @@ class StepDto(OrmDto):
     place: str
     deadline: Date | None = None
     deadline_time: str | None = None
+    reminder_mode: StepReminderMode = "profile"
+    reminder_at: _UtcMoment | None = None
+    activated_at: _UtcMoment | None = None
     status: str
     completed_at: datetime | None = None
     has_checklist: bool
@@ -139,6 +145,8 @@ class StepUpdateIn(OrmDto):
         default=None,
         description="Местное время HH:MM. Пропуск сохраняет время; null очищает только время. Требует даты.",
     )
+    reminder_mode: StepReminderMode = "profile"
+    reminder_at: datetime | None = None
 
     @model_validator(mode="after")
     def validate_explicit_date_clear(self):
@@ -153,6 +161,8 @@ class StepAddIn(OrmDto):
     title: str
     deadline: Date | None = None
     deadline_time: _StepClockTime | None = None
+    reminder_mode: StepReminderMode = "profile"
+    reminder_at: datetime | None = None
     place: str = ""
     source: str = "user"  # user | doctor
 

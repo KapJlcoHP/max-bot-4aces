@@ -36,6 +36,7 @@ export interface Situation {
 }
 
 export type StepSource = "template" | "user" | "doctor";
+export type StepReminderMode = "profile" | "day" | "hour" | "custom";
 
 export interface ContentSource {
   id: string;
@@ -55,6 +56,9 @@ export interface Step {
   place: string;
   deadline: string | null;
   deadline_time: string | null;
+  reminder_mode: StepReminderMode;
+  reminder_at: string | null;
+  activated_at: string | null;
   status: "pending" | "current" | "done";
   has_checklist: boolean;
   note: string | null;
@@ -92,6 +96,8 @@ export interface CustomStepIn {
 export interface StepUpdateIn {
   deadline?: string | null;
   deadline_time?: string | null;
+  reminder_mode?: StepReminderMode;
+  reminder_at?: string | null;
 }
 
 export interface ChecklistItem {

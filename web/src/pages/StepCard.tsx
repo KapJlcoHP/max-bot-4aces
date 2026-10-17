@@ -4,15 +4,18 @@ import { api } from "../api";
 import { useApp } from "../App";
 import { useNow } from "../hooks/useNow";
 import StepCountdown from "../components/StepCountdown";
+import StepScheduleEditor from "../components/StepScheduleEditor";
+import EventDateTimeInputs from "../components/EventDateTimeInputs";
 import { openExternalLink } from "../bridge";
 import { fmtDateNumeric, fmtDeadline, fmtDayMonth } from "../format";
-import type { CompleteStepResult, RouteDto, Step, StepUpdateIn } from "../types";
+import type { CompleteStepResult, RouteDto, Step } from "../types";
 import { Button, ErrorView, Header, LoadingView, Sheet, StateView, useToast } from "../components/ui";
 import { I } from "../icons";
 
 interface Picked {
   title: string;
   date: string; // YYYY-MM-DD или ""
+  time: string;
   own: boolean;
 }
 
@@ -31,10 +34,9 @@ export default function StepCard() {
   const [picked, setPicked] = useState<Picked[]>([]);
   const [ownName, setOwnName] = useState("");
   const [ownDate, setOwnDate] = useState("");
+  const [ownTime, setOwnTime] = useState("");
   const [ownAttempted, setOwnAttempted] = useState(false);
-  const [deadlineBusy, setDeadlineBusy] = useState(false);
   const loadRequestId = useRef(0);
-  const deadlineRequestId = useRef(0);
 
   const load = () => {
     const requestId = ++loadRequestId.current;
@@ -53,23 +55,8 @@ export default function StepCard() {
 
   const step: Step | null = useMemo(() => route?.steps.find((s) => String(s.id) === stepId) ?? null, [route, stepId]);
 
-  const remind = async () => {
-    if (!step || busy) return;
-    const routeRequestId = loadRequestId.current;
-    setBusy(true);
-    try {
-      await api.post("/api/v1/reminders", { title: step.title, place: step.place });
-      if (routeRequestId !== loadRequestId.current) return;
-      showToast("Напоминание создано — бот пришлёт его в MAX");
-    } catch {
-      if (routeRequestId === loadRequestId.current) showToast("Не удалось создать напоминание");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const complete = async () => {
-    if (!step || busy) return;
+    if (!step || step.status !== "current" || busy) return;
     const routeRequestId = loadRequestId.current;
     setBusy(true);
     try {
@@ -99,31 +86,11 @@ export default function StepCard() {
     }
   };
 
-  const saveDeadline = async (value: string | null) => {
-    if (!step || deadlineBusy) return;
-    const requestId = ++deadlineRequestId.current;
-    const currentStepId = step.id;
-    const routeRequestId = loadRequestId.current;
-    setDeadlineBusy(true);
-    try {
-      await api.patch<Step>(`/api/v1/route/steps/${currentStepId}`, { deadline: value } satisfies StepUpdateIn);
-      if (requestId !== deadlineRequestId.current || routeRequestId !== loadRequestId.current) return;
-      showToast(value ? "Срок обновлён" : "Срок убран");
-      load();
-    } catch {
-      if (requestId === deadlineRequestId.current && routeRequestId === loadRequestId.current) {
-        showToast("Не удалось изменить срок");
-      }
-    } finally {
-      if (requestId === deadlineRequestId.current) setDeadlineBusy(false);
-    }
-  };
-
   const toggleChip = (title: string) => {
     setPicked((prev) =>
       prev.some((p) => p.title === title && !p.own)
         ? prev.filter((p) => !(p.title === title && !p.own))
-        : [...prev, { title, date: "", own: false }],
+        : [...prev, { title, date: "", time: "", own: false }],
     );
   };
 
@@ -134,9 +101,10 @@ export default function StepCard() {
       showToast("Напишите название назначения — оно подсвечено красным");
       return;
     }
-    setPicked((prev) => [{ title: name, date: ownDate, own: true }, ...prev]);
+    setPicked((prev) => [{ title: name, date: ownDate, time: ownTime, own: true }, ...prev]);
     setOwnName("");
     setOwnDate("");
+    setOwnTime("");
     setOwnAttempted(false);
   };
 
@@ -149,7 +117,7 @@ export default function StepCard() {
       for (const p of picked) {
         const res = await api.post<RouteDto>(
           `/api/v1/route/steps?after_step_id=${afterId}`,
-          { title: p.title, deadline: p.date || null, source: "doctor" },
+          { title: p.title, deadline: p.date || null, deadline_time: p.date && p.time ? p.time : null, source: "doctor" },
         );
         afterId = res.steps.find((s) => s.title === p.title)?.id ?? afterId;
       }
@@ -204,23 +172,7 @@ export default function StepCard() {
       <div className="screen-body">
         <>
             <div className="card">
-              {step.status !== "done" ? (
-                <div className="kv" style={{ gap: 10 }}>
-                  <I.cal size={18} />
-                  <input
-                    className="step-date"
-                    type="date"
-                    aria-label="Срок шага"
-                    disabled={deadlineBusy}
-                    value={step.deadline ?? ""}
-                    onChange={(e) => saveDeadline(e.target.value || null)}
-                  />
-                </div>
-              ) : (
-                step.deadline && (
-                  <div className="kv"><I.cal size={18} />{fmtDeadline(step.deadline, step.deadline_time)}</div>
-                )
-              )}
+              {step.deadline && <div className="kv"><I.cal size={18} />{fmtDeadline(step.deadline, step.deadline_time)}</div>}
               <div className="step-deadline-meta">
                 {step.status !== "done" && step.deadline && step.deadline_time && <span className="muted">В {step.deadline_time}</span>}
                 <StepCountdown step={step} tz={user.tz} now={now} />
@@ -230,6 +182,9 @@ export default function StepCard() {
                 <div className="kv" style={{ fontWeight: 500, color: "var(--muted)", marginTop: 12 }}>{step.description}</div>
               )}
             </div>
+
+            {step.status !== "done" && <StepScheduleEditor key={step.id} step={step} user={user} now={now}
+              onSaved={(updated) => setRoute((r) => r ? { ...r, steps: r.steps.map((s) => s.id === updated.id ? updated : s) } : r)} />}
 
             {step.reason && (
               <details className="card step-origin" key={step.id}>
@@ -301,15 +256,15 @@ export default function StepCard() {
       {step && step.status !== "done" && (
         <div className="foot">
           <div className="btn-row">
-            <Button variant="secondary" disabled={busy} onClick={remind}><I.bell size={18} />Напомнить</Button>
-            <Button disabled={busy} onClick={complete}>{busy ? "Отмечаем…" : "Я это сделал"}</Button>
+            <Button disabled={busy || step.status !== "current"} onClick={complete}>{busy ? "Отмечаем…" : "Я это сделал"}</Button>
           </div>
+          {step.status === "pending" && <p className="muted">Сначала завершите текущий шаг. Срок и напоминание этого шага можно настроить заранее.</p>}
         </div>
       )}
 
       <Sheet open={assignSheet} onClose={() => { setAssignSheet(false); nav("/route"); }}>
         <h3>Что назначил врач?</h3>
-        <div className="sub">Добавим шагами в маршрут — бот напомнит о каждом</div>
+        <div className="sub">Добавим шагами в маршрут. Проверьте даты назначений, время необязательно ({user.tz}); уведомления получает только текущий шаг.</div>
         <div className="pick-chips">
           {CHIPS.map((c) => (
             <button
@@ -323,7 +278,7 @@ export default function StepCard() {
             </button>
           ))}
         </div>
-        <div className="own-row">
+        <div className="own-row" style={{ flexWrap: "wrap" }}>
           <input
             placeholder="Своё: например, МРТ"
             aria-label="Название назначения"
@@ -331,15 +286,15 @@ export default function StepCard() {
             className={ownAttempted && !ownName.trim() ? "invalid" : undefined}
             onChange={(e) => setOwnName(e.target.value)}
           />
-          <input className="date" type="date" aria-label="Срок" value={ownDate} onChange={(e) => setOwnDate(e.target.value)} />
+          <EventDateTimeInputs date={ownDate} time={ownTime} onChange={(d, t) => { setOwnDate(d); setOwnTime(t); }} />
           <button type="button" className="add" onClick={addOwn} aria-label="Добавить назначение">+</button>
         </div>
         {picked.length > 0 && (
           <div className="picked">
             {picked.map((p, i) => (
-              <div className="picked-item" key={`${p.title}-${i}`}>
-                {p.title}
-                {p.date && <small>до {fmtDayMonth(p.date)}</small>}
+              <div className="picked-item" key={`${p.title}-${i}`} style={{ flexWrap: "wrap" }}>
+                <b style={{ flex: 1 }}>{p.title}</b>
+                <EventDateTimeInputs date={p.date} time={p.time} label={`Срок: ${p.title}`} onChange={(date, time) => setPicked((prev) => prev.map((item, j) => j === i ? { ...item, date, time } : item))} />
                 <button type="button" className="x" aria-label={`Убрать назначение ${p.title}`} onClick={() => setPicked((prev) => prev.filter((_, j) => j !== i))}>✕</button>
               </div>
             ))}

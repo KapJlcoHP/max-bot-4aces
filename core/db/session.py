@@ -58,6 +58,10 @@ def _migrate_sqlite() -> None:
             ("step_day_before_time", "VARCHAR(5) NOT NULL DEFAULT '09:00'"),
         ],
         "route_steps": [
+            ("reminder_mode", "VARCHAR(16) NOT NULL DEFAULT 'profile'"),
+            ("reminder_at", "DATETIME NULL"),
+            ("activated_at", "DATETIME NULL"),
+            ("reminder_revision", "INTEGER NOT NULL DEFAULT 0"),
             ("source", "VARCHAR(16) NOT NULL DEFAULT 'template'"),
             ("source_id", "VARCHAR(80) NULL"),
         ],

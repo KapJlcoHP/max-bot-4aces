@@ -56,6 +56,26 @@ def user_local(value: datetime, tz: str | None) -> datetime:
     return as_utc(value).astimezone(user_zone(tz))
 
 
+def strict_local_utc(value: datetime, tz: str | None) -> datetime:
+    """An offset is an instant; a wall time must exist exactly once in the zone.
+
+    ZoneInfo's default replace() silently accepts DST gaps and chooses a fold.
+    Roundtrip both folds instead, rejecting gaps and requiring an explicit
+    offset for ambiguous local times. Return naive UTC for persistence.
+    """
+    if value.tzinfo is not None:
+        return db_utc(value)
+    zone = user_zone(tz)
+    candidates = {
+        db_utc(value.replace(tzinfo=zone, fold=fold))
+        for fold in (0, 1)
+        if value.replace(tzinfo=zone, fold=fold).astimezone(UTC).astimezone(zone).replace(tzinfo=None) == value
+    }
+    if len(candidates) != 1:
+        raise ValueError("Время не существует или неоднозначно в часовом поясе профиля. Укажите другое время или явное смещение UTC.")
+    return candidates.pop()
+
+
 def local_day_bounds(day: date, tz: str | None) -> tuple[datetime, datetime]:
     zone = user_zone(tz)
     start = datetime.combine(day, time.min, tzinfo=zone).astimezone(UTC).replace(tzinfo=None)

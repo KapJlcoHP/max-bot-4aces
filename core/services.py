@@ -74,6 +74,7 @@ def complete_route_step(
     )
     if next_step is not None:
         next_step.status = "current"
+        next_step.activated_at = utcnow()
     if commit:
         db.commit()
         db.refresh(step)
@@ -99,6 +100,7 @@ def uncomplete_route_step(db: Session, user_id: int, step_id: int) -> RouteStep:
     for current in current_steps:
         current.status = "pending"
     step.status = "current"
+    step.activated_at = utcnow()
     step.completed_at = None
     db.commit()
     db.refresh(step)

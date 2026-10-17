@@ -31,7 +31,7 @@ from core.db.models import (
 from core.db.session import SessionLocal
 from core.diary_settings import diary_settings
 from core.services import active_route
-from core.time import db_utc, local_day_bounds, normalize_clock_time, user_local, user_zone
+from core.time import db_utc, local_day_bounds, normalize_clock_time, strict_local_utc, user_local, user_zone
 
 log = logging.getLogger("bot.scheduler")
 
@@ -50,6 +50,12 @@ class Push:
     ref_id: int
     lead: str
     reminder_id: int | None = None  # reminder: пометить sent_at при lead='now'
+    step_schedule: tuple | None = None
+    step_revision: int = 0
+
+
+def delivery_lead(push: Push) -> str:
+    return f"{push.lead}:{push.step_revision}" if push.kind == "step" and push.step_revision else push.lead
 
 
 def _local_naive(dt: datetime, tz: ZoneInfo | None) -> datetime:
@@ -58,8 +64,8 @@ def _local_naive(dt: datetime, tz: ZoneInfo | None) -> datetime:
 
 
 def _user_now(user: User) -> datetime:
-    """«Сейчас» в поясе пользователя (наивное настенное время)."""
-    return datetime.now(user_zone(user.tz)).replace(tzinfo=None)
+    """«Сейчас» в поясе пользователя; сохраняем offset/fold при переводе часов."""
+    return datetime.now(user_zone(user.tz))
 
 
 def _when_desc(due: datetime, now: datetime, has_time: bool) -> str:
@@ -80,7 +86,7 @@ def _parse_time(value: str) -> dtime | None:
     return dtime.fromisoformat(normalized)
 
 
-def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
+def collect_due(db: Session, now: datetime | None = None, *, user_id: int | None = None) -> list[Push]:
     """Что пора отправить прямо сейчас. Чистая по отношению к отправке — тестируемая.
 
     now — опционально для тестов; в проде считается per-user в поясе пользователя.
@@ -100,7 +106,10 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
             is not None
         )
 
-    for user in db.query(User).all():
+    users = db.query(User)
+    if user_id is not None:
+        users = users.filter(User.id == user_id)
+    for user in users.all():
         if not user.notifications_on:
             continue
         zone: ZoneInfo | None = None
@@ -108,10 +117,8 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
             zone = ZoneInfo(user.tz or "Europe/Moscow")
         except Exception:
             zone = None
-        user_now = (
-            user_local(now, user.tz).replace(tzinfo=None) if now is not None and now.tzinfo is not None
-            else now if now is not None else _user_now(user)
-        )
+        clock_now = now if now is not None else _user_now(user)
+        user_now = user_local(clock_now, user.tz).replace(tzinfo=None) if clock_now.tzinfo is not None else clock_now
         today = user_now.date()
 
         # --- шаг маршрута: дедлайн текущего шага ---
@@ -127,55 +134,68 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
                 slot = _parse_time(step.deadline_time) if step.deadline_time else None
                 has_time = slot is not None
                 day_time = _parse_time(user.step_day_before_time) or dtime(9, 0)
-                # Время пуша по дате не является временем события. Полдень
-                # не подставляем, часовой lead без точного времени запрещён.
                 due_at = datetime.combine(step.deadline, slot or day_time)
                 day_start = datetime.combine(step.deadline, dtime.min)
                 day_end = day_start + timedelta(days=1)
                 leads = []
-                if user.notify_day_before:
-                    # «Накануне» не догоняем в день срока; у ночного события
-                    # окно также заканчивается до часового напоминания.
-                    end = min(day_start, due_at - timedelta(hours=1)) if has_time else day_start
-                    leads.append(("day", datetime.combine(step.deadline - timedelta(days=1), day_time), end))
-                if user.notify_hour_before and has_time:
-                    leads.append(("hour", due_at - timedelta(hours=1), due_at))
+                mode = step.reminder_mode or "profile"
+                # Compare instants, not naive walls: an hour across DST is still
+                # exactly an hour. Legacy ambiguous event clocks are skipped.
+                try:
+                    instant_now = db_utc(clock_now) if clock_now.tzinfo is not None else strict_local_utc(user_now, user.tz)
+                    if mode == "custom":
+                        at = step.reminder_at
+                        if at is not None and (step.activated_at is None or at >= step.activated_at):
+                            leads.append(("custom", at, at + timedelta(days=1)))
+                    else:
+                        event_utc = strict_local_utc(due_at, user.tz)
+                        end_utc = strict_local_utc(day_end, user.tz)
+                        if mode == "day" or (mode == "profile" and user.notify_day_before):
+                            start = strict_local_utc(datetime.combine(step.deadline - timedelta(days=1), day_time), user.tz)
+                            end = strict_local_utc(day_start, user.tz)
+                            if has_time:
+                                end = min(end, event_utc - timedelta(hours=1))
+                            leads.append(("day", start, end))
+                        if has_time and (mode == "hour" or (mode == "profile" and user.notify_hour_before)):
+                            leads.append(("hour", event_utc - timedelta(hours=1), event_utc))
+                        if mode == "profile" and user.notify_at_deadline:
+                            leads.append(("now", event_utc, end_utc))
+                except ValueError:
+                    leads = []
+                fingerprint = (
+                    route.id, step.status, step.title, step.deadline, step.deadline_time,
+                    mode, step.reminder_at, step.reminder_revision, step.activated_at,
+                    user.tz, user.notifications_on, user.notify_day_before,
+                    user.notify_hour_before, user.notify_at_deadline, user.step_day_before_time,
+                )
                 for lead, start, end in leads:
-                    if start <= user_now < end and not logged("step", step.id, lead):
-                        pushes.append(
-                            Push(
-                                user_id=user.id,
-                                max_user_id=user.max_user_id,
-                                text=(
-                                    f"⏰ **Напоминание о шаге**\n«{step.title}» — срок {_when_desc(due_at, user_now, has_time)}.\n"
-                                    "Отметить выполнение можно прямо здесь."
-                                ),
-                                actions=[("✅ Выполнить шаг", f"sdone_{step.id}")],
-                                app_payload=f"step_{step.id}",
-                                kind="step",
-                                ref_id=step.id,
-                                lead=lead,
-                            )
-                        )
-                if (
-                    user.notify_at_deadline
-                    and due_at <= user_now < day_end
-                    and not logged("step", step.id, "now")
-                ):
+                    # A newly current step starts only future windows. A
+                    # retry for a step that was already current remains valid.
+                    if step.activated_at is not None and start < step.activated_at:
+                        continue
+                    # Revision isolates receipts from an edit made while a
+                    # previous delivery was in flight (or awaiting log retry).
+                    dedup_lead = f"{lead}:{step.reminder_revision}" if step.reminder_revision else lead
+                    if not (start <= instant_now < end) or logged("step", step.id, dedup_lead):
+                        continue
                     pushes.append(
                         Push(
                             user_id=user.id,
                             max_user_id=user.max_user_id,
                             text=(
-                                f"⏰ **Пора**: «{step.title}» — срок наступил."
-                                if has_time else
-                                f"⏰ **Сегодня срок шага**: «{step.title}». Время события не указано."
+                                (f"⏰ **Пора**: «{step.title}» — срок наступил." if has_time else
+                                 f"⏰ **Сегодня срок шага**: «{step.title}». Время события не указано.")
+                                if lead == "now" else
+                                f"⏰ **Напоминание о шаге**\n«{step.title}» — срок {_when_desc(due_at, user_now, has_time)}.\n"
+                                "Отметить выполнение можно прямо здесь."
                             ),
                             actions=[("✅ Выполнить шаг", f"sdone_{step.id}")],
                             app_payload=f"step_{step.id}",
                             kind="step",
                             ref_id=step.id,
-                            lead="now",
+                            lead=lead,
+                            step_schedule=fingerprint,
+                            step_revision=step.reminder_revision,
                         )
                     )
 
@@ -299,9 +319,25 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
     return pushes
 
 
+def revalidate_step_push(db: Session, push: Push, now: datetime | None = None) -> bool:
+    """Fresh ownership/status/global switch/schedule/dedup check before I/O.
+
+    Never trust ORM objects retained from collection or a prior transaction.
+    """
+    if push.kind != "step":
+        return True
+    db.expire_all()
+    return any(
+        fresh.kind == "step" and fresh.user_id == push.user_id
+        and fresh.max_user_id == push.max_user_id and fresh.ref_id == push.ref_id
+        and fresh.lead == push.lead and fresh.step_schedule == push.step_schedule
+        for fresh in collect_due(db, now, user_id=push.user_id)
+    )
+
+
 def mark_sent(db: Session, push: Push) -> None:
     """Дедуп пишем ТОЛЬКО после успешной отправки."""
-    db.add(NotificationLog(user_id=push.user_id, kind=push.kind, ref_id=push.ref_id, lead=push.lead))
+    db.add(NotificationLog(user_id=push.user_id, kind=push.kind, ref_id=push.ref_id, lead=delivery_lead(push)))
     if push.reminder_id is not None:
         reminder = db.get(Reminder, push.reminder_id)
         if reminder is not None and reminder.sent_at is None:
@@ -317,7 +353,7 @@ def mark_sent(db: Session, push: Push) -> None:
                 NotificationLog.kind == push.kind,
                 NotificationLog.user_id == push.user_id,
                 NotificationLog.ref_id == push.ref_id,
-                NotificationLog.lead == push.lead,
+                NotificationLog.lead == delivery_lead(push),
             )
             .first()
         )
@@ -347,11 +383,14 @@ async def scheduler_loop(bot, bot_username: str | None) -> None:
             for push in due:
                 # user_id обязателен: id курса/напоминания/настройки могут
                 # совпадать у разных пользователей.
-                key = (push.user_id, push.kind, push.ref_id, push.lead)
+                key = (push.user_id, push.kind, push.ref_id, delivery_lead(push))
                 if key in sent_unlogged:
                     continue
                 kb = push_keyboard(bot_username, push.actions, push.app_payload)
                 try:
+                    with SessionLocal() as db:
+                        if not revalidate_step_push(db, push):
+                            continue
                     await bot.send_message(
                         user_id=push.max_user_id,
                         text=push.text,

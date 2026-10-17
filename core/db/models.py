@@ -69,6 +69,10 @@ class RouteStep(Base):
     place: Mapped[str] = mapped_column(String(200), default="")
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
     deadline_time: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    reminder_mode: Mapped[str] = mapped_column(String(16), default="profile", server_default="profile")
+    reminder_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reminder_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | current | done
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Radio } from "@maxhub/max-ui";
 import { api } from "../api";
+import { useApp } from "../App";
+import EventDateTimeInputs from "../components/EventDateTimeInputs";
 import type { CustomStepIn, RouteDto, Situation } from "../types";
 import { Button, ErrorView, Header, LoadingView, Switch, useToast } from "../components/ui";
 import { I, SituationIcon } from "../icons";
@@ -13,6 +15,7 @@ interface TemplateStep {
 }
 
 export default function Builder() {
+  const { user } = useApp();
   const nav = useNavigate();
   const [toast, showToast] = useToast();
   const [situations, setSituations] = useState<Situation[]>([]);
@@ -22,11 +25,13 @@ export default function Builder() {
   const [custom, setCustom] = useState<CustomStepIn[]>([]);
   const [ownName, setOwnName] = useState("");
   const [ownDate, setOwnDate] = useState("");
+  const [ownTime, setOwnTime] = useState("");
   const [ownAttempted, setOwnAttempted] = useState(false);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
   const catalogRequestId = useRef(0);
   const templateRequestId = useRef(0);
+  const creating = useRef(false);
 
   const load = useCallback(() => {
     const requestId = ++catalogRequestId.current;
@@ -68,9 +73,10 @@ export default function Builder() {
       showToast("Напишите название шага — оно подсвечено красным");
       return;
     }
-    setCustom((prev) => [...prev, { title: name, deadline: ownDate || null }]);
+    setCustom((prev) => [...prev, { title: name, deadline: ownDate || null, deadline_time: ownDate && ownTime ? ownTime : null }]);
     setOwnName("");
     setOwnDate("");
+    setOwnTime("");
     setOwnAttempted(false);
   };
 
@@ -83,7 +89,8 @@ export default function Builder() {
     });
 
   const create = async () => {
-    if (!selected || busy) return;
+    if (!selected || creating.current) return;
+    creating.current = true;
     setBusy(true);
     try {
       await api.post<RouteDto>("/api/v1/route/start", {
@@ -96,6 +103,7 @@ export default function Builder() {
     } catch {
       showToast("Не удалось создать маршрут");
     } finally {
+      creating.current = false;
       setBusy(false);
     }
   };
@@ -212,7 +220,7 @@ export default function Builder() {
                   <div className="card" style={{ padding: "8px 16px" }}>
                     {custom.map((c, i) => (
                       <div className="rem-item" key={`${c.title}-${i}`}>
-                        <div className="what"><b>{c.title}</b><small>мой шаг</small></div>
+                        <div className="what"><b>{c.title}</b><small>мой шаг{c.deadline ? ` · ${c.deadline}${c.deadline_time ? ` в ${c.deadline_time}` : ""}` : " · без даты"}</small></div>
                         <button className="picked-item-x" aria-label="Убрать" onClick={() => setCustom((prev) => prev.filter((_, j) => j !== i))}>✕</button>
                       </div>
                     ))}
@@ -221,7 +229,7 @@ export default function Builder() {
                     )}
                   </div>
                   <div className="card">
-                    <div className="own-row">
+                    <div className="own-row" style={{ flexWrap: "wrap" }}>
                       <input
                         placeholder="Свой шаг"
                         aria-label="Название шага"
@@ -229,9 +237,10 @@ export default function Builder() {
                         className={ownAttempted && !ownName.trim() ? "invalid" : undefined}
                         onChange={(e) => setOwnName(e.target.value)}
                       />
-                      <input className="date" type="date" aria-label="Срок" value={ownDate} onChange={(e) => setOwnDate(e.target.value)} />
+                      <EventDateTimeInputs date={ownDate} time={ownTime} onChange={(d, t) => { setOwnDate(d); setOwnTime(t); }} />
                       <button className="add" onClick={addOwn} aria-label="Добавить">+</button>
                     </div>
+                    <p className="muted">Проверьте реальные даты. Неизвестную дату можно оставить пустой, время необязательно ({user.tz}). Уведомления получает только текущий шаг.</p>
                   </div>
                 </>
               )}
