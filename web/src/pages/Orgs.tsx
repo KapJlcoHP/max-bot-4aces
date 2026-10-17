@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { openExternalLink } from "../bridge";
 import { useApp } from "../App";
 import type { Organization, Region } from "../types";
 import { Input } from "@maxhub/max-ui";
-import { Button, Header, LoadingView } from "../components/ui";
+import { Button, Header, LoadingView, useToast } from "../components/ui";
 import { I } from "../icons";
 import OrganizationMap from "../components/OrganizationMap";
 
@@ -13,13 +14,15 @@ const CHIPS = ["Все", "Больницы", "Поликлиники", "Дисп
 
 export default function Orgs() {
   const nav = useNavigate();
-  const { user } = useApp();
+  const { user, updateUser } = useApp();
+  const [toast, showToast] = useToast();
   const [q, setQ] = useState("");
   const [type, setType] = useState("Все");
   const [region, setRegion] = useState(user.region || "Все");
   const [regions, setRegions] = useState<Region[]>([]);
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   const [error, setError] = useState(false);
+  const [clinicBusyId, setClinicBusyId] = useState<number | null>(null);
   const requestId = useRef(0);
 
   const load = useCallback(() => {
@@ -46,6 +49,21 @@ export default function Orgs() {
     const timer = window.setTimeout(load, q.trim() ? 250 : 0);
     return () => window.clearTimeout(timer);
   }, [load, q]);
+
+  const chooseClinic = async (event: MouseEvent, clinicId: number) => {
+    event.stopPropagation();
+    if (clinicBusyId !== null) return;
+    setClinicBusyId(clinicId);
+    try {
+      const updated = await api.patch<typeof user>("/api/v1/me/settings", { attached_clinic_id: clinicId });
+      updateUser(updated);
+      showToast("Поликлиника выбрана для маршрута");
+    } catch {
+      showToast("Не удалось выбрать поликлинику — попробуйте ещё раз");
+    } finally {
+      setClinicBusyId(null);
+    }
+  };
 
   return (
     <div className="app">
@@ -130,9 +148,20 @@ export default function Orgs() {
                 Показать путь
               </Button>
             </div>
+            {o.org_type === "Поликлиники" && user.attached_clinic_id !== o.id && (
+              <Button
+                variant="secondary"
+                style={{ height: 42, fontSize: 14, marginTop: 10 }}
+                disabled={clinicBusyId !== null}
+                onClick={(e) => chooseClinic(e, o.id)}
+              >
+                {clinicBusyId === o.id ? "Сохраняем…" : "Выбрать для маршрута"}
+              </Button>
+            )}
           </div>
         ))}
       </div>
+      {toast}
     </div>
   );
 }
