@@ -321,7 +321,7 @@ export default function HealthDiary() {
                 <div className="section-h" style={{ marginBottom: 8 }}><b>Динамика</b></div>
                 <div className="pick-chips" style={{ marginBottom: 10 }}>
                   {PERIODS.map((p) => (
-                    <button key={p.key} className={`pick${period === p.key ? " on" : ""}`} onClick={() => setPeriod(p.key)}>
+                    <button type="button" key={p.key} className={`pick${period === p.key ? " on" : ""}`} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>
                       {p.label}
                     </button>
                   ))}
@@ -336,8 +336,10 @@ export default function HealthDiary() {
                   <div className="pick-chips" style={{ marginBottom: 10 }}>
                     {BP_SERIES.map((s) => (
                       <button
+                        type="button"
                         key={s.key}
                         className={`pick${hidden[s.key] ? "" : " on"}`}
+                        aria-pressed={!hidden[s.key]}
                         onClick={() => setHidden((h) => ({ ...h, [s.key]: !h[s.key] }))}
                       >
                         <i className="chip-dot" style={{ background: s.color }} />
@@ -425,7 +427,7 @@ export default function HealthDiary() {
                 return (
                   <div className="rem-item" key={r.id}>
                     <div className="what"><b>{ln.b}</b><small>{ln.s}</small></div>
-                    <button className="rem-del" onClick={() => setDelRec(r)} aria-label="Удалить запись">
+                    <button type="button" className="rem-del" onClick={() => setDelRec(r)} aria-label="Удалить запись">
                       <I.trash size={15} />
                     </button>
                   </div>
@@ -446,38 +448,38 @@ export default function HealthDiary() {
 
         {type === "bp" && (
           <div className="own-row" style={{ marginBottom: 10 }}>
-            <input inputMode="numeric" placeholder="Верхнее" value={sys} className={attempted && !isInRange(sys, 50, 260) ? "invalid" : undefined} onChange={(e) => setSys(e.target.value)} />
-            <input inputMode="numeric" placeholder="Нижнее" value={dia} className={attempted && !isInRange(dia, 30, 150) ? "invalid" : undefined} onChange={(e) => setDia(e.target.value)} />
-            <input inputMode="numeric" placeholder="Пульс" value={pulse} className={attempted && !isOptionalInRange(pulse, 25, 220) ? "invalid" : undefined} onChange={(e) => setPulse(e.target.value)} />
+            <input inputMode="numeric" placeholder="Верхнее" aria-label="Систолическое давление" value={sys} className={attempted && !isInRange(sys, 50, 260) ? "invalid" : undefined} onChange={(e) => setSys(e.target.value)} />
+            <input inputMode="numeric" placeholder="Нижнее" aria-label="Диастолическое давление" value={dia} className={attempted && !isInRange(dia, 30, 150) ? "invalid" : undefined} onChange={(e) => setDia(e.target.value)} />
+            <input inputMode="numeric" placeholder="Пульс" aria-label="Пульс" value={pulse} className={attempted && !isOptionalInRange(pulse, 25, 220) ? "invalid" : undefined} onChange={(e) => setPulse(e.target.value)} />
           </div>
         )}
         {type === "weight" && (
           <div className="own-row" style={{ marginBottom: 10 }}>
-            <input inputMode="decimal" placeholder="Вес, кг" value={weight} className={attempted && !isInRange(weight, 20, 300) ? "invalid" : undefined} onChange={(e) => setWeight(e.target.value)} />
+            <input inputMode="decimal" placeholder="Вес, кг" aria-label="Вес, кг" value={weight} className={attempted && !isInRange(weight, 20, 300) ? "invalid" : undefined} onChange={(e) => setWeight(e.target.value)} />
           </div>
         )}
         {type === "sugar" && (
           <div className="pick-chips">
             {["до еды", "после еды"].map((m) => (
-              <button key={m} className={`pick${mealTag === m ? " on" : ""}`} onClick={() => setMealTag(m)}>{m}</button>
+              <button type="button" key={m} className={`pick${mealTag === m ? " on" : ""}`} aria-pressed={mealTag === m} onClick={() => setMealTag(m)}>{m}</button>
             ))}
           </div>
         )}
         {type === "sugar" && (
           <div className="own-row" style={{ marginBottom: 10 }}>
-            <input inputMode="decimal" placeholder="ммоль/л" value={sugar} className={attempted && !isInRange(sugar, 1, 35) ? "invalid" : undefined} onChange={(e) => setSugar(e.target.value)} />
+            <input inputMode="decimal" placeholder="ммоль/л" aria-label="Сахар крови, ммоль/л" value={sugar} className={attempted && !isInRange(sugar, 1, 35) ? "invalid" : undefined} onChange={(e) => setSugar(e.target.value)} />
           </div>
         )}
         {type === "mood" && (
           <>
             <div className="pick-chips">
               {["Хорошо", "Нормально", "Плохо"].map((m) => (
-                <button key={m} className={`pick${mood === m ? " on" : ""}`} onClick={() => setMood(m)}>{m}</button>
+                <button type="button" key={m} className={`pick${mood === m ? " on" : ""}`} aria-pressed={mood === m} onClick={() => setMood(m)}>{m}</button>
               ))}
             </div>
             <div className="mini-btns" style={{ marginBottom: 10 }}>
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                <button key={n} className={`pick${pain === n ? " on" : ""}`} onClick={() => setPain(n)}>{n}</button>
+                <button type="button" key={n} className={`pick${pain === n ? " on" : ""}`} aria-label={`Боль ${n} из 10`} aria-pressed={pain === n} onClick={() => setPain(n)}>{n}</button>
               ))}
             </div>
             <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>Боль или дискомфорт, 1–10</div>
@@ -487,11 +489,11 @@ export default function HealthDiary() {
         {type !== "mood" && (
           <div className="pick-chips">
             {["утром", "вечером"].map((m) => (
-              <button key={m} className={`pick${tag === m ? " on" : ""}`} onClick={() => setTag(m)}>{m}</button>
+              <button type="button" key={m} className={`pick${tag === m ? " on" : ""}`} aria-pressed={tag === m} onClick={() => setTag(m)}>{m}</button>
             ))}
           </div>
         )}
-        <input className="field" placeholder="Заметка (необязательно)" value={note} onChange={(e) => setNote(e.target.value)} />
+        <input className="field" placeholder="Заметка (необязательно)" aria-label="Заметка (необязательно)" value={note} onChange={(e) => setNote(e.target.value)} />
 
         <Button
           style={{ marginTop: 14 }}

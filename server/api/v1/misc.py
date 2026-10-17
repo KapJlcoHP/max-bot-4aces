@@ -1,6 +1,6 @@
 """Чек-лист, организации, напоминания и семейный доступ."""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -14,6 +14,7 @@ from core.schemas import (
     FamilyMemberDto,
     MapConfigDto,
     OrganizationDto,
+    ReminderAddIn,
     ReminderDto,
 )
 from core.time import db_utc, user_local, user_zone
@@ -126,19 +127,15 @@ def toggle_reminder(reminder_id: int, user: User = Depends(consented_user), db: 
 
 
 @router.post("/reminders", response_model=ReminderDto)
-def add_reminder(body: dict, user: User = Depends(consented_user), db: Session = Depends(db_session)):
-    title = str((body or {}).get("title", "")).strip()
+def add_reminder(body: ReminderAddIn, user: User = Depends(consented_user), db: Session = Depends(db_session)):
+    title = body.title.strip()
     if not title:
         raise HTTPException(status_code=422, detail="Название не может быть пустым")
-    raw_at = (body or {}).get("at")
-    try:
-        at = datetime.fromisoformat(raw_at) if raw_at else utcnow() + timedelta(days=1)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=422, detail="Некорректная дата напоминания")
+    at = body.at or utcnow() + timedelta(days=1)
     row = Reminder(
         user_id=user.id,
         title=title,
-        place=str((body or {}).get("place", "") or ""),
+        place=body.place or "",
         at=db_utc(at, user_zone(user.tz)),
     )
     db.add(row)

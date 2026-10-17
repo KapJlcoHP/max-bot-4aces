@@ -11,7 +11,7 @@ from core.db.models import Base, BpRecord, HealthRecord, MedCourse, MedIntake, U
 from core.db.session import _migrate_bp_records
 from core.services import take_med, user_today
 from core.time import normalize_clock_time
-from core.schemas import MedAddIn
+from core.schemas import MedAddIn, MedIntakeToggleIn
 from server.api.v1 import meds as meds_api
 
 
@@ -99,6 +99,14 @@ class MedicineDateTests(unittest.TestCase):
             self.assertEqual(legacy_dto.times, ["08:00"])
 
         engine.dispose()
+
+    def test_intake_toggle_request_accepts_time_and_rejects_missing_or_empty_time(self):
+        from pydantic import ValidationError
+
+        self.assertEqual(MedIntakeToggleIn(at_time="09:00").at_time, "09:00")
+        for payload in ({}, {"at_time": ""}, {"at_time": None}):
+            with self.subTest(payload=payload), self.assertRaises(ValidationError):
+                MedIntakeToggleIn.model_validate(payload)
 
 
 if __name__ == "__main__":

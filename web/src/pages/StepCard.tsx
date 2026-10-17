@@ -282,7 +282,7 @@ export default function StepCard() {
             {step.has_checklist && (
               <div className="card docs-card">
                 <div className="section-h" style={{ marginBottom: 6 }}><b>Что взять с собой</b></div>
-                <button className="row-item" style={{ boxShadow: "none", padding: "6px 0" }} onClick={() => nav("/route")}>
+                <button type="button" className="row-item" style={{ boxShadow: "none", padding: "6px 0" }} onClick={() => nav("/route")}>
                   <div className="row-body"><h3>Чек-лист документов</h3><p>Отметьте собранное в разделе «Маршрут»</p></div>
                   <span className="row-chev"><I.chev size={18} /></span>
                 </button>
@@ -313,8 +313,10 @@ export default function StepCard() {
         <div className="pick-chips">
           {CHIPS.map((c) => (
             <button
+              type="button"
               key={c}
               className={`pick${picked.some((p) => p.title === c) ? " on" : ""}`}
+              aria-pressed={picked.some((p) => p.title === c)}
               onClick={() => toggleChip(c)}
             >
               {c}
@@ -330,7 +332,7 @@ export default function StepCard() {
             onChange={(e) => setOwnName(e.target.value)}
           />
           <input className="date" type="date" aria-label="Срок" value={ownDate} onChange={(e) => setOwnDate(e.target.value)} />
-          <button className="add" onClick={addOwn} aria-label="Добавить">+</button>
+          <button type="button" className="add" onClick={addOwn} aria-label="Добавить назначение">+</button>
         </div>
         {picked.length > 0 && (
           <div className="picked">
@@ -338,7 +340,7 @@ export default function StepCard() {
               <div className="picked-item" key={`${p.title}-${i}`}>
                 {p.title}
                 {p.date && <small>до {fmtDayMonth(p.date)}</small>}
-                <button className="x" aria-label="Убрать" onClick={() => setPicked((prev) => prev.filter((_, j) => j !== i))}>✕</button>
+                <button type="button" className="x" aria-label={`Убрать назначение ${p.title}`} onClick={() => setPicked((prev) => prev.filter((_, j) => j !== i))}>✕</button>
               </div>
             ))}
           </div>

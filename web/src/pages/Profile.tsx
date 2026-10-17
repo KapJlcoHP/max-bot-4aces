@@ -79,6 +79,10 @@ export default function Profile() {
               after={<span className="cell-note">Управление</span>}
               showChevron
               onClick={() => nav("/family")}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav("/family"); }
+              }}
             />
           </CellList>
           <CellList mode="island">
@@ -89,6 +93,10 @@ export default function Profile() {
               subtitle="Давление · вес · сахар · самочувствие"
               showChevron
               onClick={() => nav("/health")}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav("/health"); }
+              }}
             />
           </CellList>
           <CellList mode="island">
@@ -100,6 +108,10 @@ export default function Profile() {
               after={<span className="cell-note">Изменить</span>}
               showChevron
               onClick={() => setRegionSheet(true)}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRegionSheet(true); }
+              }}
             />
           </CellList>
           <CellList mode="island">
@@ -110,6 +122,10 @@ export default function Profile() {
               subtitle="Курсы и напоминания"
               showChevron
               onClick={() => nav("/meds")}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav("/meds"); }
+              }}
             />
           </CellList>
           <CellList mode="island">
@@ -120,6 +136,10 @@ export default function Profile() {
               subtitle={`Данные и удаление профиля${consentDate ? ` · согласие от ${consentDate}` : ""}`}
               showChevron
               onClick={() => nav("/about")}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav("/about"); }
+              }}
             />
           </CellList>
       </div>
@@ -130,6 +150,7 @@ export default function Profile() {
         <div style={{ display: "grid", gap: 4, margin: "10px 0 14px" }}>
           {regions.map((r) => (
             <button
+              type="button"
               key={r.key}
               className="rem-item press"
               style={{ textAlign: "left", border: "none", background: "none", cursor: "pointer" }}

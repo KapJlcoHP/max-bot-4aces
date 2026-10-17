@@ -16,7 +16,7 @@ from core.db.models import (
     Base, BpRecord, FamilyMember, HealthRecord, HealthSetting, MedCourse,
     MedIntake, User,
 )
-from core.schemas import ConsentIn, HealthSettingDto, HealthSettingsIn
+from core.schemas import ConsentIn, HealthSettingDto, HealthSettingsIn, ReminderAddIn
 from core.services import user_today
 from server.deps import PendingUser
 
@@ -199,13 +199,24 @@ class DataLifecycleTests(unittest.TestCase):
         self.user.tz = "Asia/Irkutsk"
         self.db.commit()
         returned = api.add_reminder(
-            {"title": "Визит", "at": "2026-09-29T10:00", "place": "Клиника"},
+            ReminderAddIn(title="Визит", at="2026-09-29T10:00", place="Клиника"),
             user=self.user,
             db=self.db,
         )
         row = self.db.query(api.Reminder).one()
         self.assertEqual(row.at, datetime(2026, 9, 29, 2))
         self.assertEqual(returned.at.isoformat(), "2026-09-29T10:00:00+08:00")
+
+    def test_reminder_request_rejects_invalid_payloads(self):
+        from pydantic import ValidationError
+
+        for payload in (
+            {},
+            {"title": ""},
+            {"title": "Визит", "at": "not-a-date"},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(ValidationError):
+                ReminderAddIn.model_validate(payload)
 
     def test_report_window_uses_user_local_calendar(self):
         self.user.tz = "Asia/Tokyo"

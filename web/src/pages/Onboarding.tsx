@@ -206,12 +206,12 @@ export default function Onboarding() {
               <h2 style={{ fontSize: 21 }}>Выберите регион</h2>
               <p>Покажем организации рядом и сохраним вашу поликлинику для быстрого доступа.</p>
             </div>
-            {regionsError && <div className="card" role="alert">Не удалось загрузить регионы. <button className="cell-h-btn" onClick={loadRegions}>Повторить</button></div>}
+            {regionsError && <div className="card" role="alert">Не удалось загрузить регионы. <button type="button" className="cell-h-btn" onClick={loadRegions}>Повторить</button></div>}
             {!regionsError && <select className="tz-select" value={region} disabled={regionsLoading} onChange={(e) => { setRegion(e.target.value); setFormError(null); }} aria-label="Регион">
               <option value="">{regionsLoading ? "Загрузка регионов…" : "Выберите регион"}</option>
               {regions.map((item) => <option key={item.key} value={item.title}>{item.title}</option>)}
             </select>}
-            {region && clinicsError && <div className="card" role="alert">Не удалось загрузить поликлиники. <button className="cell-h-btn" onClick={() => setClinicRetry((value) => value + 1)}>Повторить</button></div>}
+            {region && clinicsError && <div className="card" role="alert">Не удалось загрузить поликлиники. <button type="button" className="cell-h-btn" onClick={() => setClinicRetry((value) => value + 1)}>Повторить</button></div>}
             {region && !clinicsError && clinicsLoading && <div className="muted">Загружаем поликлиники…</div>}
             {region && !clinicsLoading && !clinicsError && clinics && clinics.length === 0 && <div className="card" role="alert">В выбранном регионе пока нет поликлиник.</div>}
             {clinics && clinics.length > 0 && <>

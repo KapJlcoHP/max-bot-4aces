@@ -44,6 +44,11 @@ class StepSourceTests(unittest.TestCase):
             for step in scenario["steps"]:
                 self.assertIn(step["source_id"], sources)
 
+    def test_user_facing_content_has_no_replacement_characters(self):
+        for path in (CONTENT_DIR / "scenarios.json", CONTENT_DIR / "sources.json", CONTENT_DIR / "SOURCES.md"):
+            with self.subTest(path=path.name):
+                self.assertNotIn("�", path.read_text(encoding="utf-8"))
+
     def test_all_available_routes_return_sources_for_every_template_step(self):
         sources = load_sources()
         for situation in load_catalog():

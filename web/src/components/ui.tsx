@@ -16,19 +16,20 @@ export function Button({
   className = "", variant = "primary", children, ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" }) {
   return (
-    <button className={`btn ${variant} ${className}`} {...props}>
+    <button type="button" className={`btn ${variant} ${className}`} {...props}>
       {children}
     </button>
   );
 }
 
-/** Переключатель из MAX-UI. Обёртка гасит клик, чтобы не срабатывала строка-родитель. */
+/** Переключатель из MAX-UI. Клик самого контрола не должен срабатывать на строке-родителе. */
 export function Switch({ on, onChange, label }: { on: boolean; onChange?: (v: boolean) => void; label?: string }) {
   return (
-    <span className="switch-wrap" onClick={(e) => e.stopPropagation()}>
+    <span className="switch-wrap">
       <MaxSwitch
         checked={on}
         aria-label={label ?? "Переключить"}
+        onClick={(e) => e.stopPropagation()}
         onChange={(e) => onChange?.(e.target.checked)}
       />
     </span>
@@ -41,7 +42,7 @@ export function Header({ title, subtitle, back, right }: { title: string; subtit
     <div className="header">
       <div className="h-row">
         {back && (
-          <button className="hdr-back" onClick={() => navigate(back)} aria-label="Назад">
+          <button type="button" className="hdr-back" onClick={() => navigate(back)} aria-label="Назад">
             <I.back size={22} />
           </button>
         )}
@@ -83,7 +84,7 @@ export function TabBar() {
         const active = t.to === "/" ? pathname === "/" : pathname.startsWith(t.to);
         const Icon = t.icon;
         return (
-          <button key={t.to} className={`tab${active ? " active" : ""}`} onClick={() => navigate(t.to)} aria-label={t.label}>
+          <button type="button" key={t.to} className={`tab${active ? " active" : ""}`} onClick={() => navigate(t.to)} aria-label={t.label}>
             <Icon size={22} />
             <span>{t.label}</span>
           </button>
@@ -236,7 +237,40 @@ export function UserAvatar({
 }: { name: string; url?: string | null; size?: number; color?: "blue" | "red"; onClick?: () => void }) {
   const box = { width: size, height: size, cursor: onClick ? ("pointer" as const) : undefined };
   if (url) {
-    return <img className="uavatar" src={url} alt={name || "Аватар"} style={box} onClick={onClick} />;
+    if (onClick) {
+      return (
+        <button
+          type="button"
+          className="uavatar"
+          style={{ ...box, border: "none", padding: 0, background: "none" }}
+          onClick={onClick}
+          aria-label={name || "Открыть профиль"}
+        >
+          <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        </button>
+      );
+    }
+    return <img className="uavatar" src={url} alt={name || "Аватар"} style={box} />;
+  }
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        className="uavatar"
+        style={{
+          ...box,
+          border: "none",
+          padding: 0,
+          background: color === "red" ? "var(--red-tint)" : "var(--blue-tint)",
+          color: color === "red" ? "var(--red)" : "var(--blue)",
+          fontSize: Math.round(size / 2.7),
+        }}
+        onClick={onClick}
+        aria-label={name || "Открыть профиль"}
+      >
+        {initials(name.trim() || "Я")}
+      </button>
+    );
   }
   return (
     <span

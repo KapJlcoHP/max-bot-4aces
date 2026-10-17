@@ -74,8 +74,8 @@ export default function Family() {
                 и общим напоминаниям пока не подключён.
               </p>
               {showForm && <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-                <div className="field"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Имя и фамилия" /></div>
-                <div className="field"><input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Кем приходится (например: Отец)" /></div>
+                <div className="field"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Имя и фамилия" aria-label="Имя и фамилия" /></div>
+                <div className="field"><input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Кем приходится (например: Отец)" aria-label="Кем приходится" /></div>
               </div>}
             </div>
           </>

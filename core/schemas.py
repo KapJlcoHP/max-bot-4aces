@@ -175,6 +175,14 @@ class ReminderDto(OrmDto):
     done_at: datetime | None = None
 
 
+class ReminderAddIn(OrmDto):
+    """Данные для создания напоминания."""
+
+    title: str = Field(min_length=1)
+    at: datetime | None = None
+    place: str | None = None
+
+
 class HealthRecordDto(OrmDto):
     id: int
     type: str
@@ -273,6 +281,12 @@ class MedAddIn(OrmDto):
     name: str
     times: list[str] = Field(min_length=1)
     until: Date | None = None
+
+
+class MedIntakeToggleIn(OrmDto):
+    """Время приёма лекарства, которое нужно отметить или снять."""
+
+    at_time: str = Field(min_length=1)
 
 
 class FamilyMemberDto(OrmDto):

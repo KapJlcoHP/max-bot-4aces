@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from core.db.models import MedCourse, MedIntake, User
-from core.schemas import MedAddIn, MedCourseDto, MedSlotDto, MedsOut
+from core.schemas import MedAddIn, MedCourseDto, MedIntakeToggleIn, MedSlotDto, MedsOut
 from core.services import ServiceError, take_med, user_today
 from core.time import normalize_clock_time, user_local
 from .common import consented_user, db_session
@@ -75,11 +75,11 @@ def add_med(body: MedAddIn, user: User = Depends(consented_user), db: Session = 
 @router.post("/meds/{course_id}/intake-toggle", response_model=MedSlotDto)
 def toggle_intake(
     course_id: int,
-    body: dict,
+    body: MedIntakeToggleIn,
     user: User = Depends(consented_user),
     db: Session = Depends(db_session),
 ):
-    raw_at_time = str((body or {}).get("at_time", "")).strip()
+    raw_at_time = body.at_time.strip()
     at_time = normalize_clock_time(raw_at_time)
     if at_time is None:
         raise HTTPException(status_code=422, detail="Некорректное время приёма")

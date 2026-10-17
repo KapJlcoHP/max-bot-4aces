@@ -107,7 +107,7 @@ export default function HealthHub() {
             <div className="col">
               <CellHeader
                 titleStyle="normal"
-                after={<button className="cell-h-btn" onClick={() => setSheet(true)}>Настроить</button>}
+                after={<button type="button" className="cell-h-btn" onClick={() => setSheet(true)}>Настроить</button>}
               >
                 Мои дневники
               </CellHeader>
@@ -123,6 +123,10 @@ export default function HealthHub() {
                       after={<span className="cell-note">{lastValueSummary(t, lasts[t])}</span>}
                       showChevron
                       onClick={() => nav(`/health/${t}`)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav(`/health/${t}`); }
+                      }}
                     />
                   </CellList>
                 );
@@ -133,7 +137,7 @@ export default function HealthHub() {
                   <div className="muted">Нажмите «Настроить» — включите то, что нужно именно вам.</div>
                 </div>
               )}
-              <button className="add-dash" onClick={() => setSheet(true)}>
+              <button type="button" className="add-dash" onClick={() => setSheet(true)}>
                 <I.plus size={18} /> Добавить дневник
               </button>
             </div>
@@ -147,8 +151,12 @@ export default function HealthHub() {
                   after={<span className="cell-note">
                     {nextMed ? `${meds!.courses.length} ${meds!.courses.length === 1 ? "курс" : meds!.courses.length < 5 ? "курса" : "курсов"} · в ${nextMed.at_time}` : "добавить курс"}
                   </span>}
-                  showChevron
-                  onClick={() => nav("/meds")}
+                   showChevron
+                   onClick={() => nav("/meds")}
+                   onKeyDown={(e) => {
+                     if (e.target !== e.currentTarget) return;
+                     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav("/meds"); }
+                   }}
                 />
               </CellList>
 

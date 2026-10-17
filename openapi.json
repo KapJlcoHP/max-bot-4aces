@@ -770,9 +770,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object",
-                "title": "Body"
+                "$ref": "#/components/schemas/ReminderAddIn"
               }
             }
           },
@@ -1284,9 +1282,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "additionalProperties": true,
-                "title": "Body"
+                "$ref": "#/components/schemas/MedIntakeToggleIn"
               }
             }
           }
@@ -2213,6 +2209,21 @@
         ],
         "title": "MedCourseDto"
       },
+      "MedIntakeToggleIn": {
+        "properties": {
+          "at_time": {
+            "type": "string",
+            "minLength": 1,
+            "title": "At Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at_time"
+        ],
+        "title": "MedIntakeToggleIn",
+        "description": "Время приёма лекарства, которое нужно отметить или снять."
+      },
       "MedSlotDto": {
         "properties": {
           "course_id": {
@@ -2373,6 +2384,44 @@
         ],
         "title": "RegionDto",
         "description": "Регион из content/regions.json: добавление региона — правка файла, без кода."
+      },
+      "ReminderAddIn": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Title"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "ReminderAddIn",
+        "description": "Данные для создания напоминания."
       },
       "ReminderDto": {
         "properties": {
