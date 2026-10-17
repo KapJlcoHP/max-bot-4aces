@@ -132,6 +132,20 @@ export default function Profile() {
             <CellSimple
               className="press"
               before={<div className="ic"><I.info size={18} /></div>}
+              title="Помощь"
+              subtitle="Ответы о МедМаршруте"
+              showChevron
+              onClick={() => nav("/help")}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav("/help"); }
+              }}
+            />
+          </CellList>
+          <CellList mode="island">
+            <CellSimple
+              className="press"
+              before={<div className="ic"><I.info size={18} /></div>}
               title="О приложении"
               subtitle={`Данные и удаление профиля${consentDate ? ` · согласие от ${consentDate}` : ""}`}
               showChevron

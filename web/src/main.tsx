@@ -18,6 +18,7 @@ import Report from "./pages/Report";
 import Meds from "./pages/Meds";
 import Family from "./pages/Family";
 import Profile from "./pages/Profile";
+import Help from "./pages/Help";
 import About from "./pages/About";
 import Onboarding from "./pages/Onboarding";
 
@@ -40,6 +41,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="meds" element={<Meds />} />
             <Route path="family" element={<Family />} />
             <Route path="profile" element={<Profile />} />
+            <Route path="help" element={<Help />} />
             <Route path="about" element={<About />} />
             <Route path="onboarding" element={<Onboarding />} />
             <Route path="catalog" element={<Navigate to="/builder" replace />} />
