@@ -19,6 +19,9 @@ class UserDto(OrmDto):
     email: str
     avatar_url: str = ""
     notifications_on: bool
+    notify_day_before: bool = True
+    notify_hour_before: bool = True
+    notify_at_deadline: bool = True
     tz: str = "Europe/Moscow"
     region: str = ""
     attached_clinic_id: int | None = None
@@ -303,6 +306,9 @@ class FamilyAddIn(OrmDto):
 
 class SettingsIn(OrmDto):
     notifications_on: bool | None = None
+    notify_day_before: bool | None = None
+    notify_hour_before: bool | None = None
+    notify_at_deadline: bool | None = None
     email: str | None = None
     region: str | None = None
     attached_clinic_id: int | None = None

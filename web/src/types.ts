@@ -6,6 +6,9 @@ export interface UserDto {
   email: string;
   avatar_url: string;
   notifications_on: boolean;
+  notify_day_before: boolean;
+  notify_hour_before: boolean;
+  notify_at_deadline: boolean;
   tz: string;
   region: string;
   attached_clinic_id: number | null;

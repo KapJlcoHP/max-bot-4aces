@@ -110,6 +110,33 @@ class ClinicIntegrationTests(unittest.TestCase):
         self.assertEqual(updated.region, "Владимирская область")
         self.assertIsNone(updated.attached_clinic_id)
 
+    def test_step_notification_settings_are_partial_and_persisted(self):
+        user = User(max_user_id=801008, consent_at=datetime(2026, 1, 1))
+        self.db.add(user)
+        self.db.commit()
+
+        updated = api.update_settings(
+            SettingsIn(notify_day_before=False, notify_at_deadline=False),
+            user=user,
+            db=self.db,
+        )
+        self.assertFalse(updated.notify_day_before)
+        self.assertTrue(updated.notify_hour_before)
+        self.assertFalse(updated.notify_at_deadline)
+
+        updated = api.update_settings(
+            SettingsIn(notify_hour_before=False), user=user, db=self.db,
+        )
+        self.assertEqual(
+            (updated.notify_day_before, updated.notify_hour_before, updated.notify_at_deadline),
+            (False, False, False),
+        )
+        self.db.refresh(user)
+        self.assertEqual(
+            (user.notify_day_before, user.notify_hour_before, user.notify_at_deadline),
+            (False, False, False),
+        )
+
     def test_orgs_is_available_to_pending_user_and_supports_region_filter(self):
         pending = PendingUser(
             max_user_id=801003, first_name="Новый", last_name="Пользователь",

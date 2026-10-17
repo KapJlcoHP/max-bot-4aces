@@ -52,6 +52,9 @@ def _migrate_sqlite() -> None:
             ("tz", "VARCHAR(64) NOT NULL DEFAULT 'Europe/Moscow'"),
             ("region", "VARCHAR(100) NOT NULL DEFAULT ''"),
             ("attached_clinic_id", "INTEGER NULL"),
+            ("notify_day_before", "BOOLEAN NOT NULL DEFAULT 1"),
+            ("notify_hour_before", "BOOLEAN NOT NULL DEFAULT 1"),
+            ("notify_at_deadline", "BOOLEAN NOT NULL DEFAULT 1"),
         ],
         "route_steps": [
             ("source", "VARCHAR(16) NOT NULL DEFAULT 'template'"),

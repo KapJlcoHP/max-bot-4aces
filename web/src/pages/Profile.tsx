@@ -4,19 +4,35 @@ import { CellList, CellSimple, Radio } from "@maxhub/max-ui";
 import { api } from "../api";
 import { fmtDayMonth } from "../format";
 import { useApp } from "../App";
-import type { Organization, Region } from "../types";
+import type { Organization, Region, UserDto } from "../types";
 import { Button, Header, Sheet, Switch, UserAvatar, useToast } from "../components/ui";
 import { I } from "../icons";
 
+const STEP_REMINDER_OPTIONS = [
+  { key: "day", field: "notify_day_before", label: "За день до срока" },
+  { key: "hour", field: "notify_hour_before", label: "За час до срока" },
+  { key: "now", field: "notify_at_deadline", label: "В момент срока" },
+] as const;
+
+type StepReminderKey = (typeof STEP_REMINDER_OPTIONS)[number]["key"];
+type StepReminderState = Record<StepReminderKey, boolean>;
+
 export default function Profile() {
   const nav = useNavigate();
-  const { user, refreshUser } = useApp();
+  const { user, refreshUser, updateUser } = useApp();
   const [toast, showToast] = useToast();
   const [notif, setNotif] = useState(user.notifications_on);
   const [regionSheet, setRegionSheet] = useState(false);
+  const [stepReminderSheet, setStepReminderSheet] = useState(false);
+  const [stepReminders, setStepReminders] = useState<StepReminderState>({
+    day: user.notify_day_before ?? true,
+    hour: user.notify_hour_before ?? true,
+    now: user.notify_at_deadline ?? true,
+  });
   const [regions, setRegions] = useState<Region[]>([]);
   const [clinic, setClinic] = useState<Organization | null>(null);
   const [busy, setBusy] = useState(false);
+  const [stepReminderBusy, setStepReminderBusy] = useState<StepReminderKey | null>(null);
 
   useEffect(() => {
     if (user.attached_clinic_id === null) {
@@ -43,6 +59,22 @@ export default function Profile() {
     } catch {
       setNotif(!on);
       showToast("Не удалось изменить настройку");
+    }
+  };
+
+  const toggleStepReminder = async (key: StepReminderKey, field: string, on: boolean) => {
+    if (stepReminderBusy) return;
+    setStepReminderBusy(key);
+    setStepReminders((current) => ({ ...current, [key]: on }));
+    try {
+      const updated = await api.patch<UserDto>("/api/v1/me/settings", { [field]: on });
+      updateUser(updated);
+      showToast("Настройка сохранена");
+    } catch {
+      setStepReminders((current) => ({ ...current, [key]: !on }));
+      showToast("Не удалось изменить настройку");
+    } finally {
+      setStepReminderBusy(null);
     }
   };
 
@@ -80,6 +112,10 @@ export default function Profile() {
   };
 
   const consentDate = fmtDayMonth(user.consent_at);
+  const enabledStepReminders = STEP_REMINDER_OPTIONS
+    .filter(({ key }) => stepReminders[key])
+    .map(({ label }) => label.toLowerCase())
+    .join(", ");
 
   return (
     <div className="app narrow">
@@ -97,6 +133,21 @@ export default function Profile() {
               title="Уведомления"
               subtitle="Напоминания приходят в чат MAX"
               after={<Switch on={notif} onChange={toggleNotif} label="Уведомления" />}
+            />
+          </CellList>
+          <CellList mode="island">
+            <CellSimple
+              className="press"
+              before={<div className="ic"><I.clock size={18} /></div>}
+              title="Напоминания о шагах"
+              subtitle={enabledStepReminders || "Напоминания о сроках отключены"}
+              after={<span className="cell-note">Настроить</span>}
+              showChevron
+              onClick={() => setStepReminderSheet(true)}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setStepReminderSheet(true); }
+              }}
             />
           </CellList>
           <CellList mode="island">
@@ -220,6 +271,23 @@ export default function Profile() {
           {regions.length === 0 && <div className="muted" style={{ padding: "8px 0" }}>Список регионов недоступен</div>}
         </div>
         <Button variant="secondary" onClick={() => setRegionSheet(false)}>Закрыть</Button>
+      </Sheet>
+      <Sheet open={stepReminderSheet} onClose={() => setStepReminderSheet(false)}>
+        <h3>Напоминания о шагах</h3>
+        <div className="sub">Выберите, когда получать напоминание о сроке текущего шага</div>
+        <div style={{ display: "grid", gap: 4, margin: "10px 0 14px" }}>
+          {STEP_REMINDER_OPTIONS.map(({ key, field, label }) => (
+            <div className="rem-item" key={key}>
+              <div className="what"><b>{label}</b></div>
+              <Switch
+                on={stepReminders[key]}
+                onChange={(on) => toggleStepReminder(key, field, on)}
+                label={label}
+              />
+            </div>
+          ))}
+        </div>
+        <Button variant="secondary" onClick={() => setStepReminderSheet(false)}>Закрыть</Button>
       </Sheet>
       {toast}
     </div>

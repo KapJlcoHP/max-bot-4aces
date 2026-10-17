@@ -131,6 +131,10 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
                     ("day", due_at - timedelta(days=1), due_at - timedelta(hours=1)),
                     ("hour", due_at - timedelta(hours=1), due_at),
                 ):
+                    if (lead == "day" and not user.notify_day_before) or (
+                        lead == "hour" and not user.notify_hour_before
+                    ):
+                        continue
                     if start <= user_now < end and not logged("step", step.id, lead):
                         pushes.append(
                             Push(
@@ -147,7 +151,12 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
                                 lead=lead,
                             )
                         )
-                if due_at.date() == today and user_now >= due_at and not logged("step", step.id, "now"):
+                if (
+                    user.notify_at_deadline
+                    and due_at.date() == today
+                    and user_now >= due_at
+                    and not logged("step", step.id, "now")
+                ):
                     pushes.append(
                         Push(
                             user_id=user.id,

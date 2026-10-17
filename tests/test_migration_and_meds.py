@@ -4,11 +4,11 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session
 
 from core.db.models import Base, BpRecord, HealthRecord, MedCourse, MedIntake, User
-from core.db.session import _migrate_bp_records
+from core.db.session import _migrate_bp_records, _migrate_sqlite
 from core.services import take_med, user_today
 from core.time import normalize_clock_time
 from core.schemas import MedAddIn, MedIntakeToggleIn
@@ -16,6 +16,34 @@ from server.api.v1 import meds as meds_api
 
 
 class MigrationTests(unittest.TestCase):
+    def test_existing_users_get_enabled_step_notification_defaults(self):
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            conn.exec_driver_sql(
+                "CREATE TABLE users ("
+                "id INTEGER PRIMARY KEY, max_user_id INTEGER NOT NULL, "
+                "notifications_on BOOLEAN NOT NULL DEFAULT 1)"
+            )
+            conn.exec_driver_sql("INSERT INTO users (max_user_id) VALUES (1001)")
+
+        from core.db import session as db_session
+
+        with patch.object(db_session, "engine", engine), patch.object(
+            db_session._settings, "database_url", "sqlite:///:memory:"
+        ):
+            _migrate_sqlite()
+
+        columns = {column["name"] for column in inspect(engine).get_columns("users")}
+        self.assertTrue({"notify_day_before", "notify_hour_before", "notify_at_deadline"} <= columns)
+        with engine.connect() as conn:
+            self.assertEqual(
+                conn.execute(text(
+                    "SELECT notify_day_before, notify_hour_before, notify_at_deadline FROM users"
+                )).one(),
+                (1, 1, 1),
+            )
+        engine.dispose()
+
     def test_legacy_bp_rows_are_added_to_nonempty_diary_once(self):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)

@@ -93,6 +93,41 @@ class SchedulerTests(unittest.TestCase):
 
         self.assertEqual(collect_due(self.db, now=datetime(2026, 9, 29, 1)), [])
 
+    def test_disabled_step_leads_are_not_collected(self):
+        due_at = datetime(2026, 9, 29, 10)
+        user = User(max_user_id=306, tz="UTC")
+        self.db.add(user)
+        self.db.flush()
+        route = Route(user_id=user.id, situation_key="test", title="Test")
+        self.db.add(route)
+        self.db.flush()
+        self.db.add(RouteStep(
+            route_id=route.id,
+            position=1,
+            title="Step",
+            status="current",
+            deadline=due_at.date(),
+            deadline_time="10:00",
+        ))
+        self.db.commit()
+
+        for setting, now in (
+            ("notify_day_before", due_at - timedelta(days=1)),
+            ("notify_hour_before", due_at - timedelta(hours=1)),
+            ("notify_at_deadline", due_at),
+        ):
+            with self.subTest(setting=setting):
+                setattr(user, setting, False)
+                self.db.commit()
+                self.assertEqual(collect_due(self.db, now=now), [])
+                setattr(user, setting, True)
+                self.db.commit()
+
+        # The global switch still gates all step notifications.
+        user.notifications_on = False
+        self.db.commit()
+        self.assertEqual(collect_due(self.db, now=due_at - timedelta(days=1)), [])
+
     def test_notification_dedup_is_scoped_to_user(self):
         users = [User(max_user_id=302, tz="UTC"), User(max_user_id=303, tz="UTC")]
         self.db.add_all(users)
