@@ -54,6 +54,7 @@ export default function Onboarding() {
   const [clinicQuery, setClinicQuery] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const clinicsRequestId = useRef(0);
+  const submitting = useRef(false);
 
   const loadRegions = () => {
     setRegionsLoading(true);
@@ -96,20 +97,32 @@ export default function Onboarding() {
   const toggleDiary = (key: HealthType, on: boolean) =>
     setDiaries((prev) => prev.map((d) => (d.key === key ? { ...d, on } : d)));
 
-  const finish = async () => {
+  const validateSelection = () => {
     const validRegion = regions.some((item) => item.title === region);
     const validClinic = attachedClinicId === null || clinics?.some((item) => item.id === attachedClinicId) === true;
-    if (!validRegion) {
+    if (regionsLoading || regionsError || !validRegion) {
       setFormError("Выберите регион из списка");
-      setStep(2);
-      return;
+      return false;
     }
     if (!validClinic) {
       setFormError("Выбранная поликлиника больше недоступна. Выберите другую или продолжите без неё.");
+      return false;
+    }
+    setFormError(null);
+    return true;
+  };
+
+  const continueToDiaries = () => {
+    if (validateSelection()) setStep(3);
+  };
+
+  const finish = async () => {
+    if (submitting.current) return;
+    if (!validateSelection()) {
       setStep(2);
       return;
     }
-    setFormError(null);
+    submitting.current = true;
     setBusy(true);
     try {
       const enabled = diaries.filter((d) => d.on).map((d) => d.key);
@@ -120,6 +133,7 @@ export default function Onboarding() {
       updateUser(saved);
     } catch {
       setFormError("Не удалось сохранить настройки. Проверьте соединение и попробуйте ещё раз.");
+      submitting.current = false;
       setBusy(false);
     }
   };
@@ -249,8 +263,8 @@ export default function Onboarding() {
           </div>
           <div className="steps"><i /><i /><i className="on" /><i /></div>
           <div className="foot">
-            {attachedClinicId === null && <Button type="button" variant="secondary" disabled={regionsLoading || clinicsLoading} onClick={() => { setFormError(null); setStep(3); }}>Выбрать поликлинику позже</Button>}
-            {attachedClinicId !== null && <Button type="button" disabled={regionsLoading || clinicsLoading} onClick={() => { setFormError(null); setStep(3); }}>Продолжить</Button>}
+            {attachedClinicId === null && <Button type="button" variant="secondary" disabled={regionsLoading} onClick={continueToDiaries}>Выбрать поликлинику позже</Button>}
+            {attachedClinicId !== null && <Button type="button" disabled={regionsLoading || clinicsLoading} onClick={continueToDiaries}>Продолжить</Button>}
           </div>
         </>
       )}
@@ -282,9 +296,10 @@ export default function Onboarding() {
                 {TZ_OPTIONS.map((o) => <option key={o.tz} value={o.tz}>{o.label}</option>)}
               </select>
             </div>
+            {formError && <div className="card" role="alert" style={{ color: "var(--red)" }}>{formError}</div>}
           </div>
           <div className="steps"><i /><i /><i /><i className="on" /></div>
-          <div className="foot"><Button disabled={busy || !attachedClinicId} onClick={finish}>{busy ? "Настраиваем…" : "Начать"}</Button></div>
+          <div className="foot"><Button disabled={busy} onClick={finish}>{busy ? "Настраиваем…" : "Начать"}</Button></div>
         </>
       )}
     </div>
