@@ -11,7 +11,7 @@ import { I } from "../icons";
 const STEP_REMINDER_OPTIONS = [
   { key: "day", field: "notify_day_before", label: "За день до срока" },
   { key: "hour", field: "notify_hour_before", label: "За час до срока" },
-  { key: "now", field: "notify_at_deadline", label: "В момент срока" },
+  { key: "now", field: "notify_at_deadline", label: "В день / момент срока" },
 ] as const;
 
 type StepReminderKey = (typeof STEP_REMINDER_OPTIONS)[number]["key"];
@@ -86,7 +86,7 @@ export default function Profile() {
     try {
       const updated = await api.patch<UserDto>("/api/v1/me/settings", { step_day_before_time: value });
       updateUser(updated);
-      showToast("Время напоминания сохранено");
+      showToast("Время напоминаний сохранено");
     } catch {
       setStepDayBeforeTime(user.step_day_before_time ?? "09:00");
       showToast("Не удалось сохранить время");
@@ -296,7 +296,7 @@ export default function Profile() {
       </Sheet>
       <Sheet open={stepReminderSheet} onClose={() => setStepReminderSheet(false)}>
         <h3>Напоминания о шагах</h3>
-        <div className="sub">Выберите, когда получать напоминание о сроке текущего шага</div>
+        <div className="sub">Напоминания получает только текущий шаг. «За час» работает, если у события указано точное время.</div>
         <div style={{ display: "grid", gap: 4, margin: "10px 0 14px" }}>
           {STEP_REMINDER_OPTIONS.map(({ key, field, label }) => (
             <div className="rem-item" key={key}>
@@ -308,20 +308,21 @@ export default function Profile() {
               />
               {key === "day" && (
                 <label className="push-time">
-                  <small>Время напоминания</small>
+                  <small>Время напоминаний по дате</small>
                   <input
                     type="time"
                     value={stepDayBeforeTime}
-                    disabled={!stepReminders.day || stepDayBeforeTimeBusy}
+                    disabled={(!stepReminders.day && !stepReminders.now) || stepDayBeforeTimeBusy}
                     onChange={(e) => setStepDayBeforeTime(e.target.value)}
                     onBlur={(e) => saveStepDayBeforeTime(e.target.value)}
-                    aria-label="Время напоминания за день до срока"
+                    aria-label="Время напоминаний по дате"
                   />
                 </label>
               )}
             </div>
           ))}
         </div>
+        <p className="muted">Если у шага есть дата без времени, напомним накануне и в день срока в выбранный час — при включённых вариантах. Это время уведомления, а не время приёма.</p>
         <Button variant="secondary" onClick={() => setStepReminderSheet(false)}>Закрыть</Button>
       </Sheet>
       {toast}

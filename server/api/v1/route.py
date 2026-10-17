@@ -15,6 +15,7 @@ from core.schemas import (
     StepUpdateIn,
 )
 from core.services import ServiceError, complete_route_step, uncomplete_route_step
+from core.time import normalize_clock_time
 from .common import consented_user, db_session, get_active_route, route_dto, route_template_title, step_dto
 
 router = APIRouter()
@@ -193,9 +194,24 @@ def update_step(
         raise HTTPException(status_code=404, detail="Шаг не найден")
     if step.status == "done":
         raise HTTPException(status_code=409, detail="Пройденный шаг изменить нельзя")
-    deadline_changed = step.deadline != body.deadline
-    step.deadline = body.deadline
-    if deadline_changed:
+    fields = body.model_fields_set
+    if not fields:
+        return step_dto(step, route_template_title(route))
+    deadline = body.deadline if "deadline" in fields else step.deadline
+    deadline_time = body.deadline_time if "deadline_time" in fields else step.deadline_time
+    if "deadline" in fields and deadline is None:
+        # A date clear also clears its dependent time; contradictory input is
+        # rejected by StepUpdateIn before the endpoint is called.
+        deadline_time = None
+    if deadline is None and deadline_time is not None:
+        raise HTTPException(status_code=422, detail="Время шага требует даты")
+    # Older rows may contain equivalent noncanonical values such as 8:00.
+    old_clock = normalize_clock_time(step.deadline_time) if step.deadline_time else None
+    new_clock = normalize_clock_time(deadline_time) if deadline_time else None
+    schedule_changed = (step.deadline, old_clock or step.deadline_time) != (deadline, new_clock or deadline_time)
+    step.deadline = deadline
+    step.deadline_time = deadline_time
+    if schedule_changed:
         db.query(NotificationLog).filter(
             NotificationLog.user_id == user.id,
             NotificationLog.kind == "step",

@@ -20,5 +20,8 @@ test("profile exposes configurable step reminder leads", async () => {
   assert.match(profile, /\/api\/v1\/me\/settings/);
   assert.match(profile, /За день до срока/);
   assert.match(profile, /За час до срока/);
-  assert.match(profile, /В момент срока/);
+  assert.match(profile, /В день \/ момент срока/);
+  assert.match(profile, /Время напоминаний по дате/);
+  assert.match(profile, /!stepReminders\.day && !stepReminders\.now/);
+  assert.match(profile, /а не время приёма/);
 });

@@ -119,19 +119,26 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
         if route is not None:
             step = (
                 db.query(RouteStep)
-                .filter(RouteStep.route_id == route.id, RouteStep.status != "done")
+                .filter(RouteStep.route_id == route.id, RouteStep.status == "current")
                 .order_by(RouteStep.position)
                 .first()
             )
             if step is not None and step.deadline is not None:
-                slot = _parse_time(step.deadline_time) or dtime(12, 0)
-                due_at = datetime.combine(step.deadline, slot)
-                has_time = step.deadline_time is not None
+                slot = _parse_time(step.deadline_time) if step.deadline_time else None
+                has_time = slot is not None
+                day_time = _parse_time(user.step_day_before_time) or dtime(9, 0)
+                # Время пуша по дате не является временем события. Полдень
+                # не подставляем, часовой lead без точного времени запрещён.
+                due_at = datetime.combine(step.deadline, slot or day_time)
+                day_start = datetime.combine(step.deadline, dtime.min)
+                day_end = day_start + timedelta(days=1)
                 leads = []
                 if user.notify_day_before:
-                    day_time = _parse_time(user.step_day_before_time) or dtime(9, 0)
-                    leads.append(("day", datetime.combine(due_at.date() - timedelta(days=1), day_time), due_at - timedelta(hours=1)))
-                if user.notify_hour_before:
+                    # «Накануне» не догоняем в день срока; у ночного события
+                    # окно также заканчивается до часового напоминания.
+                    end = min(day_start, due_at - timedelta(hours=1)) if has_time else day_start
+                    leads.append(("day", datetime.combine(step.deadline - timedelta(days=1), day_time), end))
+                if user.notify_hour_before and has_time:
                     leads.append(("hour", due_at - timedelta(hours=1), due_at))
                 for lead, start, end in leads:
                     if start <= user_now < end and not logged("step", step.id, lead):
@@ -152,15 +159,18 @@ def collect_due(db: Session, now: datetime | None = None) -> list[Push]:
                         )
                 if (
                     user.notify_at_deadline
-                    and due_at.date() == today
-                    and user_now >= due_at
+                    and due_at <= user_now < day_end
                     and not logged("step", step.id, "now")
                 ):
                     pushes.append(
                         Push(
                             user_id=user.id,
                             max_user_id=user.max_user_id,
-                            text=f"⏰ **Пора**: «{step.title}» — срок наступил.",
+                            text=(
+                                f"⏰ **Пора**: «{step.title}» — срок наступил."
+                                if has_time else
+                                f"⏰ **Сегодня срок шага**: «{step.title}». Время события не указано."
+                            ),
                             actions=[("✅ Выполнить шаг", f"sdone_{step.id}")],
                             app_payload=f"step_{step.id}",
                             kind="step",

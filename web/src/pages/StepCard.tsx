@@ -6,7 +6,7 @@ import { useNow } from "../hooks/useNow";
 import StepCountdown from "../components/StepCountdown";
 import { openExternalLink } from "../bridge";
 import { fmtDateNumeric, fmtDeadline, fmtDayMonth } from "../format";
-import type { CompleteStepResult, RouteDto, Step } from "../types";
+import type { CompleteStepResult, RouteDto, Step, StepUpdateIn } from "../types";
 import { Button, ErrorView, Header, LoadingView, Sheet, StateView, useToast } from "../components/ui";
 import { I } from "../icons";
 
@@ -106,7 +106,7 @@ export default function StepCard() {
     const routeRequestId = loadRequestId.current;
     setDeadlineBusy(true);
     try {
-      await api.patch<Step>(`/api/v1/route/steps/${currentStepId}`, { deadline: value });
+      await api.patch<Step>(`/api/v1/route/steps/${currentStepId}`, { deadline: value } satisfies StepUpdateIn);
       if (requestId !== deadlineRequestId.current || routeRequestId !== loadRequestId.current) return;
       showToast(value ? "Срок обновлён" : "Срок убран");
       load();

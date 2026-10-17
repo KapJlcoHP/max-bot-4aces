@@ -82,6 +82,12 @@ export interface CustomStepIn {
   deadline_time?: string | null;
 }
 
+/** Omitted fields are preserved; null date also clears the event time. */
+export interface StepUpdateIn {
+  deadline?: string | null;
+  deadline_time?: string | null;
+}
+
 export interface ChecklistItem {
   id: number;
   title: string;

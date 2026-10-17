@@ -1626,7 +1626,8 @@
           "deadline_time": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "description": "Местное время события в поясе профиля; нормализуется в HH:MM. Требует даты."
               },
               {
                 "type": "null"
@@ -2607,6 +2608,51 @@
             ],
             "title": "Notifications On"
           },
+          "notify_day_before": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Day Before"
+          },
+          "notify_hour_before": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Hour Before"
+          },
+          "notify_at_deadline": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify At Deadline"
+          },
+          "step_day_before_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Day Before Time"
+          },
           "email": {
             "anyOf": [
               {
@@ -2693,7 +2739,8 @@
           "deadline_time": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "description": "Местное время события в поясе профиля; нормализуется в HH:MM. Требует даты."
               },
               {
                 "type": "null"
@@ -2852,12 +2899,26 @@
                 "type": "null"
               }
             ],
-            "title": "Deadline"
+            "title": "Deadline",
+            "description": "Местная дата события. Пропуск сохраняет дату; null очищает дату и зависимое время."
+          },
+          "deadline_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Местное время события в поясе профиля; нормализуется в HH:MM. Требует даты."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Time",
+            "description": "Местное время HH:MM. Пропуск сохраняет время; null очищает только время. Требует даты."
           }
         },
         "type": "object",
         "title": "StepUpdateIn",
-        "description": "Изменение срока шага; null — срока нет."
+        "description": "PATCH срока: пропущенное поле сохраняется, null явно очищает его."
       },
       "UserDto": {
         "properties": {
@@ -2889,6 +2950,26 @@
           "notifications_on": {
             "type": "boolean",
             "title": "Notifications On"
+          },
+          "notify_day_before": {
+            "type": "boolean",
+            "title": "Notify Day Before",
+            "default": true
+          },
+          "notify_hour_before": {
+            "type": "boolean",
+            "title": "Notify Hour Before",
+            "default": true
+          },
+          "notify_at_deadline": {
+            "type": "boolean",
+            "title": "Notify At Deadline",
+            "default": true
+          },
+          "step_day_before_time": {
+            "type": "string",
+            "title": "Step Day Before Time",
+            "default": "09:00"
           },
           "tz": {
             "type": "string",

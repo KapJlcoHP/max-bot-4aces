@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 from core.db.models import Base, HealthRecord, NotificationLog, Organization, Route, RouteStep, User
 from core.db.demo import fill_demo
 from core.db.seed import build_route_for, seed_organizations
-from core.schemas import CustomStepIn, HealthReportOut, ReportNote, RouteStartIn
+from core.schemas import CustomStepIn, HealthReportOut, ReportNote, RouteStartIn, StepUpdateIn
 from server.deps import validate_init_data
 from server.health_pdf import _record_line, build_health_pdf
 
@@ -59,7 +59,8 @@ class Stage1RegressionTests(unittest.TestCase):
             RouteStartIn(
                 situation_key="custom",
                 custom_steps=[CustomStepIn(
-                    title="Сдать анализы", deadline_time="14:30", place="Лаборатория №2",
+                    title="Сдать анализы", deadline=date(2026, 10, 20),
+                    deadline_time="14:30", place="Лаборатория №2",
                 )],
             ),
             user=self.user,
@@ -159,7 +160,7 @@ class Stage1RegressionTests(unittest.TestCase):
 
         api.update_step(
             step.id,
-            body=SimpleNamespace(deadline=date(2026, 10, 21)),
+            body=StepUpdateIn(deadline=date(2026, 10, 21)),
             user=self.user,
             db=self.db,
         )

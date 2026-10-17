@@ -1,8 +1,25 @@
 """Pydantic-DTO, общие для server и bot."""
 
 from datetime import date as Date, datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PrivateAttr
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, HttpUrl, PrivateAttr, model_validator
+
+from core.time import normalize_clock_time
+
+
+def _normalize_step_clock(value: str) -> str:
+    normalized = normalize_clock_time(value)
+    if normalized is None:
+        raise ValueError("Некорректное время шага: ожидается HH:MM")
+    return normalized
+
+
+_StepClockTime = Annotated[
+    str,
+    AfterValidator(_normalize_step_clock),
+    Field(description="Местное время события в поясе профиля; нормализуется в HH:MM. Требует даты."),
+]
 
 
 class OrmDto(BaseModel):
@@ -104,9 +121,22 @@ class CompleteStepOut(OrmDto):
 
 
 class StepUpdateIn(OrmDto):
-    """Изменение срока шага; null — срока нет."""
+    """PATCH срока: пропущенное поле сохраняется, null явно очищает его."""
 
-    deadline: Date | None = None
+    deadline: Date | None = Field(
+        default=None,
+        description="Местная дата события. Пропуск сохраняет дату; null очищает дату и зависимое время.",
+    )
+    deadline_time: _StepClockTime | None = Field(
+        default=None,
+        description="Местное время HH:MM. Пропуск сохраняет время; null очищает только время. Требует даты.",
+    )
+
+    @model_validator(mode="after")
+    def validate_explicit_date_clear(self):
+        if "deadline" in self.model_fields_set and self.deadline is None and self.deadline_time is not None:
+            raise ValueError("Время шага требует даты")
+        return self
 
 
 class StepAddIn(OrmDto):
@@ -114,9 +144,15 @@ class StepAddIn(OrmDto):
 
     title: str
     deadline: Date | None = None
-    deadline_time: str | None = None
+    deadline_time: _StepClockTime | None = None
     place: str = ""
     source: str = "user"  # user | doctor
+
+    @model_validator(mode="after")
+    def validate_schedule(self):
+        if self.deadline is None and self.deadline_time is not None:
+            raise ValueError("Время шага требует даты")
+        return self
 
 
 class CustomStepIn(OrmDto):
@@ -124,8 +160,14 @@ class CustomStepIn(OrmDto):
 
     title: str
     deadline: Date | None = None
-    deadline_time: str | None = None
+    deadline_time: _StepClockTime | None = None
     place: str = ""
+
+    @model_validator(mode="after")
+    def validate_schedule(self):
+        if self.deadline is None and self.deadline_time is not None:
+            raise ValueError("Время шага требует даты")
+        return self
 
 
 class RouteStartIn(OrmDto):
