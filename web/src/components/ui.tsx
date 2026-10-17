@@ -42,9 +42,14 @@ export function Header({ title, subtitle, back, right }: { title: string; subtit
     <div className="header">
       <div className="h-row">
         {back && (
-          <button type="button" className="hdr-back" onClick={() => navigate(back)} aria-label="Назад">
-            <I.back size={22} />
-          </button>
+          <>
+            <button type="button" className="hdr-back" onClick={() => navigate(back)} aria-label="Назад">
+              <I.back size={22} />
+            </button>
+            <button type="button" className="hdr-home" onClick={() => navigate("/")} aria-label="На главную">
+              <I.home size={22} />
+            </button>
+          </>
         )}
         <div className="hdr-title">
           <h1>{title}</h1>
