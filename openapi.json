@@ -5,6 +5,47 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/me/clinic": {
+      "post": {
+        "summary": "Change Clinic",
+        "operationId": "change_clinic_api_v1_me_clinic_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicChangeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Профиль изменился; обновите данные и подтвердите выбор заново"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "summary": "Me",
@@ -418,6 +459,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Шаг выполнен или изменился одновременно; обновите маршрут"
           },
           "422": {
             "description": "Validation Error",
@@ -1430,6 +1474,40 @@
           "total"
         ],
         "title": "ChecklistOut"
+      },
+      "ClinicChangeIn": {
+        "properties": {
+          "attached_clinic_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Attached Clinic Id"
+          },
+          "expected_clinic_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Clinic Id"
+          },
+          "expected_region": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Expected Region"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attached_clinic_id",
+          "expected_clinic_id",
+          "expected_region"
+        ],
+        "title": "ClinicChangeIn",
+        "description": "Явный подтверждённый выбор с проверкой состояния профиля из открытого окна."
       },
       "CompleteStepIn": {
         "properties": {
@@ -2685,6 +2763,34 @@
               }
             ],
             "title": "Attached Clinic Id"
+          },
+          "confirm_clinic_reset": {
+            "type": "boolean",
+            "title": "Confirm Clinic Reset",
+            "default": false
+          },
+          "expected_clinic_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Clinic Id"
+          },
+          "expected_region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Region"
           }
         },
         "type": "object",
@@ -2748,6 +2854,29 @@
             ],
             "title": "Deadline Time"
           },
+          "reminder_mode": {
+            "type": "string",
+            "enum": [
+              "profile",
+              "day",
+              "hour",
+              "custom"
+            ],
+            "title": "Reminder Mode",
+            "default": "profile"
+          },
+          "reminder_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminder At"
+          },
           "place": {
             "type": "string",
             "title": "Place",
@@ -2810,6 +2939,41 @@
               }
             ],
             "title": "Deadline Time"
+          },
+          "reminder_mode": {
+            "type": "string",
+            "enum": [
+              "profile",
+              "day",
+              "hour",
+              "custom"
+            ],
+            "title": "Reminder Mode",
+            "default": "profile"
+          },
+          "reminder_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminder At"
+          },
+          "activated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
           },
           "status": {
             "type": "string",
@@ -2914,6 +3078,29 @@
             ],
             "title": "Deadline Time",
             "description": "Местное время HH:MM. Пропуск сохраняет время; null очищает только время. Требует даты."
+          },
+          "reminder_mode": {
+            "type": "string",
+            "enum": [
+              "profile",
+              "day",
+              "hour",
+              "custom"
+            ],
+            "title": "Reminder Mode",
+            "default": "profile"
+          },
+          "reminder_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminder At"
           }
         },
         "type": "object",
