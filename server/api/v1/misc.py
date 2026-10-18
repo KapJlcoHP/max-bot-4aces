@@ -64,26 +64,27 @@ def add_checklist_item(body: ChecklistAddIn, user: User = Depends(consented_user
 def orgs(
     q: str = Query(default=""),
     org_type: str = Query(default=""),
-    region: str = Query(default=""),
+    region: str | None = Query(default=None, description="Не передан — регион профиля; пустая строка или «Все» — все регионы"),
     user: User | PendingUser = Depends(current_user),
     db: Session = Depends(db_session),
 ):
     # При прямом вызове старых unit-тестов FastAPI не успевает развернуть Query.
     q = q if isinstance(q, str) else ""
     org_type = org_type if isinstance(org_type, str) else ""
-    region = region if isinstance(region, str) else ""
+    region = region.strip() if isinstance(region, str) else None
     query = db.query(Organization)
-    selected_region = region or user.region
+    selected_region = user.region if region is None else ("" if region == "Все" else region)
     if selected_region:
         query = query.filter(Organization.region == selected_region)
     if org_type and org_type != "Все":
         query = query.filter(Organization.org_type == org_type)
-    if q:
-        pattern = f"%{q}%"
-        query = query.filter(
-            (Organization.title.ilike(pattern)) | (Organization.address.ilike(pattern))
-        )
-    return [OrganizationDto.model_validate(o) for o in query.all()]
+    # The small reference catalog is searched literally in Python: SQLite's
+    # lower/ilike only folds ASCII, so Cyrillic searches otherwise miss matches.
+    # This also keeps '%' and '_' from becoming unexpected wildcard filters.
+    needle = q.strip().casefold()
+    rows = query.order_by(Organization.id).all()
+    return [OrganizationDto.model_validate(o) for o in rows
+            if not needle or needle in o.title.casefold() or needle in o.address.casefold()]
 
 
 @router.get("/maps/config", response_model=MapConfigDto)

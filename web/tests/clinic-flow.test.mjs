@@ -15,7 +15,9 @@ test("catalog and map browse only; existing choice is marked and cannot be repla
   assert.match(h.text(), /Текущая поликлиника/);
   assert.doesNotMatch(h.text(), /Выбрать поликлинику/);
   h.node((node) => node.type === "OrganizationMap").props.onSelect(2);
-  assert.deepEqual(h.navigation, ["/orgs/2"]);
+  await h.flush();
+  assert.equal(h.node((node) => node.type === "OrganizationMap").props.selectedId, 2);
+  assert.deepEqual(h.navigation, []);
   assert.deepEqual(h.mutations(), []);
 });
 
@@ -25,7 +27,9 @@ test("change mode locks filters, shows old/new confirmation; cancel does not mut
   assert.equal(h.node((n) => n.type === "select").props.disabled, true);
   assert.match(h.calls.find((c) => c.path.startsWith("/api/v1/orgs?")).path, /org_type=.*&region=/);
   h.node((n) => n.type === "OrganizationMap").props.onSelect(2);
-  assert.equal(h.navigation[0], "/orgs/2?mode=change");
+  await h.flush();
+  assert.equal(h.node((n) => n.type === "OrganizationMap").props.selectedId, 2);
+  assert.deepEqual(h.navigation, []);
   h.click("Выбрать поликлинику");
   await h.flush();
   assert.match(h.text(), /Сейчас: Старая клиника · Адрес 1/);
@@ -76,7 +80,8 @@ test("first attach in normal detail requires confirmation and rejects foreign/ho
   await h.click("Подтвердить выбор"); await h.flush(); assert.equal(h.user().attached_clinic_id, 2);
   for (const orgId of [3, 4]) {
     const other = clinicHarness({ page: "OrgDetail", orgId, user: firstUser, orgs, search: "?mode=change" });
-    await other.flush(); assert.doesNotMatch(other.text(), /Выбрать поликлинику/); assert.deepEqual(other.mutations(), []);
+    await other.flush(); assert.match(other.text(), /Организация недоступна для выбора/); assert.deepEqual(other.mutations(), []);
+    assert.deepEqual(Array.from(other.node((n) => n.type === "OrganizationMap").props.organizations, (o) => o.id), [1, 2]);
     assert.equal(other.node((n) => n.type === "Header").props.back, "/orgs?mode=change");
   }
 });

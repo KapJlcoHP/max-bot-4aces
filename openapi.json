@@ -743,10 +743,18 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Не передан — регион профиля; пустая строка или «Все» — все регионы",
               "title": "Region"
-            }
+            },
+            "description": "Не передан — регион профиля; пустая строка или «Все» — все регионы"
           }
         ],
         "responses": {
