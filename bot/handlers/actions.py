@@ -6,6 +6,7 @@
 
 import logging
 import re
+from datetime import datetime
 
 from maxapi import F, Router
 from maxapi.filters.command import Command
@@ -31,7 +32,9 @@ from core.services import (
     complete_reminder,
     complete_route_step,
     take_med,
+    user_today,
 )
+from core.time import normalize_clock_time
 from bot.exporter import send_health_pdf
 from bot.throttle import throttled
 from bot.step_text import booking_information, completion_label, deadline_label
@@ -292,19 +295,43 @@ async def cb_reminder_done(event: MessageCallback):
 @router.message_callback(F.callback.payload.startswith("mtake_"))
 @throttled
 async def cb_med_taken(event: MessageCallback):
-    _, course_id_raw, hhmm = event.callback.payload.split("_")
-    at_time = f"{hhmm[:2]}:{hhmm[2:]}"
+    # Medication callbacks are tied to the local day on which the push was
+    # generated.  Do not accept the legacy three-part payload: it has no day
+    # and would make take_med() silently record an old button as today.
+    parts = event.callback.payload.split("_")
+    if len(parts) != 4:
+        await event.answer(notification="Кнопка приёма устарела — откройте лекарства заново")
+        return
+    _, course_id_raw, day_raw, hhmm = parts
+    try:
+        course_id = int(course_id_raw)
+        day = datetime.strptime(day_raw, "%Y%m%d").date()
+        at_time = normalize_clock_time(f"{hhmm[:2]}:{hhmm[2:]}")
+        if at_time is None or len(hhmm) != 4:
+            raise ValueError
+    except (TypeError, ValueError):
+        await event.answer(notification="Кнопка приёма устарела — откройте лекарства заново")
+        return
     with SessionLocal() as db:
         user = _user(db, event.callback.user.user_id)
         if user is None or user.consent_at is None:
             await event.answer(notification="Сначала откройте приложение")
             return
+        course = db.query(MedCourse).filter(
+            MedCourse.id == course_id,
+            MedCourse.user_id == user.id,
+        ).first()
+        if course is None:
+            await event.answer(notification="Курс лекарства не найден")
+            return
+        if not course.enabled or (course.until is not None and course.until < user_today(user)):
+            await event.answer(notification="Курс лекарства уже отключён или завершён")
+            return
         try:
-            take_med(db, user.id, int(course_id_raw), at_time)
+            take_med(db, user.id, course_id, at_time, day=day)
         except ServiceError as e:
             await event.answer(notification=str(e))
             return
-        course = db.query(MedCourse).filter(MedCourse.id == int(course_id_raw)).first()
     await event.answer(new_text=f"✅ Принято: {course.name if course else 'лекарство'}, {at_time}", attachments=[])
 
 
@@ -338,7 +365,7 @@ async def cb_mood_pick(event: MessageCallback):
         return
     dialog["mood"] = MOOD_PAYLOADS[event.callback.payload]
     await event.answer(
-        new_text="Оцените боль по шкале от 1 до 10 — или напишите «нет», если боли нет.",
+        new_text="Оцените боль по шкале от 0 до 10 — или напишите «нет», если боли нет.",
         attachments=[],
     )
 
@@ -407,11 +434,19 @@ async def diary_text_input(event: MessageCreated):
                     await event.message.answer("Сначала выберите самочувствие кнопкой выше.")
                     return
                 pain = None
-                if not re.search(r"нет|без боли", body_text, re.IGNORECASE):
+                if re.search(r"нет|без боли", body_text, re.IGNORECASE):
+                    # Explicitly saying there is no pain is a measured zero,
+                    # not the same thing as leaving pain unanswered.
+                    pain = 0
+                else:
                     ints = [int(n) for n in _nums(body_text)]
                     pain = ints[0] if ints else None
                 row = add_health_record(db, user.id, "mood", mood=mood, pain=pain)
-                saved = f"самочувствие — {row.mood}" + (f", боль {row.pain}/10" if row.pain else "")
+                saved = f"самочувствие — {row.mood}"
+                if row.pain == 0:
+                    saved += ", без боли"
+                elif row.pain is not None:
+                    saved += f", боль {row.pain}/10"
             else:
                 _DIALOGS.pop(max_user_id, None)
                 return

@@ -1,11 +1,9 @@
 """Чек-лист, организации, напоминания и семейный доступ."""
 
-from datetime import timedelta
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from core.db.models import ChecklistItem, FamilyMember, Organization, Reminder, User, utcnow
+from core.db.models import ChecklistItem, FamilyMember, Organization, Reminder, User
 from core.schemas import (
     ChecklistAddIn,
     ChecklistItemDto,
@@ -17,7 +15,7 @@ from core.schemas import (
     ReminderAddIn,
     ReminderDto,
 )
-from core.time import db_utc, user_local, user_zone
+from core.time import strict_local_utc, user_local
 from core.config import get_settings
 from server.deps import PendingUser
 from .common import consented_user, current_user, db_session
@@ -135,12 +133,18 @@ def add_reminder(body: ReminderAddIn, user: User = Depends(consented_user), db: 
     title = body.title.strip()
     if not title:
         raise HTTPException(status_code=422, detail="Название не может быть пустым")
-    at = body.at or utcnow() + timedelta(days=1)
+    try:
+        # A naive datetime is a wall-clock value in the profile zone; an
+        # explicit offset remains the instant supplied by the client.  Reject
+        # DST gaps/folds rather than silently choosing a different reminder.
+        at = strict_local_utc(body.at, user.tz)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     row = Reminder(
         user_id=user.id,
         title=title,
         place=body.place or "",
-        at=db_utc(at, user_zone(user.tz)),
+        at=at,
     )
     db.add(row)
     db.commit()

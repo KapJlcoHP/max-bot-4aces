@@ -165,6 +165,19 @@ class SchedulerTests(unittest.TestCase):
 
         self.assertEqual([push for push in pushes if push.kind == "med"], [])
 
+    def test_medication_callback_includes_local_journal_day(self):
+        user = User(max_user_id=308, tz="UTC")
+        self.db.add(user)
+        self.db.flush()
+        course = MedCourse(user_id=user.id, name="Medicine", times=["10:00"])
+        self.db.add(course)
+        self.db.commit()
+
+        pushes = collect_due(self.db, now=datetime(2026, 9, 29, 10))
+        medication = next(push for push in pushes if push.kind == "med")
+
+        self.assertEqual(medication.actions, [("✅ Принято", f"mtake_{course.id}_20260929_1000")])
+
     def test_notification_dedup_is_scoped_to_user(self):
         users = [User(max_user_id=302, tz="UTC"), User(max_user_id=303, tz="UTC")]
         self.db.add_all(users)

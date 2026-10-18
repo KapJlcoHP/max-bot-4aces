@@ -129,6 +129,24 @@ class DiaryTextHandlerTests(unittest.IsolatedAsyncioTestCase):
             context={"mood": "Хорошо"}, mood="Хорошо", pain=3,
         )
 
+    async def test_mood_explicit_zero_is_saved_as_no_pain(self):
+        await self.assert_saved(
+            "mood", "0", "самочувствие — Хорошо, без боли",
+            context={"mood": "Хорошо"}, mood="Хорошо", pain=0,
+        )
+
+    async def test_mood_explicit_no_pain_word_is_saved_as_zero(self):
+        await self.assert_saved(
+            "mood", "нет", "самочувствие — Хорошо, без боли",
+            context={"mood": "Хорошо"}, mood="Хорошо", pain=0,
+        )
+
+    async def test_mood_without_pain_answer_keeps_pain_missing(self):
+        await self.assert_saved(
+            "mood", "не знаю", "самочувствие — Хорошо",
+            context={"mood": "Хорошо"}, mood="Хорошо", pain=None,
+        )
+
     async def test_success_without_username_confirms_without_markup(self):
         self.actions._DIALOGS[self.max_user_id] = {"diary": "weight"}
         event = self.event("82,5", username=None)

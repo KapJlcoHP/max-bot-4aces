@@ -20,7 +20,12 @@ function lastValueSummary(type: HealthType, r: HealthRecord | undefined): string
   if (type === "bp") return `${r.systolic}/${r.diastolic} · ${fmtWhen(r.at)}`;
   if (type === "weight") return `${String(r.weight_kg).replace(".", ",")} кг · ${fmtWhen(r.at)}`;
   if (type === "sugar") return `${String(r.sugar_mmol).replace(".", ",")} ммоль/л · ${r.meal_tag ?? fmtWhen(r.at)}`;
-  return `${r.mood}${r.pain ? ` · боль ${r.pain}/10` : ""} · ${fmtWhen(r.at)}`;
+  const painText = (r.pain === null || r.pain === undefined)
+    ? " · боль не указана"
+    : r.pain === 0
+      ? " · без боли"
+      : ` · боль ${r.pain}/10`;
+  return `${r.mood}${painText} · ${fmtWhen(r.at)}`;
 }
 
 export default function HealthHub() {

@@ -168,7 +168,7 @@ class HealthRecord(Base):
     meal_tag: Mapped[str | None] = mapped_column(String(20), nullable=True)  # до еды | после еды
     # mood
     mood: Mapped[str | None] = mapped_column(String(20), nullable=True)  # Хорошо | Нормально | Плохо
-    pain: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1..10
+    pain: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0..10; null = не указано
     # общий контекст
     tag: Mapped[str | None] = mapped_column(String(20), nullable=True)  # утром | вечером | ...
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)

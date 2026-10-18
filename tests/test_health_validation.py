@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from core.db.models import Base, HealthRecord, User
+from core.schemas import HealthAddIn
 from core.services import ServiceError, add_health_record
 
 
@@ -33,11 +34,17 @@ class HealthValidationTests(unittest.TestCase):
             ("sugar", {"sugar_mmol": 1}),
             ("sugar", {"sugar_mmol": 35}),
             ("sugar", {"sugar_mmol": 5.6}),
+            ("mood", {"mood": "Хорошо", "pain": 0}),
+            ("mood", {"mood": "Хорошо"}),
         ):
             with self.subTest(diary=diary, fields=fields):
                 row = add_health_record(self.db, self.user.id, diary, **fields)
                 for key, value in fields.items():
                     self.assertEqual(getattr(row, key), value)
+
+    def test_mood_payload_defaults_leave_pain_missing(self):
+        self.assertIsNone(HealthAddIn(mood="Хорошо").pain)
+        self.assertEqual(HealthAddIn(mood="Хорошо", pain=0).pain, 0)
 
     def test_rejects_missing_out_of_range_and_nonfinite_values_without_saving(self):
         invalid = [
@@ -65,6 +72,7 @@ class HealthValidationTests(unittest.TestCase):
                 ("bp", {"systolic": 120, "diastolic": 80, "pulse": value}),
                 ("weight", {"weight_kg": value}),
                 ("sugar", {"sugar_mmol": value}),
+                ("mood", {"mood": "Хорошо", "pain": value}),
             ))
         for diary, fields in invalid:
             with self.subTest(diary=diary, fields=fields):

@@ -19,7 +19,7 @@ from core.db.models import (
     User,
     utcnow,
 )
-from core.time import as_utc, db_utc, user_zone
+from core.time import as_utc, db_utc, normalize_clock_time, user_zone
 
 HEALTH_TYPES = {"bp", "weight", "sugar", "mood"}
 MOODS = ("Хорошо", "Нормально", "Плохо")
@@ -192,11 +192,18 @@ def take_med(db: Session, user_id: int, course_id: int, at_time: str, day: date 
     course = db.query(MedCourse).filter(MedCourse.id == course_id, MedCourse.user_id == user_id).first()
     if course is None:
         raise ServiceError("Курс лекарства не найден", 404)
-    if day is None:
-        user = db.get(User, user_id)
-        if user is None:
-            raise ServiceError("Пользователь не найден", 404)
-        day = user_today(user)
+    user = db.get(User, user_id)
+    if user is None:
+        raise ServiceError("Пользователь не найден", 404)
+    today = user_today(user)
+    day = today if day is None else day
+    if not course.enabled or (course.until is not None and (course.until < today or course.until < day)):
+        raise ServiceError("Курс лекарства уже отключён или завершён", 409)
+    at_time = normalize_clock_time(at_time)
+    if at_time is None:
+        raise ServiceError("Некорректное время приёма", 422)
+    if not any(normalize_clock_time(raw) == at_time for raw in (course.times or [])):
+        raise ServiceError("Время не входит в расписание курса", 404)
     intake = (
         db.query(MedIntake)
         .filter(
@@ -267,8 +274,8 @@ def add_health_record(db: Session, user_id: int, type: str, **fields) -> HealthR
         if mood not in MOODS:
             raise ServiceError("Отметьте самочувствие")
         pain = fields.get("pain")
-        if pain is not None and not (1 <= pain <= 10):
-            raise ServiceError("Боль оценивается от 1 до 10")
+        if pain is not None and not (0 <= pain <= 10):
+            raise ServiceError("Боль оценивается от 0 до 10")
         row.mood, row.pain = mood, pain
     db.add(row)
     db.commit()

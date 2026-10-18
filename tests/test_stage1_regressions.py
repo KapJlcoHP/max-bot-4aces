@@ -182,6 +182,44 @@ class Stage1RegressionTests(unittest.TestCase):
 
         self.assertIn("12:00", when)
 
+    def test_report_keeps_structured_zero_and_omits_missing_pain(self):
+        now = datetime.now()
+        self.db.add_all([
+            HealthRecord(
+                user_id=self.user.id, type="mood", at=now,
+                mood="Хорошо", pain=0,
+            ),
+            HealthRecord(
+                user_id=self.user.id, type="mood", at=now,
+                mood="Нормально", pain=None,
+            ),
+        ])
+        self.db.commit()
+
+        from server.api.v1 import api
+        report = api.health_report(user=self.user, db=self.db)
+        notes = [item.note for item in report.notes]
+
+        self.assertIn("Самочувствие: Хорошо · боль 0/10", notes)
+        self.assertIn("Самочувствие: Нормально", notes)
+        self.assertTrue(all("Нормально · боль" not in note for note in notes))
+
+    def test_pdf_distinguishes_explicit_zero_from_missing_pain(self):
+        zero = HealthRecord(
+            user_id=self.user.id, type="mood", at=datetime(2026, 10, 11, 9, 0),
+            mood="Хорошо", pain=0,
+        )
+        missing = HealthRecord(
+            user_id=self.user.id, type="mood", at=datetime(2026, 10, 11, 10, 0),
+            mood="Хорошо", pain=None,
+        )
+
+        _, zero_text = _record_line(zero, "Europe/Moscow")
+        _, missing_text = _record_line(missing, "Europe/Moscow")
+
+        self.assertIn("боль 0/10", zero_text)
+        self.assertNotIn("боль", missing_text)
+
     def test_export_endpoint_passes_test_token_to_authentication(self):
         from server.api.v1 import api
 

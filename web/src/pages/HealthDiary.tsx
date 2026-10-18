@@ -91,7 +91,9 @@ export default function HealthDiary() {
   const [attempted, setAttempted] = useState(false);
   const [mealTag, setMealTag] = useState("до еды");
   const [mood, setMood] = useState("Хорошо");
-  const [pain, setPain] = useState(2);
+  // null means the user did not provide a pain value; 0 is an explicit
+  // no-pain answer and must remain distinguishable from an untouched field.
+  const [pain, setPain] = useState<number | null>(null);
   const [tag, setTag] = useState("утром");
   const [note, setNote] = useState("");
   const loadRequestId = useRef(0);
@@ -105,7 +107,7 @@ export default function HealthDiary() {
     setAttempted(false);
     setMealTag("до еды");
     setMood("Хорошо");
-    setPain(2);
+    setPain(null);
     setTag("утром");
     setNote("");
   };
@@ -213,7 +215,13 @@ export default function HealthDiary() {
         if (sugarValue === null) return;
         await api.post("/api/v1/health/sugar", { sugar_mmol: sugarValue, meal_tag: mealTag, note: note || null });
       } else {
-        await api.post("/api/v1/health/mood", { mood, pain, note: note || null, tag: "вечером" });
+        const body: { mood: string; pain?: number; note: string | null; tag: string } = {
+          mood,
+          note: note || null,
+          tag: "вечером",
+        };
+        if (pain !== null) body.pain = pain;
+        await api.post("/api/v1/health/mood", body);
       }
       if (requestId !== loadRequestId.current) return;
       setSheet(false);
@@ -260,7 +268,12 @@ export default function HealthDiary() {
     if (type === "bp") return { b: `${r.systolic}/${r.diastolic} · ${r.pulse ?? "—"} уд/мин`, s: `${fmtWhen(r.at)}${r.tag ? ` · ${r.tag}` : ""}` };
     if (type === "weight") return { b: `${String(r.weight_kg).replace(".", ",")} кг`, s: `${fmtWhen(r.at)}${r.tag ? ` · ${r.tag}` : ""}` };
     if (type === "sugar") return { b: `${String(r.sugar_mmol).replace(".", ",")} ммоль/л`, s: `${fmtWhen(r.at)}${r.meal_tag ? ` · ${r.meal_tag}` : ""}` };
-    return { b: `${r.mood}${r.pain ? ` · боль ${r.pain}/10` : " · без боли"}`, s: `${fmtWhen(r.at)}${r.note ? ` · ${r.note}` : ""}` };
+    const painText = (r.pain === null || r.pain === undefined)
+      ? " · боль не указана"
+      : r.pain === 0
+        ? " · без боли"
+        : ` · боль ${r.pain}/10`;
+    return { b: `${r.mood}${painText}`, s: `${fmtWhen(r.at)}${r.note ? ` · ${r.note}` : ""}` };
   };
 
   const stroke = type === "weight" ? "#22C55E" : type === "sugar" ? "#DE2129" : "#006DF8";
@@ -478,11 +491,11 @@ export default function HealthDiary() {
               ))}
             </div>
             <div className="mini-btns" style={{ marginBottom: 10 }}>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                 <button type="button" key={n} className={`pick${pain === n ? " on" : ""}`} aria-label={`Боль ${n} из 10`} aria-pressed={pain === n} onClick={() => setPain(n)}>{n}</button>
               ))}
             </div>
-            <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>Боль или дискомфорт, 1–10</div>
+            <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>Боль или дискомфорт, 0–10; 0 — без боли</div>
           </>
         )}
 

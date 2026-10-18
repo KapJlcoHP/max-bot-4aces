@@ -2734,15 +2734,8 @@
             "title": "Title"
           },
           "at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "format": "date-time",
             "title": "At"
           },
           "place": {
@@ -2759,7 +2752,8 @@
         },
         "type": "object",
         "required": [
-          "title"
+          "title",
+          "at"
         ],
         "title": "ReminderAddIn",
         "description": "Данные для создания напоминания."

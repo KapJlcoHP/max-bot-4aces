@@ -339,7 +339,7 @@ class ReminderAddIn(OrmDto):
     """Данные для создания напоминания."""
 
     title: str = Field(min_length=1)
-    at: datetime | None = None
+    at: datetime
     place: str | None = None
 
 

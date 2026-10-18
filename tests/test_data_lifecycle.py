@@ -236,6 +236,24 @@ class DataLifecycleTests(unittest.TestCase):
         self.assertEqual(row.at, datetime(2026, 9, 29, 2))
         self.assertEqual(returned.at.isoformat(), "2026-09-29T10:00:00+08:00")
 
+    def test_reminder_requires_an_explicit_time_instead_of_defaulting_to_tomorrow(self):
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            ReminderAddIn.model_validate({"title": "Не создавать без даты"})
+        self.assertEqual(self.db.query(api.Reminder).count(), 0)
+
+    def test_reminder_rejects_profile_dst_gap_and_ambiguous_wall_time(self):
+        self.user.tz = "America/New_York"
+        self.db.commit()
+        for value in ("2030-03-10T02:30", "2030-11-03T01:30"):
+            with self.subTest(value=value), self.assertRaises(HTTPException) as error:
+                api.add_reminder(
+                    ReminderAddIn(title="DST", at=value), user=self.user, db=self.db
+                )
+            self.assertEqual(error.exception.status_code, 422)
+        self.assertEqual(self.db.query(api.Reminder).count(), 0)
+
     def test_reminder_request_rejects_invalid_payloads(self):
         from pydantic import ValidationError
 

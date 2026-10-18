@@ -271,7 +271,10 @@ def collect_due(db: Session, now: datetime | None = None, *, user_id: int | None
                         user_id=user.id,
                         max_user_id=user.max_user_id,
                         text=f"💊 **Пора принять**: {c.name} — {slot:%H:%M}.",
-                        actions=[("✅ Принято", f"mtake_{c.id}_{slot:%H%M}")],
+                        # Include the local journal day in the callback.  A
+                        # delayed button must never fall back to the day on
+                        # which it is eventually pressed.
+                        actions=[("✅ Принято", f"mtake_{c.id}_{today:%Y%m%d}_{slot:%H%M}")],
                         app_payload="meds",
                         kind="med",
                         ref_id=c.id,
