@@ -248,31 +248,42 @@ export default function StepCard() {
       <Header title={step ? step.title : "Шаг"} subtitle={step ? `Шаг ${step.position} из ${route?.total_steps ?? "…"}` : undefined} back="/route" />
       <div className="screen-body">
         <>
-            <div className="card">
+            {step.kind === "booking" && step.status !== "done" && <BookingEditor key={`booking-${scope}`} step={step} steps={route?.steps ?? []} disabled={busy}
+              onLocked={(locked) => { bookingLock.current = locked; setBookingLocked(locked); }} onSaved={(result) => setRoute(result.route)} onReload={load} />}
+            {step.kind === "booking" && step.status === "done" && <div className="card booking-summary">
+              <h3 className="h3">Запись на событие</h3>
+              <div className="kv" style={{ marginTop: 10 }}><I.cal size={18} />На какую дату вы записались? {step.appointment_date ? fmtDateNumeric(step.appointment_date) : "Дата пока неизвестна"}</div>
+              <div className="kv" style={{ marginTop: 10 }}><I.route size={18} />{route?.steps.find((s) => s.id === step.booking_target_step_id)?.title ?? "Без связи с событием"}</div>
+            </div>}
+
+            {step.kind !== "booking" && <div className="card">
               <p className="muted">{KIND_LABELS[step.kind ?? "unknown"]}</p>
-              {step.kind === "booking" && <p className="muted">{step.appointment_date ? `Полученная дата события: ${fmtDateNumeric(step.appointment_date)}` : "Дата полученного события пока неизвестна"}. {!route?.steps.some((s) => s.id === step.booking_target_step_id) && "Запись не связана с событием."}</p>}
-              {step.deadline && <div className="kv"><I.cal size={18} />{step.kind === "booking" && "Прежний срок действия записи: "}{fmtDeadline(step.deadline, step.deadline_time)}</div>}
+              {step.deadline && <div className="kv"><I.cal size={18} />{fmtDeadline(step.deadline, step.deadline_time)}</div>}
               <div className="step-deadline-meta">
-                {step.status !== "done" && step.deadline && step.deadline_time && <span className="muted">{step.kind === "booking" ? "Прежнее время действия, не время события: " : "В "}{step.deadline_time}</span>}
+                {step.status !== "done" && step.deadline && step.deadline_time && <span className="muted">В {step.deadline_time}</span>}
                 <StepCountdown step={step} tz={user.tz} now={now} />
               </div>
               {step.place && <div className="kv"><I.pin size={18} />{step.place}</div>}
               {step.description && (
                 <div className="kv" style={{ fontWeight: 500, color: "var(--muted)", marginTop: 12 }}>{step.description}</div>
               )}
-            </div>
+            </div>}
 
-            {step.status !== "done" && <StepScheduleEditor key={step.id} step={step} user={user} now={now} disabled={bookingLocked || busy}
-              onSaved={(updated) => setRoute((r) => r ? { ...r, steps: r.steps.map((s) => s.id === updated.id ? updated : s) } : r)} />}
+            {step.status !== "done" && <details className="step-advanced" open={step.kind === "unknown" || step.source === "user"}>
+              <summary>Срок и напоминание</summary>
+              <StepScheduleEditor key={step.id} step={step} user={user} now={now} disabled={bookingLocked || busy}
+                onSaved={(updated) => setRoute((r) => r ? { ...r, steps: r.steps.map((s) => s.id === updated.id ? updated : s) } : r)} />
+            </details>}
 
-            {(step.status !== "done" || step.kind === "unknown") && <StepKindEditor key={`kind-${step.id}`} step={step} steps={route?.steps ?? []} disabled={bookingLocked || busy}
-              onSaved={(updated) => setRoute((r) => r ? { ...r, steps: r.steps.map((s) => s.id === updated.id ? updated : s) } : r)} />}
-            {step.kind === "booking" && step.status !== "done" && <BookingEditor key={`booking-${scope}`} step={step} steps={route?.steps ?? []} disabled={busy}
-              onLocked={(locked) => { bookingLock.current = locked; setBookingLocked(locked); }} onSaved={(result) => setRoute(result.route)} onReload={load} />}
+            {(step.status !== "done" || step.kind === "unknown") && <details className="step-advanced" open={step.kind === "unknown" || step.source === "user"}>
+              <summary>Вид шага и связь</summary>
+              <StepKindEditor key={`kind-${step.id}`} step={step} steps={route?.steps ?? []} disabled={bookingLocked || busy}
+                onSaved={(updated) => setRoute((r) => r ? { ...r, steps: r.steps.map((s) => s.id === updated.id ? updated : s) } : r)} />
+            </details>}
             {step.status !== "done" && step.kind !== "booking" && <Button variant="secondary" onClick={() => nav(`/route?before_step_id=${step.id}`)}>Добавить подготовку перед этим событием</Button>}
 
-            <div className="card step-source">
-              <h3 className="h3">Источник</h3>
+            <details className="card step-source">
+              <summary>Источник</summary>
               {step.source_info ? (
                 <>
                   <p className="step-source-title">
@@ -294,7 +305,7 @@ export default function StepCard() {
                       : "Источник и дата проверки пока не указаны."}
                 </p>
               )}
-            </div>
+            </details>
 
             {step.status === "done" && (
               <div className="card tinted">

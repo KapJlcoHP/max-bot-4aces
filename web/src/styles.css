@@ -706,6 +706,17 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   color: var(--muted);
 }
 .step-source p, .step-source .btn { margin-top: 10px; }
+.step-source > summary, .step-advanced > summary, .booking-advanced > summary, .builder-details > summary {
+  cursor: pointer; color: var(--text); font-size: 14px; font-weight: 700; list-style-position: inside;
+}
+.step-source[open] > summary, .step-advanced[open] > summary, .booking-advanced[open] > summary { margin-bottom: 10px; }
+.step-advanced { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 12px 14px; background: var(--card); }
+.step-advanced > .card { box-shadow: none; padding: 8px 0 0; }
+.booking-advanced { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.booking-advanced p + p { margin-top: 8px; }
+.builder-details { margin-top: 4px; }
+.builder-details > summary { color: var(--blue); font-size: 12px; font-weight: 600; }
+.builder-details > small { display: block; margin-top: 5px; line-height: 1.35; }
 .step-source-title { font-size: 14px; font-weight: 600; }
 .kind-select { display: grid; gap: 6px; margin: 10px 0; font-size: 14px; min-width: 0; width: 100%; }
 .kind-select select, .kind-select input { box-sizing: border-box; max-width: 100%; width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 10px; font: inherit; background: var(--card); color: inherit; }

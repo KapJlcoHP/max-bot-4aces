@@ -27,6 +27,28 @@ test("targets use explicit same-route IDs and order, never title, source or next
   assert.deepEqual(bookingTargets(options, booking).map((s) => s.id), [12, 3]);
 });
 
+test("booking editor keeps date, target and both primary actions visible while advanced details remain available", async () => {
+  const page = editor({ ...booking, appointment_date: "2030-01-20", booking_target_step_id: 3 }, [booking, event]);
+  await page.flush();
+  assert.equal(page.input("На какую дату вы записались?").props.value, "2030-01-20");
+  assert.equal(page.input("Цель записи").props.value, 3);
+  assert.equal(page.button("Сохранить дату").props.disabled, false);
+  assert.equal(page.button("Я записался").props.disabled, false);
+  assert.ok(page.all().some((node) => node.type === "details" && page.text().includes("Подробности записи")));
+});
+
+test("booking step card keeps technical editors and source in compact advanced sections", async () => {
+  const page = reminderHarness("pages/StepCard.tsx", { user, params: { stepId: "1" }, api: {
+    get: async () => ({ ...route, steps: [booking, event] }),
+  } });
+  await page.flush();
+  assert.equal(page.all().filter((node) => node.type === "BookingEditor").length, 1);
+  const detailsText = page.all().filter((node) => node.type === "details").map((node) => JSON.stringify(node.props.children)).join(" ");
+  assert.match(detailsText, /Срок и напоминание/);
+  assert.match(detailsText, /Вид шага и связь/);
+  assert.match(detailsText, /Источник/);
+});
+
 for (const kind of ["unknown", "booking", "investigation", "task", "process"]) {
   test(`${kind} completes normally without assignment sheet; done anchor cannot add assignments`, async () => {
     const value = { ...booking, kind };
@@ -78,7 +100,7 @@ test("booking entered as a doctor assignment stores obtained date, not action de
 test("booking allows unknown date/unlinked receipt, without copying action deadline or event time", async () => {
   const page = editor(); await page.flush();
   assert.match(page.text(), /Дата пока неизвестна/);
-  assert.match(page.text(), /не связана с событием/);
+  assert.match(page.text(), /Без связи с событием/);
   assert.equal(page.input("Цель записи").props.value, "");
   await page.click("Я записался"); await page.flush();
   const body = posts(page)[0].payload;
@@ -320,6 +342,7 @@ test("template builder keeps original positions for insertion and reports exclud
     { position: 20, key: "prep", kind: "task", title: "Подготовка", description: "" }, { position: 30, key: "event", kind: "visit", title: "Визит", description: "" }];
   const page = reminderHarness("pages/Builder.tsx", { user, api: { get: async (path) => path.endsWith("/steps") ? template : [{ key: "doctor", title: "Маршрут" }], post: async () => route } });
   await page.flush(); page.find((n) => n.props?.role === "button").props.onClick(); await page.flush();
+  assert.doesNotMatch(page.text(), /исходная позиция|#book|#event/);
   page.change("Размещение нового шага", "30"); await page.flush();
   await addBuilderStep(page, "Фактическое назначение", "investigation");
   page.find((n) => n.type === "Switch" && n.props.label === "Подготовка").props.onChange(false); await page.flush();

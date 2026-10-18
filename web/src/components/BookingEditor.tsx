@@ -57,8 +57,8 @@ export default function BookingEditor({ step, steps, onSaved, onReload, onLocked
       }
     } finally { if (version === generation.current) { inFlight.current = false; onLocked?.(pending.current !== null); setBusy(false); } }
   };
-  return <div className="card">
-    <h3 className="h3">Полученная запись</h3>
+  return <div className="card booking-editor">
+    <h3 className="h3">Запись на событие</h3>
     <label className="kind-select">На какую дату вы записались?
       <input type="date" aria-label="На какую дату вы записались?" value={date} disabled={locked} onChange={(e) => edit(() => setDate(e.target.value))} />
     </label>
@@ -66,25 +66,28 @@ export default function BookingEditor({ step, steps, onSaved, onReload, onLocked
       <select aria-label="Цель записи" value={targetId ?? ""} disabled={locked} onChange={(e) => edit(() => setTargetId(e.target.value ? Number(e.target.value) : null))}>
         <option value="">Без связи с событием</option>
         {targetId !== null && !target && <option value={targetId} disabled>Цель недоступна — запись не связана</option>}
-        {targets.map((s) => <option key={s.id} value={s.id}>Шаг {s.position}: {s.title} (#{s.id})</option>)}
+        {targets.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
       </select>
     </label>
-    {!date && <p className="muted">Дата пока неизвестна. Можно сохранить сведения и подтвердить запись без даты.</p>}
-    {!target && <p className="muted">Запись не связана с событием. Полученная дата хранится здесь; напоминаний о событии из этой записи нет.</p>}
-    <p className="muted">Это дата полученного события, не срок действия «записаться». Точное время события меняется в его карточке. Очистка этого поля не удаляет дату и таймер события.</p>
-    {target && date && <>
-      <p className="muted">Цель: {target.title} (#{target.id}). Прежнее расписание: {target.deadline ? fmtDeadline(target.deadline, target.deadline_time) : "без даты"}. Новая дата: {date}; время {target.deadline_time ?? "не указано"} сохраняется. Режим: {target.reminder_mode}{target.reminder_at ? `, отдельный таймер ${target.reminder_at}` : ""}.</p>
-      <label className="kind-select">Напоминание целевого события
-        <select aria-label="Напоминание цели" value={action} disabled={locked} onChange={(e) => edit(() => setAction(e.target.value as "keep" | "profile"))}>
-          <option value="keep">Сохранить текущий режим и отдельный таймер</option>
-          <option value="profile">Сбросить отдельный режим — как в профиле</option>
-        </select>
-      </label>
-      {target.reminder_mode === "custom" && action === "keep" && <p className="muted">Абсолютный таймер останется в прежний момент, не сдвинется вместе с датой. Проверьте его; прошедший таймер сервер не сохранит.</p>}
-      {needsConfirmation && <label><input type="checkbox" aria-label="Подтвердить изменение цели" checked={confirmed} disabled={locked} onChange={(e) => { if (!inFlight.current && !pending.current) setConfirmed(e.target.checked); }} /> Проверил прежние дату, точное время и напоминание; подтверждаю изменение цели</label>}
-    </>}
-    {target && <p className="muted">Цель получает уведомления только когда станет текущей; подготовка перед ней задерживает уведомления.</p>}
-    {step.status === "pending" && <p className="muted">Будущую запись можно редактировать, но завершить можно только текущую.</p>}
+    {!date && <p className="muted">Дата пока неизвестна — её можно сохранить позже.</p>}
+    {!target && <p className="muted">Без связи с событием; дата останется только в этой записи.</p>}
+    <details className="booking-advanced">
+      <summary>Подробности записи</summary>
+      <p className="muted">Это дата полученного события, не срок действия «записаться». Точное время события меняется в его карточке. Очистка этого поля не удаляет дату и таймер события.</p>
+      {target && date && <>
+        <p className="muted">Цель: {target.title}. Прежнее расписание: {target.deadline ? fmtDeadline(target.deadline, target.deadline_time) : "без даты"}. Новая дата: {date}; время {target.deadline_time ?? "не указано"} сохраняется. Режим: {target.reminder_mode}{target.reminder_at ? `, отдельный таймер ${target.reminder_at}` : ""}.</p>
+        <label className="kind-select">Напоминание целевого события
+          <select aria-label="Напоминание цели" value={action} disabled={locked} onChange={(e) => edit(() => setAction(e.target.value as "keep" | "profile"))}>
+            <option value="keep">Сохранить текущий режим и отдельный таймер</option>
+            <option value="profile">Сбросить отдельный режим — как в профиле</option>
+          </select>
+        </label>
+        {target.reminder_mode === "custom" && action === "keep" && <p className="muted">Абсолютный таймер останется в прежний момент, не сдвинется вместе с датой. Проверьте его; прошедший таймер сервер не сохранит.</p>}
+        {needsConfirmation && <label><input type="checkbox" aria-label="Подтвердить изменение цели" checked={confirmed} disabled={locked} onChange={(e) => { if (!inFlight.current && !pending.current) setConfirmed(e.target.checked); }} /> Проверил прежние дату, точное время и напоминание; подтверждаю изменение цели</label>}
+      </>}
+      {target && <p className="muted">Цель получает уведомления только когда станет текущей; подготовка перед ней задерживает уведомления.</p>}
+      {step.status === "pending" && <p className="muted">Будущую запись можно редактировать, но завершить можно только текущую.</p>}
+    </details>
     {message && <p role="status">{message}</p>}
     {uncertain ? <Button disabled={busy || disabled} onClick={() => save(false, true)}>Повторить исходную отправку записи</Button> : <div className="btn-row">
       <Button variant="secondary" disabled={locked || needsConfirmation && !confirmed} onClick={() => save(false)}>Сохранить дату</Button>

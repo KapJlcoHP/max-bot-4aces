@@ -5,7 +5,7 @@ import { api } from "../api";
 import { useApp } from "../App";
 import EventDateTimeInputs from "../components/EventDateTimeInputs";
 import StepKindSelect from "../components/StepKindSelect";
-import { canBeBookingTarget, KIND_LABELS } from "../stepKinds";
+import { canBeBookingTarget } from "../stepKinds";
 import type { CustomStepIn, RouteDto, Situation, StepKind } from "../types";
 import { Button, ErrorView, Header, LoadingView, Switch, useToast } from "../components/ui";
 import { I, SituationIcon } from "../icons";
@@ -19,6 +19,11 @@ interface TemplateStep {
   title: string;
   has_checklist: boolean;
 }
+
+const SHORT_KIND_LABELS: Record<StepKind, string> = {
+  unknown: "Вид не уточнён", visit: "Приём", booking: "Запись",
+  investigation: "Исследование", task: "Задача", process: "Этап процесса",
+};
 
 export default function Builder() {
   const { user } = useApp();
@@ -175,10 +180,14 @@ export default function Builder() {
                       }
                     }}
                   >
-                    <div className="what">
-                      <b>{s.title}</b>
-                      <small>{s.description}</small>
-                    </div>
+                      <div className="what">
+                        <b>{s.title}</b>
+                        <small>Готовая основа</small>
+                        {s.description && <details className="builder-details" onClick={(e) => e.stopPropagation()}>
+                          <summary>О шаблоне</summary>
+                          <small>{s.description}</small>
+                        </details>}
+                      </div>
                     <Radio checked={selected === s.key} readOnly aria-label={s.title} />
                   </div>
                 ))}
@@ -231,9 +240,12 @@ export default function Builder() {
                           }
                         }}
                       >
-                        <div className="what"><b>{s.title}</b><small>исходная позиция {s.position} · {KIND_LABELS[s.kind ?? "unknown"]}</small>
-                          {s.description && <small>{s.description}</small>}
-                          {s.kind === "booking" && <small>{s.booking_target_key && templateSteps.some((t) => t.key === s.booking_target_key && !off.has(t.position)) ? `Связь: ${s.booking_target_key}` : "Без связи: цель не задана или исключена. Дата не будет перенесена в другой шаг."}</small>}
+                        <div className="what"><b>{s.title}</b><small>{SHORT_KIND_LABELS[s.kind ?? "unknown"]}</small>
+                          <details className="builder-details" onClick={(e) => e.stopPropagation()}>
+                            <summary>Подробнее</summary>
+                            {s.description && <small>{s.description}</small>}
+                            {s.kind === "booking" && <small>{s.booking_target_key && templateSteps.some((t) => t.key === s.booking_target_key && !off.has(t.position)) ? `Связано с: ${templateSteps.find((t) => t.key === s.booking_target_key)?.title}` : "Без связи: цель не задана или исключена. Дата не будет перенесена в другой шаг."}</small>}
+                          </details>
                         </div>
                         <Switch
                           on={!off.has(s.position)}
@@ -252,8 +264,8 @@ export default function Builder() {
                   <div className="card" style={{ padding: "8px 16px" }}>
                     {custom.map((c, i) => (
                       <div className="rem-item" key={c.client_key} style={{ flexWrap: "wrap" }}>
-                        <div className="what"><b>{c.title}</b><small>{KIND_LABELS[c.kind]}{c.deadline ? ` · ${c.deadline}${c.deadline_time ? ` в ${c.deadline_time}` : ""}` : " · без срока"}</small>
-                          {c.kind === "booking" && <small>Полученная дата: {c.appointment_date ?? "неизвестна"}. {!targetsFor(c.client_key).some((s) => s.key === c.booking_target_key) && "Без связи с событием; напоминаний о нём из этой записи нет."}</small>}
+                        <div className="what"><b>{c.title}</b><small>{SHORT_KIND_LABELS[c.kind]}{c.deadline ? ` · ${c.deadline}${c.deadline_time ? ` в ${c.deadline_time}` : ""}` : " · без срока"}</small>
+                          {c.kind === "booking" && <details className="builder-details" onClick={(e) => e.stopPropagation()}><summary>Дата и связь</summary><small>Полученная дата: {c.appointment_date ?? "неизвестна"}. {!targetsFor(c.client_key).some((s) => s.key === c.booking_target_key) && "Без связи с событием; напоминаний о нём из этой записи нет."}</small></details>}
                         </div>
                         {selected === "custom" && <>
                           <button type="button" aria-label={`Выше: ${c.title}`} disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
@@ -262,14 +274,14 @@ export default function Builder() {
                         {selected !== "custom" && <label className="kind-select">Размещение
                           <select aria-label={`Размещение: ${c.title}`} value={c.before_position ?? ""} onChange={(e) => setCustom((items) => items.map((item, j) => j === i ? { ...item, before_position: e.target.value ? Number(e.target.value) : null } : item))}>
                             <option value="">В конец</option>
-                            {templateSteps.map((s) => <option key={s.position} value={s.position} disabled={off.has(s.position)}>Перед исходной позицией {s.position}: {s.title}{off.has(s.position) ? " (исключена — уточните размещение)" : ""}</option>)}
+                             {templateSteps.map((s) => <option key={s.position} value={s.position} disabled={off.has(s.position)}>Перед: {s.title}{off.has(s.position) ? " (исключена — уточните размещение)" : ""}</option>)}
                           </select>
                         </label>}
                         {c.kind === "booking" && <label className="kind-select">Связанное событие
                           <select aria-label={`Цель записи: ${c.title}`} value={c.booking_target_key ?? ""} onChange={(e) => setCustom((items) => items.map((item, j) => j === i ? { ...item, booking_target_key: e.target.value || null } : item))}>
                             <option value="">Без связи</option>
                             {c.booking_target_key && !targetsFor(c.client_key).some((s) => s.key === c.booking_target_key) && <option value={c.booking_target_key} disabled>Цель исключена или больше не находится после записи — уберите связь</option>}
-                            {targetsFor(c.client_key).map((s) => <option key={s.key} value={s.key!}>{s.title} ({s.key})</option>)}
+                             {targetsFor(c.client_key).map((s) => <option key={s.key} value={s.key!}>{s.title}</option>)}
                           </select>
                         </label>}
                         <button className="picked-item-x" aria-label="Убрать" onClick={() => setCustom((prev) => prev.filter((_, j) => j !== i))}>✕</button>
@@ -285,7 +297,7 @@ export default function Builder() {
                       {selected !== "custom" && <label className="kind-select">Размещение нового шага
                         <select aria-label="Размещение нового шага" value={ownBefore} onChange={(e) => setOwnBefore(e.target.value)}>
                           <option value="">В конец</option>
-                          {templateSteps.filter((s) => !off.has(s.position)).map((s) => <option key={s.position} value={s.position}>Перед исходной позицией {s.position}: {s.title}</option>)}
+                           {templateSteps.filter((s) => !off.has(s.position)).map((s) => <option key={s.position} value={s.position}>Перед: {s.title}</option>)}
                         </select>
                       </label>}
                       <input
@@ -298,8 +310,7 @@ export default function Builder() {
                       {ownKind === "booking" ? <label>На какую дату вы записались?<input type="date" aria-label="На какую дату вы записались?" value={ownDate} onChange={(e) => setOwnDate(e.target.value)} /></label> : <EventDateTimeInputs date={ownDate} time={ownTime} onChange={(d, t) => { setOwnDate(d); setOwnTime(t); }} />}
                       <button className="add" onClick={addOwn} aria-label="Добавить">+</button>
                     </div>
-                    <p className="muted">Проверьте реальные даты. Неизвестную дату можно оставить пустой, время необязательно ({user.tz}). Уведомления получает только текущий шаг.</p>
-                    <p className="muted">Для записи выберите конкретную цель в списке после добавления событий. Дата из новой записи хранится отдельно и не меняет расписание цели до подтверждения в карточке. Разовая процедура и конечный этап курса имеют разные виды.</p>
+                     <p className="muted">Дата необязательна, время — тоже ({user.tz}). Для записи цель выбирается после добавления; её дата не меняет расписание до подтверждения в карточке.</p>
                   </div>
                 </>
               )}
