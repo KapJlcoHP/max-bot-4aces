@@ -5,7 +5,7 @@ import { reminderWallTime } from "../src/stepReminderTime.ts";
 
 const user = { tz: "Asia/Tokyo", notifications_on: true, notify_day_before: true,
   notify_hour_before: true, notify_at_deadline: true, step_day_before_time: "09:15" };
-const step = { id: 4, position: 1, title: "Приём", description: "", place: "", status: "current", source: "user", reason: "", source_info: null,
+const step = { id: 4, kind: "visit", reminder_revision: 0, position: 1, title: "Приём", description: "", place: "", status: "current", source: "user", reason: "", source_info: null,
   deadline: "2030-01-03", deadline_time: "14:00", reminder_mode: "profile", reminder_at: null, activated_at: "2030-01-01T00:00:00Z" };
 const custom = { ...step, reminder_mode: "custom", reminder_at: "2030-01-03T01:30:00Z" };
 const route = { id: 2, title: "Маршрут", total_steps: 1, done_steps: 0, steps: [step] };
@@ -294,8 +294,8 @@ test("completion opens a staged sheet; cancel and backdrop close make no request
   assert.equal(page.all().filter((n) => n.type === "Sheet").length, 0);
   assert.equal(posts(page).length, 0);
   assert.deepEqual(page.navigation, []);
-  assert.match(page.text(), /Почему этот шаг появился/);
-  assert.match(page.text(), /Исходное основание/);
+  assert.doesNotMatch(page.text(), /Почему этот шаг появился|Исходное основание/);
+  assert.match(page.text(), /Источник/);
 });
 
 test("atomic assignment submission preserves displayed order, duplicate titles and optional date/time", async () => {
@@ -320,9 +320,9 @@ test("atomic assignment submission preserves displayed order, duplicate titles a
   assert.equal(path, "/api/v1/route/steps/4/assignments");
   assert.match(payload.request_id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
   assert.deepEqual(clean(payload), { request_id: payload.request_id, complete: true, assignments: [
-    { title: "МРТ", deadline: "2030-01-05", deadline_time: null },
-    { title: "МРТ", deadline: "2030-01-04", deadline_time: "17:30" },
-    { title: "Анализы", deadline: null, deadline_time: null },
+    { title: "МРТ", kind: "task", deadline: "2030-01-05", deadline_time: null },
+    { title: "МРТ", kind: "task", deadline: "2030-01-04", deadline_time: "17:30" },
+    { title: "Анализы", kind: "investigation", deadline: null, deadline_time: null },
   ] });
   assert.equal(page.all().filter((n) => n.type === "Sheet").length, 1);
   assert.deepEqual(page.navigation, []);

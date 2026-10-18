@@ -16,7 +16,7 @@ from core.db.models import (
     BpRecord, ChecklistItem, ExportRequest, FamilyMember, HealthRecord, HealthSetting,
     MedCourse, MedIntake, NotificationLog, Reminder, Route, RouteStep, User,
 )
-from core.db.seed import build_route_for, load_scenarios, pilot_region
+from core.db.seed import build_route_for, pilot_region
 from core.services import complete_route_step
 from core.time import db_utc, user_zone
 
@@ -58,7 +58,7 @@ def is_demo_data(db: Session, user_id: int) -> bool:
     """
     counts = {
         Route: 1,
-        RouteStep: 6,
+        RouteStep: 8,
         ChecklistItem: 4,
         HealthRecord: 68,
         HealthSetting: 4,
@@ -85,6 +85,7 @@ def is_demo_data(db: Session, user_id: int) -> bool:
 
 def wipe_data(db: Session, user: User, commit: bool = True) -> None:
     """Стираем контент, аккаунт и согласие остаются (в отличие от DELETE /me/data)."""
+    user.contains_demo_data = False
     route_ids = db.query(Route.id).filter(Route.user_id == user.id)
     db.query(RouteStep).filter(RouteStep.route_id.in_(route_ids)).delete(synchronize_session=False)
     for model, field in (
@@ -125,27 +126,50 @@ def fill_demo(db: Session, user: User) -> None:
     if not user.region:
         user.region = pilot_region()  # в БД хранится заголовок региона, не его ключ
     try:
-        # --- маршрут «Наблюдаться по хроническому», первые шаги выполнены ---
-        route = build_route_for(db, user, "chronic", commit=False)
+        # Синтетические факты отдельного демо, а не предписания обычного шаблона.
+        route = build_route_for(db, user, "chronic", custom_steps=[
+            {"client_key": "demo-exam", "kind": "investigation", "title": "Демо: ЭКГ по назначению врача",
+             "description": "Синтетическое назначение с состоявшейся демонстрационной консультации: ЭКГ перед контрольным обсуждением. Не рекомендация пользователю."},
+            {"client_key": "demo-result", "kind": "task", "title": "Демо: получить результат ЭКГ",
+             "description": "Синтетический результат ЭКГ получен до контрольного обсуждения."},
+            {"client_key": "demo-book", "kind": "booking", "booking_target_key": "demo-control",
+             "title": "Демо: записаться на контрольный приём", "appointment_date": today + timedelta(days=7)},
+            {"client_key": "demo-control", "kind": "visit", "title": "Демо: будущий контрольный приём",
+             "description": "Синтетический контроль по внесённой в демо рекомендации. Консультация ещё не состоялась."},
+        ], commit=False)
+        route.title = "Демо: синтетическая история наблюдения"
+        user.contains_demo_data = True
+        route.subtitle = "Вымышленные данные и назначения, не медицинские рекомендации"
         steps = (
             db.query(RouteStep)
             .filter(RouteStep.route_id == route.id)
             .order_by(RouteStep.position)
             .all()
         )
-        # Только демо назначает синтетические даты/время из сценария.
-        # Обычный build_route_for создаёт действия без расписания.
-        for step, spec in zip(steps, load_scenarios()["chronic"]["steps"]):
-            step.deadline = today + timedelta(days=spec["in_days"]) if "in_days" in spec else None
-            step.deadline_time = spec.get("time")
-        for i, step in enumerate(steps[:3]):
+        # Бывшая консультация предшествует курсам и фактически внесённым в демо
+        # назначениям; будущий контроль остаётся единственным current.
+        done_days = [33, 33, 32, 31, 7, 6, 5]
+        for step, days_ago in zip(steps, done_days + [-7]):
+            step.deadline = today - timedelta(days=days_ago)
+            step.description = "Демонстрационные синтетические данные. " + (step.description or "")
+            step.place = "Демонстрационная организация (вымышленная)"
+        steps[1].appointment_date = steps[3].deadline
+        steps[3].deadline_time = "10:00"
+        steps[-1].deadline_time = "10:00"
+        for step in steps[4:]:
+            step.source = "doctor"
+            step.source_id = None
+        for step, days_ago in zip(steps[:-1], done_days):
             complete_route_step(
                 db, user.id, step.id,
-                done_date=today - timedelta(days=6 - i * 2),
+                note="Синтетический факт демо, не реальные медицинские данные",
+                done_date=today - timedelta(days=days_ago),
                 commit=False,
             )
 
-        # --- дневники: 30 дней ---
+        # Дневники и отметки только до вчера: запуск ранним утром не создаёт
+        # уже состоявшиеся медицинские события позднее текущего момента.
+        history_day = today - timedelta(days=1)
         bp_rows = []
         for day in range(29, -1, -1):
             drift = day * 0.15
@@ -153,12 +177,12 @@ def fill_demo(db: Session, user: User) -> None:
             dia = int(rng.gauss(90 - drift * 0.6, 4))
             pulse = int(rng.gauss(74, 5))
             bp_rows.append(HealthRecord(
-                user_id=user.id, type="bp", at=_at(day, 8, 10, user.tz, reference_date=today),
+                user_id=user.id, type="bp", at=_at(day, 8, 10, user.tz, reference_date=history_day),
                 systolic=sys, diastolic=dia, pulse=pulse, tag="утром",
             ))
             if rng.random() < 0.4:
                 bp_rows.append(HealthRecord(
-                    user_id=user.id, type="bp", at=_at(day, 19, 30, user.tz, reference_date=today),
+                    user_id=user.id, type="bp", at=_at(day, 19, 30, user.tz, reference_date=history_day),
                     systolic=sys - rng.randint(0, 8),
                     diastolic=dia - rng.randint(0, 5),
                     pulse=pulse + rng.randint(-4, 4), tag="вечером",
@@ -166,7 +190,7 @@ def fill_demo(db: Session, user: User) -> None:
         for day in range(28, -1, -3):
             weight = 84.8 - (28 - day) * 0.06 + rng.uniform(-0.25, 0.25)
             bp_rows.append(HealthRecord(
-                user_id=user.id, type="weight", at=_at(day, 8, 5, user.tz, reference_date=today),
+                user_id=user.id, type="weight", at=_at(day, 8, 5, user.tz, reference_date=history_day),
                 weight_kg=round(weight, 1), tag="утром",
             ))
         for day in range(28, -1, -2):
@@ -174,7 +198,7 @@ def fill_demo(db: Session, user: User) -> None:
                 pre = rng.random() < 0.5
                 value = round(rng.gauss(5.4 if pre else 6.6, 0.45), 1)
                 bp_rows.append(HealthRecord(
-                    user_id=user.id, type="sugar", at=_at(day, 9 if pre else 11, 40, user.tz, reference_date=today),
+                    user_id=user.id, type="sugar", at=_at(day, 9 if pre else 11, 40, user.tz, reference_date=history_day),
                     sugar_mmol=value, meal_tag="до еды" if pre else "после еды",
                 ))
         for day, mood, pain, note in (
@@ -184,7 +208,7 @@ def fill_demo(db: Session, user: User) -> None:
             (2, "Нормально", 3, None),
         ):
             bp_rows.append(HealthRecord(
-                user_id=user.id, type="mood", at=_at(day, 21, 15, user.tz, reference_date=today),
+                user_id=user.id, type="mood", at=_at(day, 21, 15, user.tz, reference_date=history_day),
                 mood=mood, pain=pain, note=note,
             ))
         db.add_all(bp_rows)
@@ -207,12 +231,12 @@ def fill_demo(db: Session, user: User) -> None:
         # --- курсы лекарств + отметки приёма за 30 дней ---
         courses = [
             MedCourse(
-                user_id=user.id, name="Эналаприл 10 мг", times=["08:00", "20:00"],
-                created_at=_at(29, 8, 0, user.tz, reference_date=today), until=today + timedelta(days=27),
+                user_id=user.id, name="Демо: Эналаприл 10 мг", times=["08:00", "20:00"],
+                created_at=_at(29, 8, 0, user.tz, reference_date=history_day), until=today + timedelta(days=27),
             ),
             MedCourse(
-                user_id=user.id, name="Аторвастатин 20 мг", times=["21:00"],
-                created_at=_at(29, 8, 0, user.tz, reference_date=today), until=today + timedelta(days=27),
+                user_id=user.id, name="Демо: Аторвастатин 20 мг", times=["21:00"],
+                created_at=_at(29, 8, 0, user.tz, reference_date=history_day), until=today + timedelta(days=27),
             ),
         ]
         db.add_all(courses)
@@ -223,19 +247,19 @@ def fill_demo(db: Session, user: User) -> None:
                     if rng.random() < 0.93:
                         db.add(MedIntake(
                             course_id=course.id, user_id=user.id,
-                            day=today - timedelta(days=day), at_time=at_time,
-                            taken_at=_at(day, int(at_time[:2]), int(at_time[3:]), user.tz, reference_date=today),
+                            day=history_day - timedelta(days=day), at_time=at_time,
+                            taken_at=_at(day, int(at_time[:2]), int(at_time[3:]), user.tz, reference_date=history_day),
                         ))
 
-        # --- будущие визиты, чтобы боту было что напоминать ---
+        # Независимые напоминания не имитируют запись/таймер событий маршрута.
         db.add(Reminder(
-            user_id=user.id, title="Кардиолог — плановый приём",
-            place="Консультативно-диагностический центр, каб. 12",
+            user_id=user.id, title="Демо: независимое напоминание — подготовить вопросы",
+            place="Отдельное от маршрута, только для этого аккаунта",
             at=db_utc(datetime.combine(today + timedelta(days=6), dtime(10, 0)), user_zone(user.tz)),
         ))
         db.add(Reminder(
-            user_id=user.id, title="УЗИ почек натощак",
-            place="Поликлиника по месту прикрепления",
+            user_id=user.id, title="Демо: независимое напоминание — проверить личные записи",
+            place="Отдельное от маршрута, только для этого аккаунта",
             at=db_utc(datetime.combine(today + timedelta(days=12), dtime(9, 0)), user_zone(user.tz)),
         ))
         db.commit()

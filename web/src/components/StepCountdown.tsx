@@ -2,7 +2,7 @@ import { deadlineCountdown } from "../format";
 import type { Step } from "../types";
 
 export default function StepCountdown({ step, tz, now }: {
-  step: Pick<Step, "status" | "deadline" | "deadline_time">;
+  step: Pick<Step, "status" | "deadline" | "deadline_time" | "kind">;
   tz: string;
   now: Date;
 }) {
@@ -10,7 +10,7 @@ export default function StepCountdown({ step, tz, now }: {
   const countdown = deadlineCountdown(step.deadline, step.deadline_time, tz, now);
   return (
     <span className={`step-countdown${countdown.overdue ? " is-overdue" : ""}${!step.deadline ? " no-deadline" : ""}`}>
-      {countdown.text}
+      {step.kind === "booking" && (step.deadline ? "Прежний срок действия записи: " : "Срок действия записи: ")}{countdown.text}
     </span>
   );
 }

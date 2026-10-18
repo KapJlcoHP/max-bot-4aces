@@ -34,6 +34,7 @@ from core.services import (
 )
 from bot.exporter import send_health_pdf
 from bot.throttle import throttled
+from bot.step_text import booking_information, completion_label, deadline_label
 
 log = logging.getLogger("bot.actions")
 
@@ -112,8 +113,13 @@ async def status_command(event: MessageCreated):
             filter(None, [step.deadline.strftime("%d.%m") if step.deadline else "", step.deadline_time or ""])
         )
         if when:
-            parts.append(f"Срок: {when}")
-        kb = push_keyboard(username, [("✅ Выполнить шаг", f"sdone_{step.id}")], app_payload=f"step_{step.id}")
+            parts.append(f"{deadline_label(step)}: {when}")
+        if step.kind == "booking":
+            parts.append(booking_information(step))
+            parts.append("Полученную дату внесите в карточке записи до завершения. Кнопка в чате только подтверждает запись и не меняет дату/выполнение будущего события.")
+        elif step.kind == "visit":
+            parts.append("В чате визит завершается без ввода назначений. Внести их можно в карточке визита, в том числе после завершения.")
+        kb = push_keyboard(username, [(completion_label(step), f"sdone_{step.id}")], app_payload=f"step_{step.id}")
         await event.message.answer("\n".join(parts), attachments=[kb.as_markup()])
 
 
@@ -161,10 +167,11 @@ async def demo_command(event: MessageCreated):
             return
     await event.message.answer(
         "🎲 Аккаунт заполнен **модельными данными** для демонстрации:\n\n"
-        "• маршрут «Наблюдаться по хроническому» — первые шаги выполнены\n"
+        "• синтетическая история: прошедший приём, внесённые назначения и будущий контроль\n"
         "• дневники за 30 дней: давление и пульс, вес, сахар, самочувствие\n"
         "• курсы лекарств с отметками приёма\n"
-        "• два будущих визита — придут напоминания\n\n"
+        "• два отдельных независимых напоминания, не шаги маршрута\n"
+        "• уведомления маршрута — только о текущем шаге при включённых настройках\n\n"
         "Откройте приложение и смотрите: маршрут, графики, «Сводка для врача» — /svodka.\n"
         "Убрать демо-данные: /wipe."
     )
@@ -253,7 +260,16 @@ async def cb_step_done(event: MessageCallback):
         except ServiceError as e:
             await event.answer(notification=str(e))
             return
-    await event.answer(new_text=f"✅ Шаг выполнен: {step.title}", attachments=[])
+    text = f"✅ Шаг выполнен: {step.title}"
+    payload = f"step_{step.id}"
+    if step.kind == "visit":
+        text += "\nВизит завершён без внесения назначений. Их можно записать в карточке выполненного врачебного визита."
+    elif step.kind == "booking":
+        text += "\nПодтверждена только запись. Дата и выполнение будущего события не изменены. Неизвестную дату можно задать в карточке самого события."
+        payload = f"step_{step.booking_target_step_id}" if step.booking_target_step_id else "route"
+    username = _username(event)
+    attachments = [open_app_keyboard(username, payload=payload).as_markup()] if username and step.kind in {"visit", "booking"} else []
+    await event.answer(new_text=text, attachments=attachments)
 
 
 @router.message_callback(F.callback.payload.startswith("rdone_"))

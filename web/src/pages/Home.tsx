@@ -92,8 +92,9 @@ export default function Home() {
               {nextStep ? (
                 <>
                   <p className="home-focus-deadline">
-                    {nextStep.deadline && <span>{fmtDeadline(nextStep.deadline, nextStep.deadline_time)}</span>}
-                    <strong>{countdown.text}</strong>
+                    {nextStep.kind === "booking" && <span>{nextStep.appointment_date ? `Полученная дата события: ${nextStep.appointment_date}` : "Дата полученного события неизвестна"}. {!route!.steps.some((s) => s.id === nextStep.booking_target_step_id) && "Без связи с событием."}</span>}
+                    {nextStep.deadline && <span>{nextStep.kind === "booking" && "Прежний срок действия записи: "}{fmtDeadline(nextStep.deadline, nextStep.deadline_time)}</span>}
+                    <strong>{nextStep.kind === "booking" && "Срок действия записи: "}{countdown.text}</strong>
                   </p>
                   <p className="muted">{route!.title} · Шаг {nextStep.position} из {route!.total_steps}</p>
                 </>

@@ -25,7 +25,7 @@ from core.db.models import (
     utcnow,
 )
 from core.db.seed import load_catalog, load_regions, load_scenarios, refresh_route_clinic
-from core.schemas import ClinicChangeIn, ConsentIn, RegionDto, SettingsIn, SituationDto, UserDto
+from core.schemas import ClinicChangeIn, ConsentIn, RegionDto, SettingsIn, SituationDto, TemplateStepDto, UserDto
 from server.deps import PendingUser
 from .common import (
     apply_diary_settings,
@@ -261,12 +261,14 @@ def catalog(user: User = Depends(consented_user)):
     return [SituationDto(**s) for s in load_catalog()]
 
 
-@router.get("/catalog/{key}/steps")
+@router.get("/catalog/{key}/steps", response_model=list[TemplateStepDto])
 def catalog_steps(key: str, user: User = Depends(consented_user)):
     spec = load_scenarios().get(key)
     if spec is None:
         raise HTTPException(status_code=404, detail="Неизвестная ситуация")
     return [
-        {"position": i, "title": s["title"], "has_checklist": s.get("has_checklist", False)}
+        {"position": i, "title": s["title"], "has_checklist": s.get("has_checklist", False),
+         "key": s.get("key"), "kind": s.get("kind", "unknown"),
+         "booking_target_key": s.get("booking_target_key"), "description": s.get("description", "")}
         for i, s in enumerate(spec["steps"], start=1)
     ]

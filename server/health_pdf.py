@@ -207,6 +207,16 @@ def build_health_pdf(db: Session, user: User, report: HealthReportOut, enabled: 
         ),
         Spacer(1, 4),
     ]
+    if user.contains_demo_data:
+        story.extend([
+            Paragraph("ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ", st["h2"]),
+            Paragraph(
+                "Аккаунт содержит синтетические записи демо. После загрузки демо могли быть добавлены свои записи; "
+                "проверьте происхождение данных перед использованием. Это не подтверждённая медицинская история.",
+                st["body"],
+            ),
+            Spacer(1, 6),
+        ])
 
     # ---- агрегаты ----
     agg: list[str] = []

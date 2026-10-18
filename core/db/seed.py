@@ -163,6 +163,63 @@ def seed_organizations(db: Session) -> None:
     db.commit()
 
 
+def _route_plan(
+    template_steps: list[dict], exclude: set[int], custom_steps: list[dict],
+) -> list[tuple[dict, str, str | None]]:
+    """Validate stable identities and placement before writing any route rows."""
+    from core.services import ServiceError
+
+    allowed_kinds = {"unknown", "visit", "booking", "investigation", "task", "process"}
+    template_keys = [step["key"] for step in template_steps]
+    custom_keys = [step.get("client_key") for step in custom_steps if step.get("client_key") is not None]
+    keys = template_keys + custom_keys
+    if any(not isinstance(key, str) or not key.strip() for key in keys) or len(keys) != len(set(keys)):
+        raise ServiceError("Ключи шагов должны быть непустыми и уникальными")
+    retained = {i for i in range(1, len(template_steps) + 1) if i not in exclude}
+    before: dict[int, list[dict]] = {}
+    appended = []
+    for step in custom_steps:
+        position = step.get("before_position")
+        if position is None:
+            appended.append(step)
+        elif type(position) is not int or position not in retained:
+            raise ServiceError("Позиция для вставки отсутствует или исключена из шаблона")
+        else:
+            before.setdefault(position, []).append(step)
+
+    plan = []
+    for position, step in enumerate(template_steps, 1):
+        if position in retained:
+            plan.extend((own, "user", own.get("client_key")) for own in before.get(position, []))
+            plan.append((step, "template", step["key"]))
+    plan.extend((own, "user", own.get("client_key")) for own in appended)
+    positions = {key: index for index, (_, _, key) in enumerate(plan) if key is not None}
+    excluded_keys = {step["key"] for i, step in enumerate(template_steps, 1) if i in exclude}
+    for index, (step, source, _) in enumerate(plan):
+        kind = step.get("kind", "unknown")
+        if kind not in allowed_kinds:
+            raise ServiceError("Неизвестный вид шага")
+        if source == "user" and kind == "booking" and (step.get("deadline_time") or step.get("time")):
+            raise ServiceError("Для действия записи не задаётся точное время оформления")
+        if step.get("appointment_date") is not None and kind != "booking":
+            raise ServiceError("Полученная дата доступна только для записи")
+        target_key = step.get("booking_target_key")
+        if target_key is None:
+            continue
+        if kind != "booking":
+            raise ServiceError("Связь с событием доступна только для записи")
+        if target_key in excluded_keys:
+            continue  # Explicitly excluded template targets stay unlinked.
+        target_index = positions.get(target_key)
+        if target_index is None:
+            raise ServiceError("Целевой ключ записи не найден в этом маршруте")
+        if target_index <= index:
+            raise ServiceError("Цель записи должна находиться после неё")
+        if plan[target_index][0].get("kind", "unknown") not in {"visit", "investigation", "task", "process"}:
+            raise ServiceError("Цель записи должна быть событием известного вида, а не другой записью")
+    return plan
+
+
 def _build_route(
     db: Session,
     user: User,
@@ -170,10 +227,7 @@ def _build_route(
     exclude_positions: list[int] | None = None,
     custom_steps: list[dict] | None = None,
 ) -> Route:
-    """Маршрут из шаблона (с возможным выключением шагов) или с нуля + свои шаги в конце.
-
-    exclude_positions — 1-based позиции шагов шаблона, которые пользователь выключил в конструкторе.
-    """
+    """Build a new route; before_position always addresses the original template."""
     exclude = set(exclude_positions or [])
 
     if situation_key == "custom":
@@ -182,51 +236,43 @@ def _build_route(
     else:
         spec = load_scenarios()[situation_key]
         route = Route(user_id=user.id, situation_key=situation_key, title=spec["route_title"])
-        template_steps = [s for i, s in enumerate(spec["steps"], start=1) if i not in exclude]
+        template_steps = spec["steps"]
+
+    plan = _route_plan(template_steps, exclude, custom_steps or [])
 
     clinic = clinic_for_user(db, user)
 
     db.add(route)
     db.flush()
 
-    position = 0
-    for step in template_steps:
-        status = "current" if position == 0 else "pending"
-        position += 1
-        db.add(
-            RouteStep(
-                route_id=route.id,
-                position=position,
-                title=step["title"],
-                description=_clinic_text(step.get("description", ""), clinic),
-                place=_clinic_place(step.get("place", ""), clinic),
-                deadline=None,
-                deadline_time=None,
-                status=status,
-                has_checklist=step.get("has_checklist", False),
-                source="template",
-                source_id=step.get("source_id"),
-            )
+    created = []
+    by_key = {}
+    for position, (step, source, key) in enumerate(plan, 1):
+        stored = RouteStep(
+            route_id=route.id,
+            position=position,
+            title=step["title"],
+            description=_clinic_text(step.get("description", ""), clinic) if source == "template" else step.get("description", ""),
+            place=_clinic_place(step.get("place", ""), clinic) if source == "template" else step.get("place", ""),
+            deadline=step.get("deadline") if source == "user" else None,
+            deadline_time=(step.get("deadline_time") or step.get("time")) if source == "user" else None,
+            appointment_date=step.get("appointment_date") if source == "user" else None,
+            kind=step.get("kind", "unknown"),
+            template_key=key if source == "template" else None,
+            status="current" if position == 1 else "pending",
+            has_checklist=step.get("has_checklist", False),
+            source=source,
+            source_id=step.get("source_id"),
         )
-    for step in custom_steps or []:
-        deadline = step.get("deadline")
-        position += 1
-        db.add(
-            RouteStep(
-                route_id=route.id,
-                position=position,
-                title=step["title"],
-                description="",
-                place=step.get("place", ""),
-                deadline=deadline,
-                deadline_time=step.get("deadline_time") or step.get("time"),
-                status="pending",
-                source="user",
-            )
-        )
-    steps = db.query(RouteStep).filter(RouteStep.route_id == route.id).order_by(RouteStep.position).all()
-    if steps and not any(s.status == "current" for s in steps):
-        steps[0].status = "current"
+        db.add(stored)
+        created.append(stored)
+        if key is not None:
+            by_key[key] = stored
+    db.flush()  # Links address concrete IDs, never names, positions or the next visit.
+    for (step, _, _), stored in zip(plan, created):
+        target = by_key.get(step.get("booking_target_key"))
+        stored.booking_target_step_id = target.id if target is not None else None
+    db.flush()
     return route
 
 
@@ -254,8 +300,8 @@ def build_route_for(
     commit: bool = True,
 ) -> Route:
     """Новая активная ситуация: прежний активный маршрут гасим, чек-лист обновляем."""
-    db.query(Route).filter(Route.user_id == user.id, Route.active.is_(True)).update({"active": False})
     route = _build_route(db, user, situation_key, exclude_positions, custom_steps)
+    db.query(Route).filter(Route.user_id == user.id, Route.active.is_(True), Route.id != route.id).update({"active": False})
     db.query(ChecklistItem).filter(ChecklistItem.user_id == user.id).delete()
     _seed_checklist(db, user, situation_key)
     if commit:

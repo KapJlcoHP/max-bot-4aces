@@ -171,21 +171,21 @@ class ClinicIntegrationTests(unittest.TestCase):
         self.db.commit()
 
         route = api.start_route(api.RouteStartIn(situation_key="chronic"), user=user, db=self.db)
-        visit = next(step for step in route.steps if step.title == "Ближайший визит к врачу")
+        visit = next(step for step in route.steps if step.kind == "visit")
         self.assertIn("Поликлиника не выбрана", visit.place)
 
         api.update_settings(
             SettingsIn(attached_clinic_id=self.ivanovo.id), user=user, db=self.db,
         )
         refreshed = api.get_route(user=user, db=self.db)
-        refreshed_visit = next(step for step in refreshed.steps if step.title == "Ближайший визит к врачу")
+        refreshed_visit = next(step for step in refreshed.steps if step.id == visit.id)
         self.assertIn(self.ivanovo.title, refreshed_visit.place)
         self.assertIn(self.ivanovo.address, refreshed_visit.place)
 
         api.update_settings(SettingsIn(region="Владимирская область", confirm_clinic_reset=True,
                                        expected_region=user.region, expected_clinic_id=self.ivanovo.id), user=user, db=self.db)
         restored = api.get_route(user=user, db=self.db)
-        restored_visit = next(step for step in restored.steps if step.title == "Ближайший визит к врачу")
+        restored_visit = next(step for step in restored.steps if step.id == visit.id)
         self.assertIn("Поликлиника не выбрана", restored_visit.place)
 
 

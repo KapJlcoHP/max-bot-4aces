@@ -160,21 +160,24 @@ class SeedStageATests(unittest.TestCase):
 
     def assert_demo_day(self, user, today):
         route = self.db.query(Route).filter_by(user_id=user.id).one()
-        specs = seed.load_scenarios()["chronic"]["steps"]
-        for step, spec in zip(route.steps, specs):
-            self.assertEqual(step.deadline, today + timedelta(days=spec["in_days"]))
-            self.assertEqual(step.deadline_time, spec.get("time"))
-        for index, step in enumerate(route.steps[:3]):
+        days_ago = [33, 33, 32, 31, 7, 6, 5, -7]
+        self.assertEqual(len(route.steps), len(days_ago))
+        for index, (step, days) in enumerate(zip(route.steps, days_ago)):
+            self.assertEqual(step.deadline, today - timedelta(days=days))
+            self.assertEqual(step.deadline_time, "10:00" if index in (3, 7) else None)
+        for step, days in zip(route.steps[:-1], days_ago):
             self.assertEqual(user_local(step.completed_at, user.tz).date(),
-                             today - timedelta(days=6 - index * 2))
+                             today - timedelta(days=days))
+        self.assertEqual(route.steps[-1].status, "current")
+        self.assertIsNone(route.steps[-1].completed_at)
         records = self.db.query(HealthRecord).filter_by(user_id=user.id).all()
-        self.assertEqual(max(user_local(row.at, user.tz).date() for row in records), today)
+        self.assertEqual(max(user_local(row.at, user.tz).date() for row in records), today - timedelta(days=1))
         courses = self.db.query(MedCourse).filter_by(user_id=user.id).all()
         self.assertEqual({row.until for row in courses}, {today + timedelta(days=27)})
         self.assertEqual({user_local(row.created_at, user.tz).date() for row in courses},
-                         {today - timedelta(days=29)})
+                          {today - timedelta(days=30)})
         intakes = self.db.query(MedIntake).filter_by(user_id=user.id).all()
-        self.assertEqual(max(row.day for row in intakes), today)
+        self.assertEqual(max(row.day for row in intakes), today - timedelta(days=1))
         for row in intakes:
             local = user_local(row.taken_at, user.tz)
             self.assertEqual((local.date(), local.strftime("%H:%M")), (row.day, row.at_time))

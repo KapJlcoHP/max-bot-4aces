@@ -230,7 +230,30 @@ def test_real_pending_consent_account_creation_race_cannot_replace_first_choice(
         engine.dispose()
 
 
-def test_new_routes_first_choice_change_reset_and_completed_facts(fixture):
+@pytest.fixture
+def clinic_scenario(monkeypatch):
+    # Keep clinic/history regressions independent of editorial scenario length
+    # and titles: this synthetic template deliberately has several clinic facts.
+    from core.db import seed
+
+    scenarios = seed.load_scenarios()
+    scenarios["doctor"] = {
+        "route_title": "Synthetic clinic projection",
+        "steps": [
+            {"key": "test-intro", "kind": "task", "title": "Выбрать поликлинику",
+             "description": "Уточните порядок в {clinic}.", "place": "{clinic}"},
+            {"key": "test-visit", "kind": "visit", "title": "Приём у врача", "place": "{clinic}"},
+            {"key": "test-repeat", "kind": "visit", "title": "Повторный визит", "place": "{clinic}"},
+            {"key": "test-final", "kind": "visit", "title": "Финальный приём", "place": "{clinic}"},
+            {"key": "test-exam", "kind": "investigation", "title": "Профильное обследование",
+             "place": "Диагностический центр"},
+        ],
+        "checklist": [],
+    }
+    monkeypatch.setattr(seed, "load_scenarios", lambda: scenarios)
+
+
+def test_new_routes_first_choice_change_reset_and_completed_facts(fixture, clinic_scenario):
     db, user, (first, second, _, _) = fixture
     route = build_route_for(db, user, "doctor")
     for step in route.steps:
@@ -259,7 +282,7 @@ def test_new_routes_first_choice_change_reset_and_completed_facts(fixture):
     assert done.place == "Историческая клиника, кабинет 7"
 
 
-def test_saved_legacy_dto_and_bot_projection_never_write_on_get(fixture):
+def test_saved_legacy_dto_and_bot_projection_never_write_on_get(fixture, clinic_scenario):
     db, user, (first, second, _, _) = fixture
     route = build_route_for(db, user, "doctor")
     visit = next(step for step in route.steps if step.title == "Приём у врача")
@@ -295,7 +318,7 @@ def test_saved_legacy_dto_and_bot_projection_never_write_on_get(fixture):
     assert "№12" not in introduction.description
 
 
-def test_stale_route_identity_does_not_overwrite_completed_or_manually_edited_fact(fixture):
+def test_stale_route_identity_does_not_overwrite_completed_or_manually_edited_fact(fixture, clinic_scenario):
     db, user, (first, _, _, _) = fixture
     route = build_route_for(db, user, "doctor")
     visit = next(step for step in route.steps if step.title == "Приём у врача")
@@ -312,7 +335,7 @@ def test_stale_route_identity_does_not_overwrite_completed_or_manually_edited_fa
     assert edited.place == "Уточнённое место"
 
 
-def test_unrelated_manual_doctor_duplicate_and_inactive_steps_not_bound(fixture):
+def test_unrelated_manual_doctor_duplicate_and_inactive_steps_not_bound(fixture, clinic_scenario):
     db, user, (first, _, _, _) = fixture
     choose(db, user, first.id)
     route = build_route_for(db, user, "doctor")

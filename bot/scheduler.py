@@ -32,6 +32,7 @@ from core.db.session import SessionLocal
 from core.diary_settings import diary_settings
 from core.services import active_route
 from core.time import db_utc, local_day_bounds, normalize_clock_time, strict_local_utc, user_local, user_zone
+from bot.step_text import booking_information, completion_label, deadline_label
 
 log = logging.getLogger("bot.scheduler")
 
@@ -167,6 +168,7 @@ def collect_due(db: Session, now: datetime | None = None, *, user_id: int | None
                     mode, step.reminder_at, step.reminder_revision, step.activated_at,
                     user.tz, user.notifications_on, user.notify_day_before,
                     user.notify_hour_before, user.notify_at_deadline, user.step_day_before_time,
+                    step.kind, step.appointment_date, step.booking_target_step_id,
                 )
                 for lead, start, end in leads:
                     # A newly current step starts only future windows. A
@@ -178,18 +180,24 @@ def collect_due(db: Session, now: datetime | None = None, *, user_id: int | None
                     dedup_lead = f"{lead}:{step.reminder_revision}" if step.reminder_revision else lead
                     if not (start <= instant_now < end) or logged("step", step.id, dedup_lead):
                         continue
+                    text = (
+                        (f"⏰ **Пора**: «{step.title}» — срок наступил." if has_time else
+                         f"⏰ **Сегодня срок шага**: «{step.title}». Время события не указано.")
+                        if lead == "now" else
+                        f"⏰ **Напоминание о шаге**\n«{step.title}» — срок {_when_desc(due_at, user_now, has_time)}.\n"
+                        "Отметить выполнение можно прямо здесь."
+                    )
+                    if step.kind == "booking":
+                        text += f"\n{deadline_label(step)}. {booking_information(step)}"
+                        text += "\nДату внесите в карточке записи до завершения. Кнопка в чате не меняет дату/выполнение будущего события."
+                    elif step.kind == "visit":
+                        text += "\nВ чате визит завершается без ввода назначений; их можно добавить в карточке выполненного визита."
                     pushes.append(
                         Push(
                             user_id=user.id,
                             max_user_id=user.max_user_id,
-                            text=(
-                                (f"⏰ **Пора**: «{step.title}» — срок наступил." if has_time else
-                                 f"⏰ **Сегодня срок шага**: «{step.title}». Время события не указано.")
-                                if lead == "now" else
-                                f"⏰ **Напоминание о шаге**\n«{step.title}» — срок {_when_desc(due_at, user_now, has_time)}.\n"
-                                "Отметить выполнение можно прямо здесь."
-                            ),
-                            actions=[("✅ Выполнить шаг", f"sdone_{step.id}")],
+                            text=text,
+                            actions=[(completion_label(step), f"sdone_{step.id}")],
                             app_payload=f"step_{step.id}",
                             kind="step",
                             ref_id=step.id,

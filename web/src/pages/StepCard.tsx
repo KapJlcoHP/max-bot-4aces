@@ -6,20 +6,29 @@ import { useNow } from "../hooks/useNow";
 import StepCountdown from "../components/StepCountdown";
 import StepScheduleEditor from "../components/StepScheduleEditor";
 import EventDateTimeInputs from "../components/EventDateTimeInputs";
+import StepKindSelect from "../components/StepKindSelect";
+import StepKindEditor from "../components/StepKindEditor";
+import BookingEditor from "../components/BookingEditor";
 import { openExternalLink } from "../bridge";
 import { fmtDateNumeric, fmtDeadline, fmtDayMonth } from "../format";
-import type { RouteDto, Step, StepAssignmentsIn, StepAssignmentsResult } from "../types";
+import type { CompleteStepResult, RouteDto, Step, StepKind, StepAssignmentsIn, StepAssignmentsResult } from "../types";
+import { KIND_LABELS } from "../stepKinds";
 import { Button, ErrorView, Header, LoadingView, Sheet, StateView, useToast } from "../components/ui";
 import { I } from "../icons";
 
 interface Picked {
   title: string;
+  kind: StepKind;
   date: string; // YYYY-MM-DD или ""
   time: string;
   own: boolean;
 }
 
-const CHIPS = ["Анализы", "УЗИ", "Специалист", "Процедуры", "Прививка"];
+const CHIPS: { title: string; kind: StepKind }[] = [
+  { title: "Анализы", kind: "investigation" }, { title: "УЗИ", kind: "investigation" },
+  { title: "Приём специалиста", kind: "visit" }, { title: "Разовая процедура", kind: "investigation" },
+  { title: "Этап курса процедур", kind: "process" }, { title: "Прививка", kind: "investigation" },
+];
 
 export default function StepCard() {
   const { user } = useApp();
@@ -30,11 +39,14 @@ export default function StepCard() {
   const [route, setRoute] = useState<RouteDto | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
+  const [bookingLocked, setBookingLocked] = useState(false);
+  const bookingLock = useRef(false);
   const [assignSheet, setAssignSheet] = useState(false);
   const [picked, setPicked] = useState<Picked[]>([]);
   const [ownName, setOwnName] = useState("");
   const [ownDate, setOwnDate] = useState("");
   const [ownTime, setOwnTime] = useState("");
+  const [ownKind, setOwnKind] = useState<StepKind>("task");
   const [ownAttempted, setOwnAttempted] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const [assignmentError, setAssignmentError] = useState("");
@@ -50,6 +62,7 @@ export default function StepCard() {
     setOwnName("");
     setOwnDate("");
     setOwnTime("");
+    setOwnKind("task");
     setOwnAttempted(false);
     setUncertain(false);
     setAssignmentError("");
@@ -71,6 +84,7 @@ export default function StepCard() {
   };
   useEffect(() => {
     inFlight.current = false;
+    bookingLock.current = false; setBookingLocked(false);
     setBusy(false);
     setAssignSheet(false);
     clearDraft();
@@ -80,9 +94,17 @@ export default function StepCard() {
 
   const step: Step | null = useMemo(() => route?.steps.find((s) => String(s.id) === stepId) ?? null, [route, stepId]);
 
-  const complete = () => {
-    if (!step || step.status !== "current" || inFlight.current || scope !== activeScope.current) return;
-    setAssignSheet(true);
+  const complete = async () => {
+    if (!step || step.status !== "current" || inFlight.current || bookingLock.current || scope !== activeScope.current) return;
+    if (step.kind === "visit") { setAssignSheet(true); return; }
+    const version = loadRequestId.current;
+    inFlight.current = true; setBusy(true);
+    try {
+      const result = await api.post<CompleteStepResult>(`/api/v1/route/steps/${step.id}/complete`);
+      if (version !== loadRequestId.current || scope !== activeScope.current) return;
+      setRoute(result.route); showToast("Шаг выполнен"); nav("/route");
+    } catch { if (version === loadRequestId.current && scope === activeScope.current) showToast("Не удалось подтвердить выполнение. Обновите маршрут"); }
+    finally { if (version === loadRequestId.current && scope === activeScope.current) { inFlight.current = false; setBusy(false); } }
   };
 
   const closeAssignments = () => {
@@ -110,12 +132,12 @@ export default function StepCard() {
     }
   };
 
-  const toggleChip = (title: string) => {
+  const toggleChip = ({ title, kind }: { title: string; kind: StepKind }) => {
     if (inFlight.current || pendingSubmission.current) return;
     setPicked((prev) =>
       prev.some((p) => p.title === title && !p.own)
         ? prev.filter((p) => !(p.title === title && !p.own))
-        : [...prev, { title, date: "", time: "", own: false }],
+        : [...prev, { title, kind, date: "", time: "", own: false }],
     );
   };
 
@@ -127,7 +149,7 @@ export default function StepCard() {
       showToast("Напишите название назначения — оно подсвечено красным");
       return;
     }
-    setPicked((prev) => [{ title: name, date: ownDate, time: ownTime, own: true }, ...prev]);
+    setPicked((prev) => [{ title: name, kind: ownKind, date: ownDate, time: ownTime, own: true }, ...prev]);
     setOwnName("");
     setOwnDate("");
     setOwnTime("");
@@ -135,7 +157,7 @@ export default function StepCard() {
   };
 
   const saveAssignments = async (withoutAssignments = false, retry = false) => {
-    if (!step || !["current", "done"].includes(step.status) || inFlight.current || scope !== activeScope.current) return;
+    if (!step || step.kind !== "visit" || !["current", "done"].includes(step.status) || inFlight.current || scope !== activeScope.current) return;
     // An unknown outcome can only retry the frozen original request, never the edited draft.
     if (pendingSubmission.current && !retry) return;
     if (retry && !pendingSubmission.current) return;
@@ -144,8 +166,10 @@ export default function StepCard() {
       complete: step.status === "current",
       assignments: withoutAssignments ? [] : picked.map((p) => ({
         title: p.title,
-        deadline: p.date || null,
-        deadline_time: p.date && p.time ? p.time : null,
+        kind: p.kind,
+        ...(p.kind === "booking" ? { appointment_date: p.date || null } : {}),
+        deadline: p.kind === "booking" ? null : p.date || null,
+        deadline_time: p.kind !== "booking" && p.date && p.time ? p.time : null,
       })),
     };
     pendingSubmission.current = body;
@@ -217,7 +241,7 @@ export default function StepCard() {
   }
 
   const count = picked.length;
-  const draftLocked = busy || uncertain;
+  const draftLocked = busy || uncertain || bookingLocked;
 
   return (
     <div className="app narrow">
@@ -225,9 +249,11 @@ export default function StepCard() {
       <div className="screen-body">
         <>
             <div className="card">
-              {step.deadline && <div className="kv"><I.cal size={18} />{fmtDeadline(step.deadline, step.deadline_time)}</div>}
+              <p className="muted">{KIND_LABELS[step.kind ?? "unknown"]}</p>
+              {step.kind === "booking" && <p className="muted">{step.appointment_date ? `Полученная дата события: ${fmtDateNumeric(step.appointment_date)}` : "Дата полученного события пока неизвестна"}. {!route?.steps.some((s) => s.id === step.booking_target_step_id) && "Запись не связана с событием."}</p>}
+              {step.deadline && <div className="kv"><I.cal size={18} />{step.kind === "booking" && "Прежний срок действия записи: "}{fmtDeadline(step.deadline, step.deadline_time)}</div>}
               <div className="step-deadline-meta">
-                {step.status !== "done" && step.deadline && step.deadline_time && <span className="muted">В {step.deadline_time}</span>}
+                {step.status !== "done" && step.deadline && step.deadline_time && <span className="muted">{step.kind === "booking" ? "Прежнее время действия, не время события: " : "В "}{step.deadline_time}</span>}
                 <StepCountdown step={step} tz={user.tz} now={now} />
               </div>
               {step.place && <div className="kv"><I.pin size={18} />{step.place}</div>}
@@ -236,15 +262,14 @@ export default function StepCard() {
               )}
             </div>
 
-            {step.status !== "done" && <StepScheduleEditor key={step.id} step={step} user={user} now={now}
+            {step.status !== "done" && <StepScheduleEditor key={step.id} step={step} user={user} now={now} disabled={bookingLocked || busy}
               onSaved={(updated) => setRoute((r) => r ? { ...r, steps: r.steps.map((s) => s.id === updated.id ? updated : s) } : r)} />}
 
-            {step.reason && (
-              <details className="card step-origin" key={step.id}>
-                <summary>Почему этот шаг появился</summary>
-                <p className="muted">{step.reason}</p>
-              </details>
-            )}
+            {(step.status !== "done" || step.kind === "unknown") && <StepKindEditor key={`kind-${step.id}`} step={step} steps={route?.steps ?? []} disabled={bookingLocked || busy}
+              onSaved={(updated) => setRoute((r) => r ? { ...r, steps: r.steps.map((s) => s.id === updated.id ? updated : s) } : r)} />}
+            {step.kind === "booking" && step.status !== "done" && <BookingEditor key={`booking-${scope}`} step={step} steps={route?.steps ?? []} disabled={busy}
+              onLocked={(locked) => { bookingLock.current = locked; setBookingLocked(locked); }} onSaved={(result) => setRoute(result.route)} onReload={load} />}
+            {step.status !== "done" && step.kind !== "booking" && <Button variant="secondary" onClick={() => nav(`/route?before_step_id=${step.id}`)}>Добавить подготовку перед этим событием</Button>}
 
             <div className="card step-source">
               <h3 className="h3">Источник</h3>
@@ -276,11 +301,11 @@ export default function StepCard() {
                 <div style={{ fontSize: 14, fontWeight: 700, color: "var(--blue)" }}>Шаг выполнен</div>
                 <div className="muted" style={{ marginTop: 4 }}>
                   {fmtDayMonth(step.completed_at ?? null) && `Отмечен ${fmtDayMonth(step.completed_at)}. `}
-                  Можно записать назначения врача — маршрут перестроится.
+                  {step.kind === "visit" && "Можно записать назначения врача — маршрут перестроится."}
                 </div>
-                <Button style={{ marginTop: 12 }} variant="secondary" disabled={busy} onClick={() => { if (!inFlight.current) setAssignSheet(true); }}>
+                {step.kind === "visit" && <Button style={{ marginTop: 12 }} variant="secondary" disabled={busy} onClick={() => { if (!inFlight.current) setAssignSheet(true); }}>
                   <I.plus size={16} /> Записать назначения врача
-                </Button>
+                </Button>}
                 <Button style={{ marginTop: 8 }} variant="secondary" disabled={draftLocked} onClick={uncomplete}>
                   {busy ? "Отменяем…" : "Отменить выполнение"}
                 </Button>
@@ -309,7 +334,7 @@ export default function StepCard() {
       {step && step.status !== "done" && (
         <div className="foot">
           <div className="btn-row">
-            <Button disabled={busy || step.status !== "current"} onClick={complete}>{busy ? "Отмечаем…" : "Я это сделал"}</Button>
+            <Button disabled={draftLocked || step.status !== "current"} onClick={complete}>{busy ? "Отмечаем…" : step.kind === "booking" ? "Завершить без внесения даты" : "Я это сделал"}</Button>
           </div>
           {step.status === "pending" && <p className="muted">Сначала завершите текущий шаг. Срок и напоминание этого шага можно настроить заранее.</p>}
         </div>
@@ -329,17 +354,18 @@ export default function StepCard() {
           {CHIPS.map((c) => (
             <button
               type="button"
-              key={c}
-              className={`pick${picked.some((p) => p.title === c) ? " on" : ""}`}
-              aria-pressed={picked.some((p) => p.title === c)}
+              key={c.title}
+              className={`pick${picked.some((p) => p.title === c.title) ? " on" : ""}`}
+              aria-pressed={picked.some((p) => p.title === c.title)}
               disabled={draftLocked}
               onClick={() => toggleChip(c)}
             >
-              {c}
+              {c.title}
             </button>
           ))}
         </div>
         <div className="own-row" style={{ flexWrap: "wrap" }}>
+          <StepKindSelect label="Вид своего назначения" value={ownKind} disabled={draftLocked} onChange={(kind) => { if (!inFlight.current && !pendingSubmission.current) { setOwnKind(kind); if (kind === "booking") setOwnTime(""); } }} />
           <input
             placeholder="Своё: например, МРТ"
             aria-label="Название назначения"
@@ -348,15 +374,15 @@ export default function StepCard() {
             className={ownAttempted && !ownName.trim() ? "invalid" : undefined}
             onChange={(e) => { if (!inFlight.current && !pendingSubmission.current) setOwnName(e.target.value); }}
           />
-          <EventDateTimeInputs date={ownDate} time={ownTime} disabled={draftLocked} onChange={(d, t) => { if (!inFlight.current && !pendingSubmission.current) { setOwnDate(d); setOwnTime(t); } }} />
+          {ownKind === "booking" ? <label>На какую дату вы записались?<input type="date" aria-label="Дата полученной записи назначения" value={ownDate} disabled={draftLocked} onChange={(e) => { if (!inFlight.current && !pendingSubmission.current) setOwnDate(e.target.value); }} /></label> : <EventDateTimeInputs date={ownDate} time={ownTime} disabled={draftLocked} onChange={(d, t) => { if (!inFlight.current && !pendingSubmission.current) { setOwnDate(d); setOwnTime(t); } }} />}
           <button type="button" className="add" disabled={draftLocked} onClick={addOwn} aria-label="Добавить назначение">+</button>
         </div>
         {picked.length > 0 && (
           <div className="picked">
             {picked.map((p, i) => (
               <div className="picked-item" key={`${p.title}-${i}`} style={{ flexWrap: "wrap" }}>
-                <b style={{ flex: 1 }}>{p.title}</b>
-                <EventDateTimeInputs date={p.date} time={p.time} disabled={draftLocked} label={`Срок: ${p.title}`} onChange={(date, time) => { if (!inFlight.current && !pendingSubmission.current) setPicked((prev) => prev.map((item, j) => j === i ? { ...item, date, time } : item)); }} />
+                <b style={{ flex: 1 }}>{p.title}<small className="muted"> · {KIND_LABELS[p.kind]}</small></b>
+                {p.kind === "booking" ? <label>На какую дату вы записались?<input type="date" aria-label={`Дата полученной записи: ${p.title}`} value={p.date} disabled={draftLocked} onChange={(e) => { if (!inFlight.current && !pendingSubmission.current) setPicked((prev) => prev.map((item, j) => j === i ? { ...item, date: e.target.value, time: "" } : item)); }} /><small className="muted">После добавления выберите целевое событие в карточке записи. Пока дата не привязана.</small></label> : <EventDateTimeInputs date={p.date} time={p.time} disabled={draftLocked} label={`Срок: ${p.title}`} onChange={(date, time) => { if (!inFlight.current && !pendingSubmission.current) setPicked((prev) => prev.map((item, j) => j === i ? { ...item, date, time } : item)); }} />}
                 <button type="button" className="x" disabled={draftLocked} aria-label={`Убрать назначение ${p.title}`} onClick={() => { if (!inFlight.current && !pendingSubmission.current) setPicked((prev) => prev.filter((_, j) => j !== i)); }}>✕</button>
               </div>
             ))}

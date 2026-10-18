@@ -84,15 +84,34 @@ def normalize_route_steps(db: Session, route: Route, steps: list[RouteStep] | No
 
 def insert_route_steps(
     db: Session, route: Route, anchor: RouteStep | None, additions: list[RouteStep],
+    *, before: bool = False,
 ) -> None:
     steps = ordered_route_steps(db, route)
-    index = steps.index(anchor) + 1 if anchor is not None else len(steps)
+    index = steps.index(anchor) + int(not before) if anchor is not None else len(steps)
     for step in additions:
         step.route_id = route.id
         step.status = "pending"
         db.add(step)
     steps[index:index] = additions
     normalize_route_steps(db, route, steps)
+
+
+def validate_booking_target(
+    db: Session, route: Route, step: RouteStep, kind: str, target_id: int | None,
+) -> RouteStep | None:
+    """Resolve only explicit IDs in this route; never infer a role from text."""
+    if target_id is None:
+        return None
+    if kind != "booking":
+        raise ServiceError("Связь допустима только для шага booking")
+    target = db.query(RouteStep).filter_by(id=target_id, route_id=route.id).first()
+    if target is None:
+        raise ServiceError("Цель записи не найдена", 404)
+    if target.id == step.id or target.position <= step.position:
+        raise ServiceError("Цель записи должна находиться после записи")
+    if target.status == "done" or target.kind not in {"visit", "investigation", "task", "process"}:
+        raise ServiceError("Выберите незавершённое событие известного вида")
+    return target
 
 
 def complete_route_step(

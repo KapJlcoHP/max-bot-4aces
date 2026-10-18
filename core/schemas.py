@@ -23,6 +23,7 @@ _StepClockTime = Annotated[
 ]
 
 StepReminderMode = Literal["profile", "day", "hour", "custom"]
+StepKind = Literal["unknown", "visit", "booking", "investigation", "task", "process"]
 _UtcMoment = Annotated[datetime, AfterValidator(as_utc)]
 
 
@@ -48,6 +49,7 @@ class UserDto(OrmDto):
     region: str = ""
     attached_clinic_id: int | None = None
     consent_at: datetime | None = None
+    contains_demo_data: bool = False
 
 
 class RegionDto(OrmDto):
@@ -82,6 +84,16 @@ class SituationDto(OrmDto):
     icon: str
 
 
+class TemplateStepDto(OrmDto):
+    position: int
+    title: str
+    has_checklist: bool = False
+    key: str | None = None
+    kind: StepKind = "unknown"
+    booking_target_key: str | None = None
+    description: str = ""
+
+
 class ContentSourceDto(OrmDto):
     id: str
     title: str
@@ -94,6 +106,11 @@ class ContentSourceDto(OrmDto):
 
 class StepDto(OrmDto):
     id: int
+    kind: StepKind = "unknown"
+    template_key: str | None = None
+    booking_target_step_id: int | None = None
+    appointment_date: Date | None = None
+    reminder_revision: int = 0
     position: int
     title: str
     description: str
@@ -139,6 +156,8 @@ class DoctorAssignmentIn(OrmDto):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     title: str = Field(min_length=1, max_length=200)
+    kind: StepKind = "unknown"
+    appointment_date: Date | None = None
     deadline: Date | None = None
     deadline_time: _StepClockTime | None = None
     place: str = Field(default="", max_length=200)
@@ -147,6 +166,10 @@ class DoctorAssignmentIn(OrmDto):
     def validate_schedule(self):
         if self.deadline is None and self.deadline_time is not None:
             raise ValueError("Время шага требует даты")
+        if self.kind == "booking" and self.deadline_time is not None:
+            raise ValueError("Запись не принимает точное время оформления")
+        if self.kind != "booking" and self.appointment_date is not None:
+            raise ValueError("Полученная дата допустима только для записи")
         return self
 
 
@@ -168,9 +191,23 @@ class StepAssignmentsOut(CompleteStepOut):
     added_step_ids: list[int]
 
 
+class StepBookingIn(OrmDto):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: UUID
+    complete: bool = Field(strict=True)
+    appointment_date: Date | None
+    target_step_id: int | None = Field(..., gt=0, strict=True)
+    expected_target_revision: int | None = Field(default=None, ge=0, strict=True)
+    confirm_target_change: bool = Field(default=False, strict=True)
+    target_reminder_action: Literal["keep", "profile"] = "keep"
+
+
 class StepUpdateIn(OrmDto):
     """PATCH срока: пропущенное поле сохраняется, null явно очищает его."""
 
+    kind: StepKind = "unknown"
+    booking_target_step_id: int | None = Field(default=None, gt=0, strict=True)
     deadline: Date | None = Field(
         default=None,
         description="Местная дата события. Пропуск сохраняет дату; null очищает дату и зависимое время.",
@@ -192,7 +229,12 @@ class StepUpdateIn(OrmDto):
 class StepAddIn(OrmDto):
     """Новый шаг маршрута: назначение врача (source=doctor) или свой пункт (source=user)."""
 
+    model_config = ConfigDict(extra="forbid")
+
     title: str
+    kind: StepKind = "unknown"
+    booking_target_step_id: int | None = Field(default=None, gt=0, strict=True)
+    appointment_date: Date | None = None
     deadline: Date | None = None
     deadline_time: _StepClockTime | None = None
     reminder_mode: StepReminderMode = "profile"
@@ -204,6 +246,10 @@ class StepAddIn(OrmDto):
     def validate_schedule(self):
         if self.deadline is None and self.deadline_time is not None:
             raise ValueError("Время шага требует даты")
+        if self.kind == "booking" and self.deadline_time is not None:
+            raise ValueError("Запись не принимает точное время оформления")
+        if self.kind != "booking" and (self.booking_target_step_id is not None or self.appointment_date is not None):
+            raise ValueError("Связь и дата записи допустимы только для шага booking")
         return self
 
 
@@ -211,6 +257,11 @@ class CustomStepIn(OrmDto):
     """Свой шаг при создании маршрута из конструктора."""
 
     title: str
+    kind: StepKind = "unknown"
+    client_key: str | None = Field(default=None, min_length=1, max_length=100)
+    booking_target_key: str | None = Field(default=None, min_length=1, max_length=100)
+    before_position: int | None = Field(default=None, gt=0, strict=True)
+    appointment_date: Date | None = None
     deadline: Date | None = None
     deadline_time: _StepClockTime | None = None
     place: str = ""
@@ -219,6 +270,10 @@ class CustomStepIn(OrmDto):
     def validate_schedule(self):
         if self.deadline is None and self.deadline_time is not None:
             raise ValueError("Время шага требует даты")
+        if self.kind == "booking" and self.deadline_time is not None:
+            raise ValueError("Запись не принимает точное время оформления")
+        if self.kind != "booking" and (self.booking_target_key is not None or self.appointment_date is not None):
+            raise ValueError("Связь и дата записи допустимы только для шага booking")
         return self
 
 
@@ -226,6 +281,13 @@ class RouteStartIn(OrmDto):
     situation_key: str
     exclude_positions: list[int] = Field(default_factory=list)
     custom_steps: list[CustomStepIn] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_client_keys(self):
+        keys = [step.client_key for step in self.custom_steps if step.client_key is not None]
+        if len(keys) != len(set(keys)):
+            raise ValueError("client_key должен быть уникальным")
+        return self
 
 
 class ChecklistItemDto(OrmDto):

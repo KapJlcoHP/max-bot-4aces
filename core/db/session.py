@@ -48,6 +48,7 @@ def _migrate_sqlite() -> None:
     plans: dict[str, list[tuple[str, str]]] = {
         "users": [
             ("consent_at", "DATETIME NULL"),
+            ("contains_demo_data", "BOOLEAN NOT NULL DEFAULT 0"),
             ("avatar_url", "VARCHAR(500) NULL DEFAULT ''"),
             ("tz", "VARCHAR(64) NOT NULL DEFAULT 'Europe/Moscow'"),
             ("region", "VARCHAR(100) NOT NULL DEFAULT ''"),
@@ -58,6 +59,10 @@ def _migrate_sqlite() -> None:
             ("step_day_before_time", "VARCHAR(5) NOT NULL DEFAULT '09:00'"),
         ],
         "route_steps": [
+            ("kind", "VARCHAR(20) NOT NULL DEFAULT 'unknown'"),
+            ("template_key", "VARCHAR(100) NULL"),
+            ("booking_target_step_id", "INTEGER NULL REFERENCES route_steps(id) ON DELETE SET NULL"),
+            ("appointment_date", "DATE NULL"),
             ("reminder_mode", "VARCHAR(16) NOT NULL DEFAULT 'profile'"),
             ("reminder_at", "DATETIME NULL"),
             ("activated_at", "DATETIME NULL"),

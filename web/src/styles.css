@@ -705,15 +705,10 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   font-weight: 600;
   color: var(--muted);
 }
-.step-origin summary {
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-}
-.step-origin p { margin-top: 10px; }
 .step-source p, .step-source .btn { margin-top: 10px; }
 .step-source-title { font-size: 14px; font-weight: 600; }
-.step-origin summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
+.kind-select { display: grid; gap: 6px; margin: 10px 0; font-size: 14px; min-width: 0; width: 100%; }
+.kind-select select, .kind-select input { box-sizing: border-box; max-width: 100%; width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 10px; font: inherit; background: var(--card); color: inherit; }
 
 .chip-dot {
   display: inline-block;

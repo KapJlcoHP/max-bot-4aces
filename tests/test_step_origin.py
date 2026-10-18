@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from core.db.models import Base, Route, RouteStep, User
+from core.db.seed import load_catalog
 from core.schemas import CustomStepIn, RouteStartIn, StepAddIn, StepUpdateIn
 from server.api.v1 import api
 
@@ -26,9 +27,10 @@ class StepOriginTests(unittest.TestCase):
 
     def test_template_explanation_uses_selected_catalog_title(self):
         route = api.start_route(RouteStartIn(situation_key="chronic"), user=self.user, db=self.db)
+        catalog_title = next(s["title"] for s in load_catalog() if s["key"] == "chronic")
         for step in route.steps:
             self.assertEqual(step.source, "template")
-            self.assertIn("«Наблюдаться по хроническому»", step.reason)
+            self.assertIn(f"«{catalog_title}»", step.reason)
             self.assertIn("вы выбрали", step.reason)
         loaded = api.get_route(user=self.user, db=self.db)
         self.assertEqual(loaded.model_dump()["steps"][0]["reason"], route.steps[0].reason)

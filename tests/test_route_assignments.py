@@ -46,12 +46,12 @@ def store(tmp_path):
         inactive = Route(user_id=user.id, situation_key="custom", title="Old", active=False)
         db.add_all([route, foreign, inactive])
         db.flush()
-        history = RouteStep(route_id=route.id, position=1, title="History", status="done",
+        history = RouteStep(route_id=route.id, position=1, title="History", kind="visit", status="done",
                             completed_at=HISTORY, note="historical note")
-        anchor = RouteStep(route_id=route.id, position=2, title="Anchor", status="current",
+        anchor = RouteStep(route_id=route.id, position=2, title="Anchor", kind="visit", status="current",
                            activated_at=ACTIVATED)
-        tail = RouteStep(route_id=route.id, position=3, title="Tail", status="pending")
-        foreign_step = RouteStep(route_id=foreign.id, position=1, title="Foreign", status="current")
+        tail = RouteStep(route_id=route.id, position=3, title="Tail", kind="visit", status="pending")
+        foreign_step = RouteStep(route_id=foreign.id, position=1, title="Foreign", kind="visit", status="current")
         inactive_step = RouteStep(route_id=inactive.id, position=1, title="Old", status="current")
         db.add_all([history, anchor, tail, foreign_step, inactive_step])
         db.commit()

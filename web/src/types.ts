@@ -14,6 +14,7 @@ export interface UserDto {
   region: string;
   attached_clinic_id: number | null;
   consent_at: string | null;
+  contains_demo_data?: boolean;
 }
 
 export interface ClinicChangePayload {
@@ -36,6 +37,7 @@ export interface Situation {
 }
 
 export type StepSource = "template" | "user" | "doctor";
+export type StepKind = "unknown" | "visit" | "booking" | "investigation" | "task" | "process";
 export type StepReminderMode = "profile" | "day" | "hour" | "custom";
 
 export interface ContentSource {
@@ -50,6 +52,11 @@ export interface ContentSource {
 
 export interface Step {
   id: number;
+  kind: StepKind;
+  template_key: string | null;
+  booking_target_step_id: number | null;
+  appointment_date: string | null;
+  reminder_revision: number;
   position: number;
   title: string;
   description: string;
@@ -91,6 +98,8 @@ export interface StepAssignmentsIn {
   complete: boolean;
   assignments: {
     title: string;
+    appointment_date?: string | null;
+    kind: StepKind;
     deadline: string | null;
     deadline_time: string | null;
     place?: string;
@@ -103,16 +112,33 @@ export interface StepAssignmentsResult extends CompleteStepResult {
 
 export interface CustomStepIn {
   title: string;
+  kind: StepKind;
+  client_key?: string;
+  booking_target_key?: string | null;
+  before_position?: number | null;
+  appointment_date?: string | null;
   deadline?: string | null;
   deadline_time?: string | null;
 }
 
 /** Omitted fields are preserved; null date also clears the event time. */
 export interface StepUpdateIn {
+  kind?: StepKind;
+  booking_target_step_id?: number | null;
   deadline?: string | null;
   deadline_time?: string | null;
   reminder_mode?: StepReminderMode;
   reminder_at?: string | null;
+}
+
+export interface StepBookingIn {
+  request_id: string;
+  complete: boolean;
+  appointment_date: string | null;
+  target_step_id: number | null;
+  expected_target_revision: number | null;
+  confirm_target_change: boolean;
+  target_reminder_action: "keep" | "profile";
 }
 
 export interface ChecklistItem {

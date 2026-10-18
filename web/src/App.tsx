@@ -105,8 +105,9 @@ export default function App() {
     <Ctx.Provider value={{ user, refreshUser: load, updateUser: setUser }}>
       <div className="app-layout">
         {!isInsideMax() && (
-          <div className="demo-banner">Демо-режим (вне MAX): данные синтетические, вход по dev-доступу</div>
+          <div className="demo-banner">Вне MAX: для проверки используйте только тестовый аккаунт и синтетические данные.</div>
         )}
+        {user.contains_demo_data && <div className="demo-banner" role="status">В аккаунте есть синтетические демо-данные. Добавленные позже свои записи могут отличаться по происхождению.</div>}
         <Outlet />
         {showNav && <TabBar />}
       </div>

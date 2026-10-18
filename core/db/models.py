@@ -29,6 +29,7 @@ class User(Base):
     notify_at_deadline: Mapped[bool] = mapped_column(Boolean, default=True)
     step_day_before_time: Mapped[str] = mapped_column(String(5), default="09:00")
     consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 152-ФЗ: дата согласия
+    contains_demo_data: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     avatar_url: Mapped[str] = mapped_column(String(500), default="")  # фото из MAX, если платформа его отдала
     tz: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")  # IANA-зона с телефона — «настенные» времена пушей
     region: Mapped[str] = mapped_column(String(100), default="")  # регион из content/regions.json
@@ -67,6 +68,12 @@ class RouteStep(Base):
     position: Mapped[int] = mapped_column(Integer)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(String(1000), default="")
+    kind: Mapped[str] = mapped_column(String(20), default="unknown", server_default="unknown")
+    template_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    booking_target_step_id: Mapped[int | None] = mapped_column(
+        ForeignKey("route_steps.id", ondelete="SET NULL"), nullable=True,
+    )
+    appointment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     place: Mapped[str] = mapped_column(String(200), default="")
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
     deadline_time: Mapped[str | None] = mapped_column(String(20), nullable=True)
