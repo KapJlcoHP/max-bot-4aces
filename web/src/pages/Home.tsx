@@ -11,6 +11,12 @@ import { I } from "../icons";
 const WEEKDAYS = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
 const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 
+function userTimeZone(city: string | null, legacyTz?: string): string {
+  return city === "Иваново" || city === "Владимир" || city === "Ярославль"
+    ? "Europe/Moscow"
+    : legacyTz || (Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Moscow");
+}
+
 export default function Home() {
   const nav = useNavigate();
   const { user } = useApp();
@@ -56,7 +62,7 @@ export default function Home() {
   const dateLine = `${WEEKDAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]}`;
   const nextStep = route?.steps.find((s) => s.status === "current")
     ?? route?.steps.find((s) => s.status === "pending") ?? null;
-  const countdown = deadlineCountdown(nextStep?.deadline, nextStep?.deadline_time, user.tz, now);
+  const countdown = deadlineCountdown(nextStep?.deadline, nextStep?.deadline_time, userTimeZone(user.city, "tz" in user ? String(user.tz) : undefined), now);
   const finished = route !== null && route.total_steps > 0 && route.done_steps === route.total_steps;
   const upcoming = reminders.filter((r) => r.enabled).slice(0, 3);
   const nextMed = meds?.today.find((s) => !s.taken) ?? null;

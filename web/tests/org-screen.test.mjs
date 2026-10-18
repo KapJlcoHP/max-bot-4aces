@@ -117,12 +117,14 @@ test("M1: network errors clear map/list and retry the current filters without re
   assert.equal(params(listCalls(h).at(-1)).get("region"), home);
 });
 
-test("M1: mobile map/card jumps focus explicit targets and missing coordinates retain usable details", async () => {
+test("M4: map/list keep natural order, top scroll controls are gone, and explicit selection focuses its card", async () => {
   const h = clinicHarness({ user, orgs }); await h.flush();
-  assert.equal(h.button("К выбранной карточке").props.disabled, true);
-  h.click("К карте"); h.click("К списку");
-  await selectCard(h, 2); h.click("К точке на карте"); h.click("К выбранной карточке");
-  assert.deepEqual(h.jumps.filter((jump) => jump.action === "focus").map((jump) => jump.id), ["org-map", "org-list", "org-map", "org-card-2"]);
+  assert.doesNotMatch(h.text(), /К карте|К списку|К выбранной карточке/);
+  assert.deepEqual(h.nodes((node) => node.type === "section").map((node) => node.props.id), ["org-map", "org-list"]);
+  await selectCard(h, 2);
+  assert.deepEqual(h.jumps.filter((jump) => jump.action === "focus").map((jump) => jump.id), ["org-card-2"]);
+  h.click("К точке на карте");
+  assert.deepEqual(h.jumps.filter((jump) => jump.action === "focus").map((jump) => jump.id), ["org-card-2", "org-map"]);
   h.click("Построить путь в Яндексе");
   assert.equal(h.navigation.at(-1), "https://yandex.ru/maps/?rtext=~57,41&rtt=auto");
   for (const id of [3, 7]) {
@@ -135,6 +137,19 @@ test("M1: mobile map/card jumps focus explicit targets and missing coordinates r
     assert.equal(h.navigation.at(-1), `https://yandex.ru/maps/?text=${encodeURIComponent(`Адрес ${id}`)}`);
   }
   assert.deepEqual(h.mutations(), []);
+});
+
+test("M4: attached clinic badge is separate from selected-card focus state", async () => {
+  const h = clinicHarness({ user, orgs }); await h.flush();
+  const attached = h.node((node) => node.type === "article" && node.props.id === "org-card-1");
+  assert.match(attached.props.className, /selected-clinic/);
+  assert.doesNotMatch(attached.props.className, /org-card-selected/);
+  const badge = h.node((node) => node.type === "span" && node.props["aria-label"] === "Прикреплённая поликлиника");
+  assert.equal(badge.props.title, "Прикреплённая поликлиника");
+  assert.equal(badge.props.onClick, undefined);
+  await selectCard(h, 1);
+  assert.match(attached.props.className, /selected-clinic/);
+  assert.match(h.node((node) => node.type === "article" && node.props.id === "org-card-1").props.className, /org-card-selected/);
 });
 
 test("M1: synthetic phone data is labelled and has no callable action", async () => {

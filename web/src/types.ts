@@ -10,8 +10,8 @@ export interface UserDto {
   notify_hour_before: boolean;
   notify_at_deadline: boolean;
   step_day_before_time: string;
-  tz: string;
   region: string;
+  city: string | null;
   attached_clinic_id: number | null;
   consent_at: string | null;
   contains_demo_data?: boolean;
@@ -27,6 +27,13 @@ export interface Region {
   key: string;
   title: string;
   pilot: boolean;
+  cities?: City[];
+}
+
+export interface City {
+  key: string;
+  title: string;
+  region: string;
 }
 
 export interface Situation {
@@ -174,8 +181,8 @@ export interface MapConfig {
 }
 
 export interface ConsentPayload {
-  tz: string;
   region: string;
+  city: string | null;
   attached_clinic_id: number | null;
   diaries: HealthSetting[];
 }

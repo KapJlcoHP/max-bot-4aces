@@ -18,6 +18,12 @@ function StepBadge({ source }: { source: Step["source"] }) {
   return null;
 }
 
+function userTimeZone(city: string | null, legacyTz?: string): string {
+  return city === "Иваново" || city === "Владимир" || city === "Ярославль"
+    ? "Europe/Moscow"
+    : legacyTz || (Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Moscow");
+}
+
 export default function RoutePage() {
   const { user } = useApp();
   const now = useNow();
@@ -243,7 +249,7 @@ export default function RoutePage() {
                           {s.kind === "booking" && "Прежний срок действия записи: "}{fmtDeadline(s.deadline, s.deadline_time)}
                         </div>
                       )}
-                      <StepCountdown step={s} tz={user.tz} now={now} />
+                      <StepCountdown step={s} tz={userTimeZone(user.city, "tz" in user ? String(user.tz) : undefined)} now={now} />
                     </div>
                   </div>
                 ))}
@@ -289,7 +295,7 @@ export default function RoutePage() {
 
       <Sheet open={sheet} onClose={() => setSheet(false)}>
         <h3>Добавить шаг</h3>
-        <div className="sub">Проверьте фактическую дату; неизвестную можно оставить пустой. Время необязательно ({user.tz}). Уведомления получает только текущий шаг.</div>
+        <div className="sub">Проверьте фактическую дату; неизвестную можно оставить пустой. Время необязательно (в вашем местном времени). Уведомления получает только текущий шаг.</div>
         <StepKindSelect value={newKind} onChange={(kind) => { setNewKind(kind); setNewTime(""); }} disabled={busy} />
         <label className="kind-select">Размещение
           <select aria-label="Добавить перед шагом" value={beforeId} disabled={busy} onChange={(e) => { setBeforeId(e.target.value); setNewTarget(""); }}>

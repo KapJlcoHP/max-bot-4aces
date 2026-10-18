@@ -14,38 +14,17 @@ const DIARY_META: { key: HealthType; title: string; hint: string; on: boolean }[
   { key: "mood", title: "Самочувствие", hint: "без приборов", on: true },
 ];
 
-const TZ_OPTIONS: { tz: string; label: string }[] = [
-  { tz: "Europe/Kaliningrad", label: "Калининград (МСК−1)" },
-  { tz: "Europe/Moscow", label: "Москва (МСК)" },
-  { tz: "Europe/Samara", label: "Самара (МСК+1)" },
-  { tz: "Asia/Yekaterinburg", label: "Екатеринбург (МСК+2)" },
-  { tz: "Asia/Omsk", label: "Омск (МСК+3)" },
-  { tz: "Asia/Krasnoyarsk", label: "Красноярск (МСК+4)" },
-  { tz: "Asia/Irkutsk", label: "Иркутск (МСК+5)" },
-  { tz: "Asia/Yakutsk", label: "Якутск (МСК+6)" },
-  { tz: "Asia/Vladivostok", label: "Владивосток (МСК+7)" },
-];
-
-/** Пояс с телефона (IANA-имя); если он не из списка — всё равно предложим его первым вариантом. */
-function detectTz(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Moscow";
-  } catch {
-    return "Europe/Moscow";
-  }
-}
-
 export default function Onboarding() {
   const { user, updateUser } = useApp();
   const [step, setStep] = useState(0);
   const [agreed, setAgreed] = useState(false);
   const [diaries, setDiaries] = useState(DIARY_META);
   const [busy, setBusy] = useState(false);
-  const [tz, setTz] = useState(detectTz);
   const [regions, setRegions] = useState<Region[]>([]);
   const [regionsLoading, setRegionsLoading] = useState(true);
   const [regionsError, setRegionsError] = useState(false);
   const [region, setRegion] = useState(user.region || "");
+  const [city, setCity] = useState(user.city || "");
   const [clinics, setClinics] = useState<Organization[] | null>(null);
   const [clinicsLoading, setClinicsLoading] = useState(false);
   const [clinicsError, setClinicsError] = useState(false);
@@ -56,13 +35,17 @@ export default function Onboarding() {
   const clinicsRequestId = useRef(0);
   const submitting = useRef(false);
 
+  const availableRegions = regions.filter((item) => item.pilot || regions.every((candidate) => candidate.pilot === undefined));
+
   const loadRegions = () => {
     setRegionsLoading(true);
     setRegionsError(false);
     api.get<Region[]>("/api/v1/regions")
       .then((items) => {
         setRegions(items);
-        if (region && !items.some((item) => item.title === region)) setRegion("");
+        if (region && !items.some((item) => item.title === region)) { setRegion(""); setCity(""); }
+        const selected = items.find((item) => item.title === region);
+        if (city && selected?.cities?.length && !selected.cities.some((item) => item.title === city)) setCity("");
       })
       .catch(() => setRegionsError(true))
       .finally(() => setRegionsLoading(false));
@@ -98,10 +81,16 @@ export default function Onboarding() {
     setDiaries((prev) => prev.map((d) => (d.key === key ? { ...d, on } : d)));
 
   const validateSelection = () => {
-    const validRegion = regions.some((item) => item.title === region);
+    const selectedRegion = availableRegions.find((item) => item.title === region);
+    const validRegion = Boolean(selectedRegion);
+    const validCity = !selectedRegion?.cities?.length || selectedRegion.cities.some((item) => item.title === city);
     const validClinic = attachedClinicId === null || clinics?.some((item) => item.id === attachedClinicId) === true;
     if (regionsLoading || regionsError || !validRegion) {
       setFormError("Выберите регион из списка");
+      return false;
+    }
+    if (!validCity) {
+      setFormError("Выберите город из списка");
       return false;
     }
     if (!validClinic) {
@@ -128,7 +117,7 @@ export default function Onboarding() {
       const enabled = diaries.filter((d) => d.on).map((d) => d.key);
       // push_time не передаём (null): онбординг не должен сбрасывать настроенное время пуша
       const payload: HealthSetting[] = DIARY_META.map((d) => ({ diary: d.key, enabled: enabled.includes(d.key), push_time: null }));
-      const consent: ConsentPayload = { tz, region, attached_clinic_id: attachedClinicId, diaries: payload };
+      const consent: ConsentPayload = { city: city || null, region, attached_clinic_id: attachedClinicId, diaries: payload };
       const saved = await api.post<UserDto>("/api/v1/me/consent", consent);
       updateUser(saved);
     } catch {
@@ -220,14 +209,22 @@ export default function Onboarding() {
           </div>
           <div className="screen-body ob">
             <div className="greeting">
-              <h2 style={{ fontSize: 21 }}>Выберите регион</h2>
-              <p>Поликлиника необязательна: её можно выбрать сейчас или добавить позже.</p>
+              <h2 style={{ fontSize: 21 }}>Выберите город</h2>
+              <p>Сейчас доступны областные центры пилотных регионов. По городу мы автоматически настроим время уведомлений.</p>
             </div>
             {regionsError && <div className="card" role="alert">Не удалось загрузить регионы. <button type="button" className="cell-h-btn" onClick={loadRegions}>Повторить</button></div>}
-            {!regionsError && <select className="tz-select" value={region} disabled={regionsLoading} onChange={(e) => { setRegion(e.target.value); setFormError(null); }} aria-label="Регион">
+            {!regionsError && <select className="tz-select" value={region} disabled={regionsLoading} onChange={(e) => { setRegion(e.target.value); setCity(""); setFormError(null); }} aria-label="Регион">
               <option value="">{regionsLoading ? "Загрузка регионов…" : "Выберите регион"}</option>
-              {regions.map((item) => <option key={item.key} value={item.title}>{item.title}</option>)}
+              {availableRegions.map((item) => <option key={item.key} value={item.title}>{item.title}</option>)}
             </select>}
+            {region && (() => {
+              const selectedRegion = availableRegions.find((item) => item.title === region);
+              const cityOptions = selectedRegion?.cities ?? [];
+              return cityOptions.length > 0 ? <select className="tz-select" value={city} disabled={regionsLoading} onChange={(e) => { setCity(e.target.value); setFormError(null); }} aria-label="Город">
+                <option value="">Выберите город</option>
+                {cityOptions.map((item) => <option key={item.key} value={item.title}>{item.title}</option>)}
+              </select> : null;
+            })()}
             {region && clinicsError && <div className="card" role="alert">Не удалось загрузить поликлиники. <button type="button" className="cell-h-btn" onClick={() => setClinicRetry((value) => value + 1)}>Повторить</button></div>}
             {region && !clinicsError && clinicsLoading && <div className="muted">Загружаем поликлиники…</div>}
             {region && !clinicsLoading && !clinicsError && clinics && clinics.length === 0 && <div className="card" role="status">В выбранном регионе пока нет поликлиник.</div>}
@@ -286,15 +283,6 @@ export default function Onboarding() {
                   <Switch on={d.on} onChange={(v) => toggleDiary(d.key, v)} label={d.title} />
                 </div>
               ))}
-            </div>
-            <div className="card" style={{ padding: "8px 16px" }}>
-              <div className="rem-item" style={{ paddingTop: 10, paddingBottom: 10 }}>
-                <div className="what"><b>Часовой пояс</b><small>Определили с вашего телефона — по нему бот будет будить вовремя</small></div>
-              </div>
-              <select className="tz-select" style={{ marginTop: 0, marginBottom: 10 }} value={tz} onChange={(e) => setTz(e.target.value)} aria-label="Часовой пояс">
-                {!TZ_OPTIONS.some((o) => o.tz === tz) && <option value={tz}>{tz}</option>}
-                {TZ_OPTIONS.map((o) => <option key={o.tz} value={o.tz}>{o.label}</option>)}
-              </select>
             </div>
             {formError && <div className="card" role="alert" style={{ color: "var(--red)" }}>{formError}</div>}
           </div>

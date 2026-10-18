@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deferred, onboardingHarness } from "./onboarding-r1-harness.mjs";
 
-const regions = [{ key: "moscow", title: "Москва" }];
+const regions = [{ key: "moscow", title: "Москва", cities: [{ key: "moscow-city", title: "Москва", region: "Москва" }] }];
 const clinics = [{ id: 17, title: "Поликлиника №17", address: "Улица 1" }];
 const saved = { id: 42, consent_accepted: true };
 
@@ -27,6 +27,8 @@ async function reachRegion(page) {
 async function selectRegion(page) {
   await reachRegion(page);
   page.change("Регион", "Москва");
+  await page.flush();
+  page.change("Город", "Москва");
   await page.flush();
 }
 
@@ -76,6 +78,8 @@ for (const region of ["", "Несуществующий регион"]) {
     assert.ok(page.alerts().includes("Выберите регион из списка"));
     assert.equal(page.calls.filter((call) => call.method === "POST").length, 0);
     page.change("Регион", "Москва");
+    await page.flush();
+    page.change("Город", "Москва");
     await page.flush();
     page.click("Выбрать поликлинику позже");
     await page.flush();
@@ -128,7 +132,6 @@ for (const clinicId of [null, 17]) {
     await page.flush();
     page.toggle("Давление и пульс", false);
     page.toggle("Сахар крови", true);
-    page.change("Часовой пояс", "Asia/Omsk");
     await page.flush();
     await page.click("Начать");
     await page.flush();
@@ -142,7 +145,7 @@ for (const clinicId of [null, 17]) {
     assert.equal(requests.length, 2);
     assert.deepEqual(requests[1].payload, requests[0].payload);
     assert.equal(requests[1].payload.attached_clinic_id, clinicId);
-    assert.equal(requests[1].payload.tz, "Asia/Omsk");
+    assert.equal(requests[1].payload.city, "Москва");
     assert.equal(requests[1].payload.diaries.find((diary) => diary.diary === "bp").enabled, false);
     assert.equal(requests[1].payload.diaries.find((diary) => diary.diary === "sugar").enabled, true);
     assert.deepEqual(page.savedUsers, [saved]);

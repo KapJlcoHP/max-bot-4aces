@@ -25,7 +25,8 @@ from core.db.models import (
     utcnow,
 )
 from core.db.seed import load_catalog, load_regions, load_scenarios, refresh_route_clinic
-from core.schemas import ClinicChangeIn, ConsentIn, RegionDto, SettingsIn, SituationDto, TemplateStepDto, UserDto
+from core.location import city_for_location, cities_for_region
+from core.schemas import CityDto, ClinicChangeIn, ConsentIn, RegionDto, SettingsIn, SituationDto, TemplateStepDto, UserDto
 from server.deps import PendingUser
 from .common import (
     apply_diary_settings,
@@ -44,7 +45,25 @@ def _clinic_conflict():
 
 def _profile_state(db: Session, user: User):
     # Read columns, not a possibly stale ORM identity loaded by authentication.
-    return db.query(User.region, User.attached_clinic_id).filter(User.id == user.id).one()
+    return db.query(User.region, User.city, User.attached_clinic_id).filter(User.id == user.id).one()
+
+
+def _validate_location(city: str | None, region: str | None):
+    """Validate the user-facing city/region pair and return its internal zone."""
+    if region is not None and region not in {item["title"] for item in load_regions()}:
+        raise HTTPException(status_code=422, detail="Неизвестный регион")
+    if city is None:
+        return None
+    city = city.strip()
+    if not city or not region:
+        raise HTTPException(status_code=422, detail="Выберите город и регион")
+    region_item = next((item for item in load_regions() if item["title"] == region), None)
+    if not region_item or not region_item.get("pilot", False):
+        raise HTTPException(status_code=422, detail="Город доступен только в пилотном регионе")
+    item = city_for_location(city, region)
+    if item is None:
+        raise HTTPException(status_code=422, detail="Выберите город из справочника выбранного региона")
+    return item
 
 
 def _validate_clinic(db: Session, clinic_id: int, region: str):
@@ -106,18 +125,13 @@ def give_consent_impl(
     zone_info_cls=ZoneInfo,
 ):
     """Создать профиль только при согласии; настройки и профиль фиксируются вместе."""
-    if body and body.tz:
-        try:
-            zone_info_cls(body.tz)
-        except Exception as e:
-            raise HTTPException(status_code=422, detail="Неизвестный часовой пояс") from e
-    known_regions = {r["title"] for r in load_regions()}
-    if body and body.region is not None:
-        if body.region not in known_regions:
-            raise HTTPException(status_code=422, detail="Неизвестный регион")
+    target_region = body.region if body and body.region is not None else user.region
+    target_city = body.city if body and body.city is not None else getattr(user, "city", None)
+    if body and body.region is not None and body.region not in {item["title"] for item in load_regions()}:
+        raise HTTPException(status_code=422, detail="Неизвестный регион")
+    location = _validate_location(target_city, target_region) if body and body.city is not None else None
     diaries = validate_diary_settings(body.diaries) if body and body.diaries is not None else None
 
-    target_region = body.region if body and body.region is not None else user.region
     attached_clinic_id = body.attached_clinic_id if body else None
     if attached_clinic_id is not None:
         clinic = db.query(Organization).filter(
@@ -137,6 +151,7 @@ def give_consent_impl(
             email=pending.email,
             avatar_url=pending.avatar_url,
             region=pending.region,
+            city=pending.city,
             attached_clinic_id=None,
         )
         db.add(user)
@@ -150,8 +165,9 @@ def give_consent_impl(
                 raise
     state = _profile_state(db, user)
     values = {}
-    if body and body.tz:
-        values["tz"] = body.tz
+    if body and body.city is not None:
+        values["city"] = location["title"]
+        values["tz"] = location["tz"]
     if body and body.region is not None:
         if state.attached_clinic_id is not None and state.region != body.region:
             _clinic_conflict()
@@ -218,10 +234,12 @@ def update_settings(body: SettingsIn, user: User = Depends(consented_user), db: 
     state = _profile_state(db, user)
     target_region = body.region if body.region is not None else state.region
     values = {}
-    if body.region is not None:
-        known = {r["title"] for r in load_regions()}
-        if body.region not in known:
-            raise HTTPException(status_code=422, detail="Неизвестный регион")
+    location = _validate_location(body.city, target_region) if body.city is not None else None
+    if body.region is not None and body.region not in {r["title"] for r in load_regions()}:
+        raise HTTPException(status_code=422, detail="Неизвестный регион")
+    if body.city is not None:
+        values["city"] = location["title"]
+        values["tz"] = location["tz"]
     if "attached_clinic_id" in body.model_fields_set:
         if state.attached_clinic_id is not None and body.attached_clinic_id != state.attached_clinic_id:
             _clinic_conflict()
@@ -233,6 +251,12 @@ def update_settings(body: SettingsIn, user: User = Depends(consented_user), db: 
             values[field] = getattr(body, field)
     if body.region is not None:
         values["region"] = body.region
+        if body.city is None:
+            # A region change cannot silently retain a city from another
+            # region. The UI may supply a new city in the same request; when
+            # it does not, clear the old value and let the user choose one.
+            if state.city:
+                values["city"] = None
         if body.expected_region is not None and (
             body.expected_region != state.region or body.expected_clinic_id != state.attached_clinic_id
         ):
@@ -253,7 +277,10 @@ def update_settings(body: SettingsIn, user: User = Depends(consented_user), db: 
 
 @router.get("/regions", response_model=list[RegionDto])
 def regions(user: User | PendingUser = Depends(current_user)):
-    return [RegionDto(key=r["key"], title=r["title"], pilot=r.get("pilot", False)) for r in load_regions()]
+    return [RegionDto(
+        key=r["key"], title=r["title"], pilot=r.get("pilot", False),
+        cities=[CityDto(key=c["key"], title=c["title"], region=c["region"]) for c in cities_for_region(r["title"])],
+    ) for r in load_regions()]
 
 
 @router.get("/catalog", response_model=list[SituationDto])

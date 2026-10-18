@@ -33,6 +33,7 @@ class User(Base):
     avatar_url: Mapped[str] = mapped_column(String(500), default="")  # фото из MAX, если платформа его отдала
     tz: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")  # IANA-зона с телефона — «настенные» времена пушей
     region: Mapped[str] = mapped_column(String(100), default="")  # регион из content/regions.json
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)  # город из content/cities.json; tz не показывается пользователю
     attached_clinic_id: Mapped[int | None] = mapped_column(
         ForeignKey("organizations.id"), nullable=True, index=True
     )

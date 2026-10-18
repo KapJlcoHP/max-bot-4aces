@@ -1603,6 +1603,30 @@
         ],
         "title": "ChecklistOut"
       },
+      "CityDto": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "region"
+        ],
+        "title": "CityDto",
+        "description": "Город из пилотного справочника; техническая зона наружу не выходит."
+      },
       "ClinicChangeIn": {
         "properties": {
           "attached_clinic_id": {
@@ -1694,17 +1718,6 @@
       },
       "ConsentIn": {
         "properties": {
-          "tz": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tz"
-          },
           "region": {
             "anyOf": [
               {
@@ -1715,6 +1728,17 @@
               }
             ],
             "title": "Region"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
           },
           "diaries": {
             "anyOf": [
@@ -2716,6 +2740,13 @@
             "type": "boolean",
             "title": "Pilot",
             "default": false
+          },
+          "cities": {
+            "items": {
+              "$ref": "#/components/schemas/CityDto"
+            },
+            "type": "array",
+            "title": "Cities"
           }
         },
         "type": "object",
@@ -3008,6 +3039,17 @@
               }
             ],
             "title": "Region"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
           },
           "attached_clinic_id": {
             "anyOf": [
@@ -3726,15 +3768,21 @@
             "title": "Step Day Before Time",
             "default": "09:00"
           },
-          "tz": {
-            "type": "string",
-            "title": "Tz",
-            "default": "Europe/Moscow"
-          },
           "region": {
             "type": "string",
             "title": "Region",
             "default": ""
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
           },
           "attached_clinic_id": {
             "anyOf": [

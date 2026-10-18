@@ -45,8 +45,8 @@ class UserDto(OrmDto):
     notify_hour_before: bool = True
     notify_at_deadline: bool = True
     step_day_before_time: str = "09:00"
-    tz: str = "Europe/Moscow"
     region: str = ""
+    city: str | None = None
     attached_clinic_id: int | None = None
     consent_at: datetime | None = None
     contains_demo_data: bool = False
@@ -58,13 +58,22 @@ class RegionDto(OrmDto):
     key: str
     title: str
     pilot: bool = False
+    cities: list["CityDto"] = Field(default_factory=list)
+
+
+class CityDto(BaseModel):
+    """Город из пилотного справочника; техническая зона наружу не выходит."""
+
+    key: str
+    title: str
+    region: str
 
 
 class ConsentIn(OrmDto):
     """Согласие и настройки первого входа сохраняются одной транзакцией."""
 
-    tz: str | None = None
     region: str | None = None
+    city: str | None = None
     diaries: list["HealthSettingDto"] | None = None
     attached_clinic_id: int | None = None
 
@@ -469,11 +478,13 @@ class SettingsIn(OrmDto):
     step_day_before_time: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     email: str | None = None
     region: str | None = None
+    city: str | None = None
     attached_clinic_id: int | None = None
     confirm_clinic_reset: bool = False
     expected_clinic_id: int | None = Field(default=None, gt=0)
     expected_region: str | None = None
 
 
+RegionDto.model_rebuild()
 RouteDto.model_rebuild()
 CompleteStepOut.model_rebuild()

@@ -19,6 +19,16 @@ function editor(value = step, api = {}, overrides = {}) {
   return reminderHarness("components/StepScheduleEditor.tsx", { user, props: { step: value }, api, ...overrides });
 }
 
+test("M4: schedule headings are contextual and never expose the technical timezone name", async () => {
+  const labels = { visit: "Расписание визита", investigation: "Расписание исследования", task: "Расписание задачи", process: "Расписание процесса" };
+  for (const [kind, label] of Object.entries(labels)) {
+    const page = editor({ ...step, kind });
+    await page.flush();
+    assert.match(page.text(), new RegExp(label));
+    assert.doesNotMatch(page.text(), /Asia\/Tokyo|Europe\/Moscow|\btz\b/);
+  }
+});
+
 test("reminder wall inputs use the profile zone independent of process/device timezone", () => {
   assert.equal(reminderWallTime("2030-01-02T20:30:00Z", "Asia/Tokyo"), "2030-01-03T05:30");
   assert.equal(reminderWallTime("2030-01-02T20:30:00Z", "America/Los_Angeles"), "2030-01-02T12:30");

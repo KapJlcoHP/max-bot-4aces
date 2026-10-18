@@ -52,6 +52,7 @@ def _migrate_sqlite() -> None:
             ("avatar_url", "VARCHAR(500) NULL DEFAULT ''"),
             ("tz", "VARCHAR(64) NOT NULL DEFAULT 'Europe/Moscow'"),
             ("region", "VARCHAR(100) NOT NULL DEFAULT ''"),
+            ("city", "VARCHAR(100) NULL"),
             ("attached_clinic_id", "INTEGER NULL"),
             ("notify_day_before", "BOOLEAN NOT NULL DEFAULT 1"),
             ("notify_hour_before", "BOOLEAN NOT NULL DEFAULT 1"),
@@ -103,6 +104,23 @@ def _migrate_sqlite() -> None:
                 "CREATE INDEX IF NOT EXISTS ix_users_attached_clinic_id "
                 "ON users (attached_clinic_id)"
             ))
+
+            # A legacy profile may only have an IANA zone. Populate a city
+            # only when the directory gives one exact answer in that region;
+            # an empty/ambiguous match intentionally stays NULL.
+            from core.location import legacy_city_candidates
+
+            conn.execute(text("CREATE TABLE IF NOT EXISTS data_migrations (name VARCHAR(100) PRIMARY KEY)"))
+            if not conn.execute(text("SELECT 1 FROM data_migrations WHERE name = 'user_city_v1'")).first():
+                for user_id, region, tz, city in conn.execute(text(
+                    "SELECT id, region, tz, city FROM users WHERE city IS NULL OR city = ''"
+                )).fetchall():
+                    candidates = legacy_city_candidates(tz, region or None)
+                    if len(candidates) == 1:
+                        conn.execute(text("UPDATE users SET city = :city WHERE id = :id"), {
+                            "city": candidates[0]["title"], "id": user_id,
+                        })
+                conn.execute(text("INSERT INTO data_migrations (name) VALUES ('user_city_v1')"))
 
         if "route_steps" in inspector.get_table_names() and "routes" in inspector.get_table_names():
             from core.db.seed import load_scenarios, load_sources

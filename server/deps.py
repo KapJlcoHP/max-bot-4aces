@@ -41,6 +41,7 @@ class PendingUser:
     notify_at_deadline: bool = True
     step_day_before_time: str = "09:00"
     tz: str = "Europe/Moscow"
+    city: str | None = None
     attached_clinic_id: int | None = None
     consent_at: None = None
 

@@ -1,0 +1,7 @@
+{
+  "cities": [
+    {"key": "ivanovo", "title": "Иваново", "region": "Ивановская область", "tz": "Europe/Moscow"},
+    {"key": "vladimir", "title": "Владимир", "region": "Владимирская область", "tz": "Europe/Moscow"},
+    {"key": "yaroslavl", "title": "Ярославль", "region": "Ярославская область", "tz": "Europe/Moscow"}
+  ]
+}

@@ -12,7 +12,7 @@ const orgs = [org(1, "Старая клиника"), org(2, "Новая клин
 test("catalog and map browse only; existing choice is marked and cannot be replaced", async () => {
   const h = clinicHarness({ user, orgs });
   await h.flush();
-  assert.match(h.text(), /Текущая поликлиника/);
+  assert.match(h.text(), /Прикреплённая поликлиника/);
   assert.doesNotMatch(h.text(), /Выбрать поликлинику/);
   h.node((node) => node.type === "OrganizationMap").props.onSelect(2);
   await h.flush();
@@ -99,11 +99,11 @@ test("profile has one clinic row, explicit change navigation and no detach contr
 test("region warning can cancel; save waits for response and sends acknowledged exact state", async () => {
   const pending = deferred();
   const h = clinicHarness({ page: "Profile", user, orgs, patch: () => pending.promise });
-  await h.flush(); h.cell("Регион").props.onClick(); await h.flush();
+  await h.flush(); h.cell("Город и регион").props.onClick(); await h.flush();
   h.node((n) => n.type === "button" && n.props.children?.[1]?.props?.["aria-label"] === "Владимирская область").props.onClick();
   await h.flush(); assert.match(h.text(), /будет убрана из профиля/);
   h.click("Отмена"); await h.flush(); assert.deepEqual(h.mutations(), []);
-  h.cell("Регион").props.onClick(); await h.flush();
+  h.cell("Город и регион").props.onClick(); await h.flush();
   h.node((n) => n.type === "button" && n.props.children?.[1]?.props?.["aria-label"] === "Владимирская область").props.onClick();
   await h.flush(); const save = h.click("Изменить регион и сбросить поликлинику"); await h.flush();
   assert.equal(h.user().region, region); assert.equal(h.user().attached_clinic_id, 1);
@@ -115,7 +115,7 @@ test("region warning can cancel; save waits for response and sends acknowledged 
 test("region failures keep the previous state and confirmation; conflict refreshes without retry", async () => {
   let conflict = false;
   const h = clinicHarness({ page: "Profile", user, orgs, patch: () => { throw conflict ? new ApiError(409) : new Error("offline"); } });
-  await h.flush(); h.cell("Регион").props.onClick(); await h.flush();
+  await h.flush(); h.cell("Город и регион").props.onClick(); await h.flush();
   h.node((n) => n.type === "button" && n.props.children?.[1]?.props?.["aria-label"] === "Владимирская область").props.onClick();
   await h.flush(); await h.click("Изменить регион и сбросить поликлинику"); await h.flush();
   assert.equal(h.user().region, region); assert.equal(h.user().attached_clinic_id, 1);

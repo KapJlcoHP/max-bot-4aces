@@ -30,6 +30,12 @@ const CHIPS: { title: string; kind: StepKind }[] = [
   { title: "Этап курса процедур", kind: "process" }, { title: "Прививка", kind: "investigation" },
 ];
 
+function userTimeZone(city: string | null, legacyTz?: string): string {
+  return city === "Иваново" || city === "Владимир" || city === "Ярославль"
+    ? "Europe/Moscow"
+    : legacyTz || (Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Moscow");
+}
+
 export default function StepCard() {
   const { user } = useApp();
   const now = useNow();
@@ -261,7 +267,7 @@ export default function StepCard() {
               {step.deadline && <div className="kv"><I.cal size={18} />{fmtDeadline(step.deadline, step.deadline_time)}</div>}
               <div className="step-deadline-meta">
                 {step.status !== "done" && step.deadline && step.deadline_time && <span className="muted">В {step.deadline_time}</span>}
-                <StepCountdown step={step} tz={user.tz} now={now} />
+                <StepCountdown step={step} tz={userTimeZone(user.city, "tz" in user ? String(user.tz) : undefined)} now={now} />
               </div>
               {step.place && <div className="kv"><I.pin size={18} />{step.place}</div>}
               {step.description && (
@@ -280,7 +286,7 @@ export default function StepCard() {
               <StepKindEditor key={`kind-${step.id}`} step={step} steps={route?.steps ?? []} disabled={bookingLocked || busy}
                 onSaved={(updated) => setRoute((r) => r ? { ...r, steps: r.steps.map((s) => s.id === updated.id ? updated : s) } : r)} />
             </details>}
-            {step.status !== "done" && step.kind !== "booking" && <Button variant="secondary" onClick={() => nav(`/route?before_step_id=${step.id}`)}>Добавить подготовку перед этим событием</Button>}
+            {step.status !== "done" && step.kind !== "booking" && <Button className="prep-action secondary-action" variant="secondary" onClick={() => nav(`/route?before_step_id=${step.id}`)}>Добавить подготовку перед этим событием</Button>}
 
             <details className="card step-source">
               <summary>Источник</summary>
@@ -353,7 +359,7 @@ export default function StepCard() {
 
       <Sheet open={assignSheet} onClose={closeAssignments}>
         <h3>Что назначил врач?</h3>
-        <div className="sub">{step.status === "current" && "Шаг будет выполнен только после подтверждения. "}Добавим шагами в маршрут. Дата и время необязательны ({user.tz}); уведомления получает только текущий шаг.</div>
+        <div className="sub">{step.status === "current" && "Шаг будет выполнен только после подтверждения. "}Добавим шагами в маршрут. Дата и время необязательны (в вашем местном времени); уведомления получает только текущий шаг.</div>
         {assignmentError && <p role="alert" className="muted">{assignmentError}</p>}
         {assignmentError && !uncertain && <Button variant="secondary" disabled={busy} onClick={() => {
           if (inFlight.current || pendingSubmission.current) return;

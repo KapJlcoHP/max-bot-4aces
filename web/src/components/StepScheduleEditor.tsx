@@ -5,6 +5,23 @@ import { reminderWallTime } from "../stepReminderTime";
 import { Button } from "./ui";
 import EventDateTimeInputs from "./EventDateTimeInputs";
 
+function userTimeZone(city: string | null, legacyTz?: string): string {
+  return city === "Иваново" || city === "Владимир" || city === "Ярославль"
+    ? "Europe/Moscow"
+    : legacyTz || (Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Moscow");
+}
+
+function scheduleTitle(kind: Step["kind"]): string {
+  switch (kind) {
+    case "visit": return "Расписание визита";
+    case "investigation": return "Расписание исследования";
+    case "task": return "Расписание задачи";
+    case "process": return "Расписание процесса";
+    case "booking": return "Прежний срок действия записи";
+    default: return "Расписание шага";
+  }
+}
+
 export default function StepScheduleEditor({ step, user, now, onSaved, disabled = false }: {
   step: Step; user: UserDto; now: Date; onSaved: (step: Step) => void;
   disabled?: boolean;
@@ -12,7 +29,7 @@ export default function StepScheduleEditor({ step, user, now, onSaved, disabled 
   const [date, setDate] = useState(step.deadline ?? "");
   const [time, setTime] = useState(step.deadline_time ?? "");
   const [mode, setMode] = useState<StepReminderMode>(step.reminder_mode ?? "profile");
-  const [moment, setMoment] = useState(reminderWallTime(step.reminder_at, user.tz));
+  const [moment, setMoment] = useState(reminderWallTime(step.reminder_at, userTimeZone(user.city, "tz" in user ? String(user.tz) : undefined)));
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -22,9 +39,9 @@ export default function StepScheduleEditor({ step, user, now, onSaved, disabled 
     setDate(step.deadline ?? "");
     setTime(step.deadline_time ?? "");
     setMode(step.reminder_mode ?? "profile");
-    setMoment(reminderWallTime(step.reminder_at, user.tz));
+    setMoment(reminderWallTime(step.reminder_at, userTimeZone(user.city, "tz" in user ? String(user.tz) : undefined)));
     setConfirmed(false);
-  }, [step, user.tz]);
+  }, [step, user.city]);
 
   const eventMoved = date !== (step.deadline ?? "") || time !== (step.deadline_time ?? "");
   const review = eventMoved && step.reminder_mode === "custom" && mode === "custom";
@@ -49,7 +66,7 @@ export default function StepScheduleEditor({ step, user, now, onSaved, disabled 
       // Keep the precise instant (including offset/fold) when the field was
       // not edited. New wall input is interpreted and DST-validated by API.
       reminder_at: mode === "custom"
-        ? moment === reminderWallTime(step.reminder_at, user.tz) ? step.reminder_at : moment
+        ? moment === reminderWallTime(step.reminder_at, userTimeZone(user.city, "tz" in user ? String(user.tz) : undefined)) ? step.reminder_at : moment
         : null,
     };
     try {
@@ -64,8 +81,8 @@ export default function StepScheduleEditor({ step, user, now, onSaved, disabled 
     }
   };
   return <div className="card">
-    <h3 className="h3">{step.kind === "booking" ? "Прежний срок действия записи" : "Срок события"}</h3>
-    <p className="muted">{step.kind === "booking" ? "Это отдельный срок действия «записаться» и его напоминание, не дата полученного события. Прежнее точное время сохранено; новое время оформления записи не задаётся." : "Проверьте фактическую дату приёма или свой срок. Если дата неизвестна, её можно очистить. Время необязательно."} Часовой пояс: {user.tz}.</p>
+    <h3 className="h3">{scheduleTitle(step.kind)}</h3>
+    <p className="muted">{step.kind === "booking" ? "Это отдельный срок действия «записаться» и его напоминание, не дата полученного события. Прежнее точное время сохранено; новое время оформления записи не задаётся." : "Проверьте фактическую дату приёма или свой срок. Если дата неизвестна, её можно очистить. Время необязательно."} Время указано в вашем местном времени.</p>
     <div className="own-row" style={{ flexWrap: "wrap" }}>
       {step.kind === "booking" ? <label>Срок действия записи<input type="date" aria-label="Срок действия записи" value={date} disabled={controlsDisabled} onChange={(e) => {
         setDate(e.target.value); setConfirmed(false); if (!e.target.value) { setTime(""); setMode("profile"); setMoment(""); }
@@ -91,7 +108,7 @@ export default function StepScheduleEditor({ step, user, now, onSaved, disabled 
       ] as [StepReminderMode, string][]).map(([value, label]) => <label key={value}>
         <input type="radio" name={`reminder-${step.id}`} checked={mode === value} onChange={() => { setMode(value); setConfirmed(false); }} /> {label}
       </label>)}
-      {mode === "custom" && <label>Дата и время уведомления ({user.tz})
+      {mode === "custom" && <label>Дата и время уведомления (в вашем местном времени)
         <input type="datetime-local" aria-label="Дата и время напоминания" value={moment}
           style={{ display: "block", width: "100%", minWidth: 0, padding: 10, marginTop: 6, font: "inherit", border: "1px solid var(--border)", borderRadius: 10 }}
           onChange={(e) => { setMoment(e.target.value); setConfirmed(false); }} />

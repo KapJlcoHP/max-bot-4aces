@@ -34,7 +34,7 @@ export default function Profile() {
   const [clinic, setClinic] = useState<Organization | null>(null);
   const [busy, setBusy] = useState(false);
   const regionLock = useRef(false);
-  const [regionChange, setRegionChange] = useState<{ title: string; expected_region: string; expected_clinic_id: number | null; clinicLabel: string } | null>(null);
+  const [regionChange, setRegionChange] = useState<{ title: string; city: string | null; expected_region: string; expected_clinic_id: number | null; clinicLabel: string } | null>(null);
   const [stepReminderBusy, setStepReminderBusy] = useState<StepReminderKey | null>(null);
   const [stepDayBeforeTimeBusy, setStepDayBeforeTimeBusy] = useState(false);
 
@@ -108,7 +108,7 @@ export default function Profile() {
     setBusy(true);
     try {
       const updated = await api.patch<UserDto>("/api/v1/me/settings", {
-        region: change.title, expected_region: change.expected_region,
+        region: change.title, ...(change.city !== null ? { city: change.city } : {}), expected_region: change.expected_region,
         expected_clinic_id: change.expected_clinic_id, confirm_clinic_reset: change.expected_clinic_id !== null,
       });
       updateUser(updated);
@@ -134,7 +134,7 @@ export default function Profile() {
       setRegionSheet(false);
       return;
     }
-    const change = { title, expected_region: user.region, expected_clinic_id: user.attached_clinic_id,
+    const change = { title, city: title === user.region ? user.city : null, expected_region: user.region, expected_clinic_id: user.attached_clinic_id,
       clinicLabel: clinic ? `${clinic.title} · ${clinic.address}` : "Текущая поликлиника" };
     if (user.attached_clinic_id !== null) {
       setRegionSheet(false);
@@ -228,8 +228,8 @@ export default function Profile() {
             <CellSimple
               className="press"
               before={<div className="ic"><I.pin size={18} /></div>}
-              title="Регион"
-              subtitle={user.region || "Не выбран"}
+              title="Город и регион"
+              subtitle={user.region ? `${user.city ? `${user.city} · ` : ""}${user.region}` : "Не выбран"}
               after={<span className="cell-note">Изменить</span>}
               showChevron
               onClick={() => setRegionSheet(true)}
@@ -286,6 +286,15 @@ export default function Profile() {
             </button>
           ))}
           {regions.length === 0 && <div className="muted" style={{ padding: "8px 0" }}>Список регионов недоступен</div>}
+          {user.region && regions.find((item) => item.title === user.region)?.cities?.length ? <>
+            <div className="sub" style={{ marginTop: 10 }}>Город</div>
+            {regions.find((item) => item.title === user.region)!.cities!.map((item) => (
+              <button type="button" key={item.key} className="rem-item press" style={{ textAlign: "left", border: "none", background: "none", cursor: "pointer" }}
+                onClick={() => void saveRegion({ title: user.region, city: item.title, expected_region: user.region, expected_clinic_id: user.attached_clinic_id, clinicLabel: clinic ? `${clinic.title} · ${clinic.address}` : "Текущая поликлиника" })}>
+                <div className="what"><b>{item.title}</b></div><Radio checked={user.city === item.title} readOnly aria-label={item.title} />
+              </button>
+            ))}
+          </> : null}
         </div>
         <Button variant="secondary" onClick={() => setRegionSheet(false)}>Закрыть</Button>
       </Sheet>

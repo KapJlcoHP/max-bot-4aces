@@ -310,7 +310,7 @@ export default function Builder() {
                       {ownKind === "booking" ? <label>На какую дату вы записались?<input type="date" aria-label="На какую дату вы записались?" value={ownDate} onChange={(e) => setOwnDate(e.target.value)} /></label> : <EventDateTimeInputs date={ownDate} time={ownTime} onChange={(d, t) => { setOwnDate(d); setOwnTime(t); }} />}
                       <button className="add" onClick={addOwn} aria-label="Добавить">+</button>
                     </div>
-                     <p className="muted">Дата необязательна, время — тоже ({user.tz}). Для записи цель выбирается после добавления; её дата не меняет расписание до подтверждения в карточке.</p>
+                     <p className="muted">Дата необязательна, время — тоже (в вашем местном времени). Для записи цель выбирается после добавления; её дата не меняет расписание до подтверждения в карточке.</p>
                   </div>
                 </>
               )}

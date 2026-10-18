@@ -27,9 +27,9 @@ function isDemo(org: Organization) {
   return org.title === "Городская поликлиника №12" || org.title === "ГКБ им. С.П. Боткина №3";
 }
 
-function jumpTo(id: string) {
+function focusTarget(id: string) {
   const target = document.getElementById(id);
-  target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  target?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   target?.focus({ preventScroll: true });
 }
 
@@ -49,6 +49,7 @@ export default function Orgs() {
   const [linkAttempt, setLinkAttempt] = useState(0);
   const choice = useClinicChoice(changeMode, showToast);
   const requestId = useRef(0);
+  const pendingFocusId = useRef<number | null>(null);
   const effectiveRegion = changeMode ? user.region : region;
   const effectiveType = changeMode ? "Поликлиники" : type;
   const linkKey = `${orgId ?? ""}:${changeMode}:${user.region}`;
@@ -136,7 +137,17 @@ export default function Orgs() {
     if (currentResults && !currentResults.error && selectedId !== null && !orgs.some((org) => org.id === selectedId)) setSelectedId(null);
   }, [currentResults, orgs, selectedId]);
 
-  const select = (id: number) => { if (orgs.some((org) => org.id === id)) setSelectedId(id); };
+  const select = (id: number) => {
+    if (!orgs.some((org) => org.id === id)) return;
+    pendingFocusId.current = id;
+    setSelectedId(id);
+  };
+  useEffect(() => {
+    const id = pendingFocusId.current;
+    if (id === null || selectedId !== id) return;
+    pendingFocusId.current = null;
+    focusTarget(`org-card-${id}`);
+  }, [selectedId]);
   const reset = () => {
     if (!q && effectiveType === (changeMode ? "Поликлиники" : "Все") && effectiveRegion === (changeMode ? user.region : "Все")) return;
     invalidate(); setQ(""); setType(changeMode ? "Поликлиники" : "Все"); setRegion(changeMode ? user.region : "Все");
@@ -166,11 +177,6 @@ export default function Orgs() {
         {currentLink?.status === "error" && <div role="alert"><h2>Не удалось загрузить организацию</h2><p>Проверьте соединение и повторите попытку.</p><Button onClick={() => { invalidate(); setLink(null); setLinkAttempt((attempt) => attempt + 1); }}>Повторить загрузку организации</Button></div>}
         {currentLink?.status === "unavailable" && <div role="alert"><h2>Организация недоступна для выбора</h2><p>В этом режиме доступны только поликлиники региона профиля: {user.region || "регион не задан"}. Ниже показан доступный список.</p></div>}
         {orgId && currentLink && currentLink.status !== "ready" && <Button variant="secondary" onClick={() => nav(`/orgs${changeMode ? "?mode=change" : ""}`)}>К списку организаций</Button>}
-        <div className="org-jumps" aria-label="Переход между картой и списком">
-          <Button variant="secondary" onClick={() => jumpTo("org-map")}>К карте</Button>
-          <Button variant="secondary" onClick={() => jumpTo("org-list")}>К списку</Button>
-          <Button variant="secondary" disabled={!selected} onClick={() => { if (selected) jumpTo(`org-card-${selected.id}`); }}>К выбранной карточке</Button>
-        </div>
         <section id="org-map" tabIndex={-1} aria-label="Карта организаций">
           <OrganizationMap organizations={orgs} selectedId={selected?.id ?? null} onSelect={select} />
         </section>
@@ -185,11 +191,15 @@ export default function Orgs() {
               const demo = isDemo(org);
               const phone = org.phone.replace(/[^+\d]/g, "");
               const callable = !demo && /^\+?\d{5,15}$/.test(phone);
-              return <article key={org.id} id={`org-card-${org.id}`} tabIndex={-1} className={`card org-card${expanded ? " org-card-selected" : ""}${user.attached_clinic_id === org.id ? " selected-clinic" : ""}`}>
+              const attached = user.attached_clinic_id === org.id;
+              return <article key={org.id} id={`org-card-${org.id}`} tabIndex={-1} className={`card org-card${expanded ? " org-card-selected" : ""}${attached ? " selected-clinic" : ""}`}>
                 <button type="button" className="org-card-select" aria-expanded={expanded} aria-controls={`org-details-${org.id}`} onClick={() => select(org.id)}>
-                  <h3>{org.title}</h3><p className="muted">{org.org_type} · {org.region}</p><p className="kv"><I.pin size={16} />{org.address || "Адрес не указан"}</p><span className="org-card-hint">{expanded ? "Подробности открыты" : "Показать подробности"}</span>
+                  <span className="org-card-heading">
+                    <h3>{org.title}</h3>
+                    {attached && <span className="attached-clinic-badge" aria-label="Прикреплённая поликлиника" title="Прикреплённая поликлиника"><I.pin size={15} /><span className="sr-only">Прикреплённая поликлиника</span></span>}
+                  </span>
+                  <p className="muted">{org.org_type} · {org.region}</p><p className="kv"><I.pin size={16} />{org.address || "Адрес не указан"}</p><span className="org-card-hint">{expanded ? "Подробности открыты" : "Показать подробности"}</span>
                 </button>
-                {user.attached_clinic_id === org.id && <p role="status">Текущая поликлиника</p>}
                 {expanded && <div id={`org-details-${org.id}`} className="org-details">
                   {demo && <p role="note">Модельная организация. Телефон и другие данные демонстрационные, не для обращения за медицинской помощью.</p>}
                   <h4>Контакты и режим работы</h4>
@@ -200,7 +210,7 @@ export default function Orgs() {
                   {org.services.length ? <ul className="bullet-list">{org.services.map((service) => <li key={service}>{service}</li>)}</ul> : <p>Услуги не указаны</p>}
                   {!mapped && <p role="status">Координаты не указаны или некорректны. Организация доступна в списке; точка на карте не показана.</p>}
                   <div className="org-jumps">
-                    {mapped && <Button variant="secondary" onClick={() => jumpTo("org-map")}>К точке на карте</Button>}
+                    {mapped && <Button variant="secondary" onClick={() => focusTarget("org-map")}>К точке на карте</Button>}
                     <Button variant="secondary" onClick={() => openExternalLink(mapped ? `https://yandex.ru/maps/?rtext=~${org.lat},${org.lon}&rtt=auto` : `https://yandex.ru/maps/?text=${encodeURIComponent(org.address)}`)}>{mapped ? "Построить путь в Яндексе" : "Искать адрес в Яндексе"}</Button>
                   </div>
                   {org.org_type === "Поликлиники" && org.region !== user.region && <p className="muted">Для выбора доступны только поликлиники региона профиля.</p>}

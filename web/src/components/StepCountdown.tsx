@@ -9,7 +9,7 @@ export default function StepCountdown({ step, tz, now }: {
   if (step.status === "done") return null;
   const countdown = deadlineCountdown(step.deadline, step.deadline_time, tz, now);
   return (
-    <span className={`step-countdown${countdown.overdue ? " is-overdue" : ""}${!step.deadline ? " no-deadline" : ""}`}>
+    <span className={`step-countdown secondary-action${countdown.overdue ? " is-overdue" : ""}${!step.deadline ? " no-deadline" : ""}`}>
       {step.kind === "booking" && (step.deadline ? "Прежний срок действия записи: " : "Срок действия записи: ")}{countdown.text}
     </span>
   );

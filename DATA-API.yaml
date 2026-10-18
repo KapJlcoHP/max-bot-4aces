@@ -54,7 +54,7 @@ checks:
     method: POST
     path: /me/consent
     params:
-      body: { tz: "Europe/Moscow" }
+      body: { city: "Иваново", region: "Ивановская область" }
     expected_status: [200]
     response:
       format: application/json
@@ -70,7 +70,7 @@ checks:
     expected_status: [200]
     response:
       format: application/json
-      required_fields: ["[].key", "[].title", "[].pilot"]
+      required_fields: ["[].key", "[].title", "[].pilot", "[].cities[].title"]
       notes: "3 региона: Ивановская (pilot=true), Владимирская, Ярославская"
 
   - id: catalog

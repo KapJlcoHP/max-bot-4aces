@@ -37,13 +37,13 @@ def main() -> None:
     init_db()
 
     with TestClient(app) as client:
-        r = client.post("/api/v1/me/consent", json={"tz": "Asia/Irkutsk"})
-        check("consent 200 + tz сохранён", r.status_code == 200 and r.json()["tz"] == "Asia/Irkutsk", r.text)
-        r = client.post("/api/v1/me/consent", json={"tz": "Mars/Olympus"})
+        r = client.post("/api/v1/me/consent", json={"city": "Иваново", "region": "Ивановская область"})
+        check("consent 200 + city сохранён", r.status_code == 200 and r.json()["city"] == "Иваново" and "tz" not in r.json(), r.text)
+        r = client.patch("/api/v1/me/settings", json={"city": "Владимир", "region": "Ивановская область"})
         current = client.get("/api/v1/me")
         check(
-            "незнакомая зона отклоняется и не сохраняется",
-            r.status_code == 422 and current.json()["tz"] == "Asia/Irkutsk",
+            "чужой город отклоняется и не сохраняется",
+            r.status_code == 422 and current.json()["city"] == "Иваново" and "tz" not in current.json(),
             r.text,
         )
 
