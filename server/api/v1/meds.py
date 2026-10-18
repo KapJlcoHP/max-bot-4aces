@@ -14,8 +14,11 @@ router = APIRouter()
 
 def _meds_out(db: Session, user: User) -> MedsOut:
     today = user_today(user)
+    # Keep completed courses in the response: they are part of the user's
+    # medication history. Only active courses contribute slots below, so a
+    # completed course cannot accidentally re-enable its daily schedule.
     courses = db.query(MedCourse).filter(
-        MedCourse.user_id == user.id, MedCourse.enabled.is_(True)
+        MedCourse.user_id == user.id
     ).order_by(MedCourse.created_at).all()
     intakes = db.query(MedIntake).filter(
         MedIntake.user_id == user.id, MedIntake.day == today
@@ -32,7 +35,7 @@ def _meds_out(db: Session, user: User) -> MedsOut:
             until=c.until,
             enabled=c.enabled,
         ))
-        if c.until is not None and c.until < today:
+        if not c.enabled or (c.until is not None and c.until < today):
             continue
         for t in canonical_times:
             intake = next(

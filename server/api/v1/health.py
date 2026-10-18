@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -44,6 +45,18 @@ def _diary_settings(db: Session, user_id: int):
 
 def _get_diary_settings(db: Session, user_id: int) -> dict[str, bool]:
     return enabled_diaries(db, user_id)
+
+
+def _report_note_text(row: HealthRecord) -> str:
+    """Return the visible report text for a record with notes or mood data."""
+    structured = []
+    if row.mood:
+        structured.append(f"Самочувствие: {row.mood}")
+    if row.pain is not None:
+        structured.append(f"боль {row.pain}/10")
+    if row.note:
+        structured.append(row.note)
+    return " · ".join(structured)
 
 
 @router.get("/health/settings", response_model=HealthSettingsOut)
@@ -184,17 +197,25 @@ def health_report_impl(
         notes = db.query(HealthRecord).filter(
             HealthRecord.user_id == user.id,
             HealthRecord.type.in_([diary for diary, on in enabled.items() if on]),
-            HealthRecord.note.is_not(None),
+            or_(
+                and_(HealthRecord.mood.is_not(None), HealthRecord.mood != ""),
+                HealthRecord.pain.is_not(None),
+                and_(HealthRecord.note.is_not(None), HealthRecord.note != ""),
+            ),
             HealthRecord.at >= period_start,
             HealthRecord.at <= period_end,
         ).order_by(HealthRecord.at.desc()).limit(5).all()
-        out.notes = [ReportNote(at=user_local(n.at, user.tz), note=n.note) for n in notes]
+        out.notes = [
+            ReportNote(at=user_local(n.at, user.tz), note=_report_note_text(n))
+            for n in notes
+        ]
 
     today = local_now.date()
     period_start_day = local_start.date()
-    for course in db.query(MedCourse).filter(
-        MedCourse.user_id == user.id, MedCourse.enabled.is_(True)
-    ).all():
+    # A disabled course is completed, not deleted. Include it in the report
+    # so the doctor can still see its historical intake totals; ``enabled``
+    # only controls the live medication schedule.
+    for course in db.query(MedCourse).filter(MedCourse.user_id == user.id).all():
         first_intake = db.query(MedIntake.day).filter(
             MedIntake.course_id == course.id,
             MedIntake.taken_at.is_not(None),

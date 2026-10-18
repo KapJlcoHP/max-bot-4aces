@@ -19,6 +19,7 @@ from core.db.models import (
 from core.schemas import ConsentIn, HealthSettingDto, HealthSettingsIn, ReminderAddIn
 from core.services import user_today
 from server.deps import PendingUser
+from server.api.v1 import health as health_api, meds as meds_api
 
 
 # PDF-зависимость не нужна для этих API-функций и может отсутствовать в локальном venv.
@@ -61,6 +62,34 @@ class DataLifecycleTests(unittest.TestCase):
         self.assertGreaterEqual(report.meds[0].planned, 58)
         self.assertGreaterEqual(report.meds[1].planned, 29)
         self.assertLess(report.meds[0].pct, 100)
+
+    def test_completed_medication_stays_in_history_but_not_today_schedule(self):
+        course = MedCourse(
+            user_id=self.user.id,
+            name="Исторический курс",
+            times=["10:00"],
+            created_at=datetime(2026, 9, 28, 8),
+        )
+        self.db.add(course)
+        self.db.flush()
+        self.db.add(MedIntake(
+            course_id=course.id, user_id=self.user.id,
+            day=datetime(2026, 9, 29).date(), at_time="10:00",
+            taken_at=datetime(2026, 9, 29, 10),
+        ))
+        self.db.commit()
+
+        result = meds_api.disable_med(course.id, user=self.user, db=self.db)
+
+        returned = next(row for row in result.courses if row.id == course.id)
+        self.assertFalse(returned.enabled)
+        self.assertEqual(result.today, [])
+
+        report = health_api.health_report_impl(
+            self.user, self.db, now_fn=lambda: datetime(2026, 9, 30, 12)
+        )
+        history = next(row for row in report.meds if row.name == course.name)
+        self.assertEqual((history.taken, history.planned), (1, 3))
 
     def test_demo_reuses_onboarding_settings_and_is_safe_to_repeat(self):
         consent_at = datetime(2026, 10, 1, 12, 30)

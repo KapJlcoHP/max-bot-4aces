@@ -152,6 +152,19 @@ class SchedulerTests(unittest.TestCase):
             [("step", "day")],
         )
 
+    def test_completed_medication_course_has_no_reminders(self):
+        user = User(max_user_id=307, tz="UTC")
+        self.db.add(user)
+        self.db.flush()
+        self.db.add(MedCourse(
+            user_id=user.id, name="Completed", times=["10:00"], enabled=False,
+        ))
+        self.db.commit()
+
+        pushes = collect_due(self.db, now=datetime(2026, 9, 29, 10))
+
+        self.assertEqual([push for push in pushes if push.kind == "med"], [])
+
     def test_notification_dedup_is_scoped_to_user(self):
         users = [User(max_user_id=302, tz="UTC"), User(max_user_id=303, tz="UTC")]
         self.db.add_all(users)

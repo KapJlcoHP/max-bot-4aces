@@ -163,7 +163,11 @@ export default function Meds() {
                         {c.times.length === 1 ? "1 р/день" : `${c.times.length} р/день`}
                         {c.until ? ` · до ${fmtDayMonth(c.until)}` : ""}
                       </small>
-                      <button type="button" className="link-red" onClick={() => disable(c.id)}>завершить</button>
+                      {c.enabled ? (
+                        <button type="button" className="link-red" onClick={() => disable(c.id)}>завершить</button>
+                      ) : (
+                        <small className="muted">завершён</small>
+                      )}
                     </div>
                   ))}
                 </div>

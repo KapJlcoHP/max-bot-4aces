@@ -121,6 +121,36 @@ class HealthTimeTests(unittest.TestCase):
         self.assertNotIn("OUTSIDE_FUTURE", text)
         self.assertIn("Период: 03.10.2026 — 02.11.2026", text)
 
+    def test_report_and_pdf_include_structured_mood_without_note(self):
+        now = datetime(2026, 10, 18, 12)
+        self.db.add_all([
+            HealthRecord(
+                user_id=self.user.id, type="mood", at=datetime(2026, 10, 17, 9),
+                mood="Хорошо", pain=3,
+            ),
+            HealthRecord(
+                user_id=self.user.id, type="mood", at=datetime(2026, 10, 16, 9),
+                mood=None, pain=0, note="",
+            ),
+            HealthRecord(
+                user_id=self.user.id, type="mood", at=datetime(2026, 10, 15, 9),
+                mood=None, pain=None, note="",
+            ),
+        ])
+        self.db.commit()
+
+        report = health.health_report_impl(self.user, self.db, now_fn=lambda: now)
+
+        self.assertEqual(len(report.notes), 2)
+        self.assertIn("Самочувствие: Хорошо", report.notes[0].note)
+        self.assertIn("боль 3/10", report.notes[0].note)
+        self.assertIn("боль 0/10", report.notes[1].note)
+        text, _ = self.render_pdf(report)
+        self.assertIn("Самочувствие: Хорошо", text)
+        self.assertIn("боль 3/10", text)
+        self.assertIn("боль 0/10", text)
+        self.assertNotIn("дневники пусты", text)
+
 
 if __name__ == "__main__":
     unittest.main()

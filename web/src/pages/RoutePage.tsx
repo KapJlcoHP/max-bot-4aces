@@ -47,9 +47,18 @@ export default function RoutePage() {
       api.get<Checklist>("/api/v1/checklist"),
     ])
       .then(([r, c]) => {
-        if (r.status === "rejected") { setStatus("error"); return; }
+        // An unavailable checklist is still a failed route load. Rendering a
+        // partial response here can make an empty route look authoritative
+        // while the API is actually unavailable; let the shared retry state
+        // handle the whole screen instead.
+        if (r.status === "rejected" || c.status === "rejected") {
+          setRoute(null);
+          setChecklist(null);
+          setStatus("error");
+          return;
+        }
         setRoute(r.value);
-        setChecklist(c.status === "fulfilled" && c.value.total > 0 ? c.value : null);
+        setChecklist(c.value.total > 0 ? c.value : null);
         setStatus("ready");
       });
   }, []);

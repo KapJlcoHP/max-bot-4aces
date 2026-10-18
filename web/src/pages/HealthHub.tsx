@@ -46,22 +46,33 @@ export default function HealthHub() {
       api.get<MedsOut>("/api/v1/meds"),
     ])
       .then(([s, bp, w, sg, m, md]) => {
-        if (s.status === "fulfilled") {
-          setSettings(s.value.diaries);
-          setDraft(Object.fromEntries(s.value.diaries.map((d) => [d.diary, d.enabled])) as Record<HealthType, boolean>);
-          setDraftTimes(
-            Object.fromEntries(
-              s.value.diaries.map((d) => [d.diary, d.push_time || "09:00"]),
-            ) as Record<HealthType, string>,
-          );
+        // Settings and the accompanying summaries form one screen model. If
+        // any request failed, do not turn missing data into disabled diaries
+        // (or empty records); show the common retry state instead.
+        if (
+          s.status !== "fulfilled" || bp.status !== "fulfilled" || w.status !== "fulfilled" ||
+          sg.status !== "fulfilled" || m.status !== "fulfilled" || md.status !== "fulfilled"
+        ) {
+          setSettings([]);
+          setLasts({});
+          setMeds(null);
+          setStatus("error");
+          return;
         }
+        setSettings(s.value.diaries);
+        setDraft(Object.fromEntries(s.value.diaries.map((d) => [d.diary, d.enabled])) as Record<HealthType, boolean>);
+        setDraftTimes(
+          Object.fromEntries(
+            s.value.diaries.map((d) => [d.diary, d.push_time || "09:00"]),
+          ) as Record<HealthType, string>,
+        );
         setLasts({
-          bp: bp.status === "fulfilled" && bp.value.length ? bp.value[0] : undefined,
-          weight: w.status === "fulfilled" && w.value.length ? w.value[0] : undefined,
-          sugar: sg.status === "fulfilled" && sg.value.length ? sg.value[0] : undefined,
-          mood: m.status === "fulfilled" && m.value.length ? m.value[0] : undefined,
+          bp: bp.value.length ? bp.value[0] : undefined,
+          weight: w.value.length ? w.value[0] : undefined,
+          sugar: sg.value.length ? sg.value[0] : undefined,
+          mood: m.value.length ? m.value[0] : undefined,
         });
-        setMeds(md.status === "fulfilled" ? md.value : null);
+        setMeds(md.value);
         setStatus("ready");
       });
   }, []);

@@ -258,6 +258,50 @@ test("route request failure is an error, not an empty route during semantic edit
   assert.doesNotMatch(page.text(), /Маршрута пока нет/);
 });
 
+test("checklist failure is retryable and never renders a missing route", async () => {
+  let fail = true;
+  const page = reminderHarness("pages/RoutePage.tsx", { user, api: {
+    get: async (path) => {
+      if (path.endsWith("checklist") && fail) throw new Error("network");
+      return path.endsWith("checklist") ? { total: 0 } : null;
+    },
+  } });
+  await page.flush();
+  assert.ok(page.find((n) => n.type === "ErrorView"));
+  assert.doesNotMatch(page.text(), /Маршрута пока нет/);
+  fail = false;
+  await page.find((n) => n.type === "ErrorView").props.onRetry();
+  await page.flush();
+  assert.doesNotMatch(page.text(), /Не удалось загрузить данные/);
+  assert.match(page.text(), /Выберите свою первую ситуацию/);
+});
+
+test("HealthHub API failure is retryable and never looks like disabled diaries", async () => {
+  let fail = true;
+  const page = reminderHarness("pages/HealthHub.tsx", { user, api: {
+    get: async (path) => {
+      if (path.endsWith("health/settings") && fail) throw new Error("network");
+      if (path.endsWith("health/settings")) return { diaries: [
+        { diary: "bp", enabled: true, push_time: "09:00" },
+        { diary: "weight", enabled: false, push_time: null },
+        { diary: "sugar", enabled: false, push_time: null },
+        { diary: "mood", enabled: true, push_time: "09:00" },
+      ] };
+      if (path.endsWith("/meds")) return { today: [], courses: [] };
+      return [];
+    },
+  } });
+  await page.flush();
+  assert.ok(page.find((n) => n.type === "ErrorView"));
+  assert.doesNotMatch(page.text(), /Дневники не выбраны/);
+  assert.equal(page.find((n) => n.type === "Header").props.back, "/");
+  fail = false;
+  await page.find((n) => n.type === "ErrorView").props.onRetry();
+  await page.flush();
+  assert.doesNotMatch(page.text(), /Не удалось загрузить данные/);
+  assert.doesNotMatch(page.text(), /Дневники не выбраны/);
+});
+
 test("Home and timeline distinguish obtained date from legacy action deadline", async () => {
   const value = { ...booking, appointment_date: "2030-02-20" };
   const data = { ...route, steps: [value, event] };

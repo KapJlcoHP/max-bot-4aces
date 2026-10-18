@@ -215,7 +215,7 @@ export default function Report() {
                 ))}
               </div>
             )}
-            {!report.bp_avg && !report.weight_latest && !report.sugar_avg && report.meds.length === 0 && (
+            {!report.bp_avg && !report.weight_latest && !report.sugar_avg && report.meds.length === 0 && report.notes.length === 0 && (
               <div className="empty-card">
                 <b style={{ fontSize: 15 }}>Пока нечего показывать</b>
                 <div className="muted">Записи дневников и приёмы лекарств появятся в сводке по мере накопления.</div>
