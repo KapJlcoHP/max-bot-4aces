@@ -76,6 +76,18 @@ def strict_local_utc(value: datetime, tz: str | None) -> datetime:
     return candidates.pop()
 
 
+def move_wall_time(value: datetime, old_tz: str | None, new_tz: str | None) -> datetime:
+    """Keep a stored notification's local wall time while changing zones.
+
+    Absolute notification moments are stored as UTC-naive values.  A city
+    change should therefore translate only future moments from the old local
+    clock to the new one; this helper performs that single-value translation
+    without changing dates that are already in the past.
+    """
+    wall = user_local(value, old_tz).replace(tzinfo=None)
+    return strict_local_utc(wall, new_tz)
+
+
 def local_day_bounds(day: date, tz: str | None) -> tuple[datetime, datetime]:
     zone = user_zone(tz)
     start = datetime.combine(day, time.min, tzinfo=zone).astimezone(UTC).replace(tzinfo=None)

@@ -27,6 +27,7 @@ from core.db.models import (
 from core.db.seed import load_catalog, load_regions, load_scenarios, refresh_route_clinic
 from core.location import city_for_location, cities_for_region
 from core.schemas import CityDto, ClinicChangeIn, ConsentIn, RegionDto, SettingsIn, SituationDto, TemplateStepDto, UserDto
+from core.time import move_wall_time
 from server.deps import PendingUser
 from .common import (
     apply_diary_settings,
@@ -45,7 +46,52 @@ def _clinic_conflict():
 
 def _profile_state(db: Session, user: User):
     # Read columns, not a possibly stale ORM identity loaded by authentication.
-    return db.query(User.region, User.city, User.attached_clinic_id).filter(User.id == user.id).one()
+    return db.query(User.region, User.city, User.tz, User.attached_clinic_id).filter(User.id == user.id).one()
+
+
+def _reschedule_future_notification_moments(
+    db: Session, user_id: int, old_tz: str | None, new_tz: str | None,
+) -> None:
+    """Keep future notification walls stable when a city changes.
+
+    Reminder/step custom moments are persisted as UTC instants.  Existing
+    future notifications are user-facing wall-clock choices, so move those
+    moments to the new server-derived zone.  Past, completed and historical
+    rows are deliberately left untouched.
+    """
+    if old_tz == new_tz:
+        return
+    now = utcnow()
+    reminders = db.query(Reminder).filter(
+        Reminder.user_id == user_id,
+        Reminder.done_at.is_(None),
+        Reminder.at >= now,
+    ).all()
+    for reminder in reminders:
+        try:
+            reminder.at = move_wall_time(reminder.at, old_tz, new_tz)
+        except ValueError:
+            # A future wall time that becomes a DST gap/fold is not silently
+            # invented. Keep the stored instant and let the user edit it.
+            continue
+
+    future_steps = (
+        db.query(RouteStep)
+        .join(Route, Route.id == RouteStep.route_id)
+        .filter(
+            Route.user_id == user_id,
+            Route.active.is_(True),
+            RouteStep.status != "done",
+            RouteStep.reminder_at.is_not(None),
+            RouteStep.reminder_at >= now,
+        )
+        .all()
+    )
+    for step in future_steps:
+        try:
+            step.reminder_at = move_wall_time(step.reminder_at, old_tz, new_tz)
+        except ValueError:
+            continue
 
 
 def _validate_location(city: str | None, region: str | None):
@@ -78,14 +124,25 @@ def _validate_clinic(db: Session, clinic_id: int, region: str):
 
 
 def _save_profile(db: Session, user: User, state, values: dict):
-    result = db.execute(update(User).where(
-        User.id == user.id, User.region == state.region,
+    conditions = [
+        User.id == user.id,
+        User.region == state.region,
         User.attached_clinic_id.is_(None) if state.attached_clinic_id is None
         else User.attached_clinic_id == state.attached_clinic_id,
-    ).values(**values).execution_options(synchronize_session=False))
+    ]
+    location_change = "city" in values or "tz" in values
+    state_tz = getattr(state, "tz", getattr(user, "tz", None))
+    if location_change:
+        conditions.extend([
+            User.city.is_(None) if state.city is None else User.city == state.city,
+            User.tz == state_tz,
+        ])
+    result = db.execute(update(User).where(*conditions).values(**values).execution_options(synchronize_session=False))
     if result.rowcount != 1:
         db.rollback()
         _clinic_conflict()
+    if location_change:
+        _reschedule_future_notification_moments(db, user.id, state_tz, values.get("tz", state_tz))
     db.refresh(user)
     if "region" in values or "attached_clinic_id" in values:
         refresh_route_clinic(db, user)
