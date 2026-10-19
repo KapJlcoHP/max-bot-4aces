@@ -671,7 +671,9 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   .app.narrow .foot { max-width: 720px; margin-left: auto; margin-right: auto; width: 100%; }
   /* Keep the sticky header opaque while the inner screen-body scrolls. */
   .header { padding: 22px 0 14px; background: var(--bg); }
-  .screen-body { padding: 8px 0 40px; }
+  /* The desktop tab bar is fixed outside the page flow; keep the final
+     screen content scrollable above it on screens without a .foot action row. */
+  .screen-body { padding: 8px 0 calc(40px + var(--desktop-tabbar-gap)); }
   /* На десктопе TabBar плавающий и находится поверх нижнего края приложения.
      Резервируем место, чтобы sticky-действия экранов не перекрывались навигацией. */
   .foot { padding: 12px 0 calc(24px + var(--desktop-tabbar-gap)); }
