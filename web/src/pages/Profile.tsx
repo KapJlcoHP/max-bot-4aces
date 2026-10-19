@@ -267,6 +267,20 @@ export default function Profile() {
               }}
             />
           </CellList>
+          <CellList mode="island">
+            <CellSimple
+              className="press"
+              before={<div className="ic"><I.doc size={18} /></div>}
+              title="Частые вопросы"
+              subtitle="Ответы о возможностях приложения"
+              showChevron
+              onClick={() => nav("/faq")}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav("/faq"); }
+              }}
+            />
+          </CellList>
       </div>
 
       <Sheet open={regionSheet} onClose={() => setRegionSheet(false)}>

@@ -93,6 +93,21 @@ class SituationDto(OrmDto):
     icon: str
 
 
+class FaqItemDto(BaseModel):
+    """One plain-language answer from the versioned static FAQ content."""
+
+    id: str
+    category: str = Field(min_length=1)
+    question: str = Field(min_length=1)
+    answer: str = Field(min_length=1)
+    order: int = Field(ge=1)
+    source_ids: list[str] | None = None
+
+
+class FaqOut(BaseModel):
+    items: list[FaqItemDto] = Field(min_length=1)
+
+
 class TemplateStepDto(OrmDto):
     position: int
     title: str

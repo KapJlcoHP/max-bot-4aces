@@ -41,10 +41,10 @@ from core.time import db_utc, report_window, user_local, user_zone
 from server.deps import AuthError, PendingUser, get_authenticated_user
 from server.health_pdf import build_health_pdf
 
-from . import common, health, meds, misc, profile, route
+from . import common, faq, health, meds, misc, profile, route
 
 router = APIRouter(prefix="/api/v1")
-for domain_router in (profile.router, route.router, misc.router, health.router, meds.router):
+for domain_router in (profile.router, route.router, misc.router, health.router, meds.router, faq.router):
     router.include_router(domain_router)
 
 HEALTH_TYPES = common.HEALTH_TYPES

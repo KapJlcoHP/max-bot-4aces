@@ -43,6 +43,19 @@ export interface Situation {
   icon: string;
 }
 
+export interface FaqItem {
+  id: string;
+  category: string;
+  question: string;
+  answer: string;
+  order: number;
+  source_ids?: string[] | null;
+}
+
+export interface FaqResponse {
+  items: FaqItem[];
+}
+
 export type StepSource = "template" | "user" | "doctor";
 export type StepKind = "unknown" | "visit" | "booking" | "investigation" | "task" | "process";
 export type StepReminderMode = "profile" | "day" | "hour" | "custom";
