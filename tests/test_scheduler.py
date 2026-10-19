@@ -84,6 +84,35 @@ class SchedulerTests(unittest.TestCase):
 
         self.assertEqual(collect_due(self.db, now=datetime(2026, 9, 29, 1)), [])
 
+    def test_diary_push_uses_profile_local_clock(self):
+        user = User(max_user_id=304, tz="Asia/Tokyo")
+        self.db.add(user)
+        self.db.flush()
+        self.db.add(HealthSetting(user_id=user.id, diary="bp", enabled=True, push_time="09:00"))
+        self.db.commit()
+
+        before_local_nine = datetime(2026, 9, 28, 23, 59, tzinfo=timezone.utc)
+        at_local_nine = datetime(2026, 9, 29, 0, 0, tzinfo=timezone.utc)
+        self.assertEqual(collect_due(self.db, now=before_local_nine), [])
+        pushes = collect_due(self.db, now=at_local_nine)
+        self.assertEqual([(push.kind, push.lead) for push in pushes], [("diary", "20260929")])
+
+    def test_undelivered_diary_push_is_available_for_retry_until_marked(self):
+        user = User(max_user_id=309, tz="UTC")
+        self.db.add(user)
+        self.db.flush()
+        self.db.add(HealthSetting(user_id=user.id, diary="bp", enabled=True, push_time="09:00"))
+        self.db.commit()
+        now = datetime(2026, 9, 29, 9, 0)
+
+        first = collect_due(self.db, now=now)
+        retry = collect_due(self.db, now=now)
+        self.assertEqual([(push.kind, push.ref_id, push.lead) for push in retry], [
+            (push.kind, push.ref_id, push.lead) for push in first
+        ])
+        mark_sent(self.db, first[0])
+        self.assertEqual(collect_due(self.db, now=now), [])
+
     def test_disabled_diary_does_not_send_a_saved_reminder(self):
         user = User(max_user_id=305, tz="Europe/Moscow")
         self.db.add(user)

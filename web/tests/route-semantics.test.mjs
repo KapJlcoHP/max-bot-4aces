@@ -302,6 +302,20 @@ test("HealthHub API failure is retryable and never looks like disabled diaries",
   assert.doesNotMatch(page.text(), /Дневники не выбраны/);
 });
 
+test("R6: structured wellbeing notes keep the report non-empty without a free-text note", async () => {
+  const page = reminderHarness("pages/Report.tsx", { user, api: {
+    get: async (path) => path.endsWith("/health/report")
+      ? { bp_avg: null, weight_latest: null, sugar_avg: null, meds: [], notes: [
+        { at: "2030-01-02T10:00:00+03:00", note: "Самочувствие: Хорошо · боль 0/10" },
+      ] }
+      : { status: "idle", attempts: 0, can_retry: false },
+  } });
+  await page.flush();
+  assert.match(page.text(), /Заметки о самочувствии/);
+  assert.match(page.text(), /Самочувствие: Хорошо · боль 0\/10/);
+  assert.doesNotMatch(page.text(), /Пока нечего показывать/);
+});
+
 test("Home and timeline distinguish obtained date from legacy action deadline", async () => {
   const value = { ...booking, appointment_date: "2030-02-20" };
   const data = { ...route, steps: [value, event] };

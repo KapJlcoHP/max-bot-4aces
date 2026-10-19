@@ -72,8 +72,35 @@ docker compose --profile bot up -d --build
 docker compose --profile prod --profile bot up -d --build
 ```
 
-Без Docker (dev, 3 процесса): `run_api.bat` (API :8000), `run_web.bat` (Vite :5173),
-`run.bat` (бот).
+### Локальная установка и проверки без Docker
+
+Для Linux/macOS нужен Python 3.12 и Node.js 24. Версии зафиксированы в
+`.python-version` и `.nvmrc`. Установка выполняется только внутри проекта:
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements-smoke.txt
+npm --prefix web ci --no-audit --no-fund
+```
+
+Единая команда тестов, не требующая сети после установки зависимостей:
+
+```bash
+make test
+```
+
+Полная локальная проверка с typecheck и production-сборкой:
+
+```bash
+make check
+```
+
+Без Docker API запускается командой `.venv/bin/python -m uvicorn
+server.main:app --reload --host 127.0.0.1 --port 8000`, а Vite — из `web/`
+командой `npm run dev`. Бот запускается отдельно командой `.venv/bin/python
+run_bot.py`; для long polling должен работать ровно один экземпляр.
+Windows-обёртки `run_api.bat` и `run.bat` выполняют соответствующие API- и
+bot-команды.
 
 ## Расписание шагов
 
