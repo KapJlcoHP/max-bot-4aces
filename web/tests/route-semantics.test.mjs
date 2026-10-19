@@ -49,6 +49,25 @@ test("booking step card keeps technical editors and source in compact advanced s
   assert.match(detailsText, /Источник/);
 });
 
+test("independent reminders are labelled separately from the route step", async () => {
+  const page = reminderHarness("pages/Reminders.tsx", { api: {
+    get: async (path) => path.endsWith("/route") ? route : [{ id: 41, title: "Личные вопросы", place: "", at: "2030-01-03T10:00:00+03:00", enabled: true, done_at: null }],
+  } });
+  await page.flush();
+  assert.match(page.text(), /СЛЕДУЮЩИЙ ШАГ МАРШРУТА/);
+  assert.match(page.text(), /Личные напоминания/);
+  assert.match(page.text(), /Личные вопросы/);
+});
+
+test("empty home state does not imply personal reminders require a route", async () => {
+  const page = reminderHarness("pages/Home.tsx", { user: { ...user, first_name: "Анна", last_name: "Тест" }, api: {
+    get: async (path) => path.endsWith("/route") ? null : path.endsWith("/meds") ? { today: [] } : [],
+  } });
+  await page.flush();
+  assert.match(page.text(), /Личные напоминания можно добавить отдельно от маршрута/);
+  assert.doesNotMatch(page.text(), /появятся после первого шага маршрута/);
+});
+
 for (const kind of ["unknown", "booking", "investigation", "task", "process"]) {
   test(`${kind} completes normally without assignment sheet; done anchor cannot add assignments`, async () => {
     const value = { ...booking, kind };

@@ -9,7 +9,7 @@ export class ApiError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
-const files = ["components/StepScheduleEditor.tsx", "components/EventDateTimeInputs.tsx", "components/StepKindSelect.tsx", "components/StepKindEditor.tsx", "components/BookingEditor.tsx", "stepKinds.ts", "stepReminderTime.ts", "pages/StepCard.tsx", "pages/RoutePage.tsx", "pages/HealthHub.tsx", "pages/Report.tsx", "pages/Builder.tsx", "pages/Home.tsx"];
+const files = ["components/StepScheduleEditor.tsx", "components/EventDateTimeInputs.tsx", "components/StepKindSelect.tsx", "components/StepKindEditor.tsx", "components/BookingEditor.tsx", "stepKinds.ts", "stepReminderTime.ts", "pages/StepCard.tsx", "pages/RoutePage.tsx", "pages/HealthHub.tsx", "pages/Report.tsx", "pages/Builder.tsx", "pages/Home.tsx", "pages/Reminders.tsx"];
 const compiled = Object.fromEntries(await Promise.all(files.map(async (file) => [file, ts.transpileModule(await readFile(new URL(`../src/${file}`, import.meta.url), "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
 }).outputText])));
@@ -71,6 +71,7 @@ export function reminderHarness(file, { props = {}, user = {}, params = {}, quer
     "../components/BookingEditor": { default: "BookingEditor" },
     "../bridge": { openExternalLink() {}, getInitData: () => "" },
     "../format": { fmtDeadline: (date, time) => `${date} ${time ?? ""}`, fmtDateNumeric: (value) => value, fmtDayMonth: (value) => value,
+      parseDate: (value) => new Date(value),
       fmtWhen: (value) => value, deadlineCountdown: (date) => ({ text: date ? `Отсчёт срока ${date}` : "Дата не указана", overdue: false }) },
     "../icons": { I: new Proxy({}, { get: (_, name) => `icon:${String(name)}` }), SituationIcon: "SituationIcon" },
     "@maxhub/max-ui": { Radio: "Radio", CellHeader: "CellHeader", CellList: "CellList", CellSimple: "CellSimple" },

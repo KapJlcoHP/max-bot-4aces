@@ -206,6 +206,7 @@ export interface Reminder {
   place: string;
   at: string;
   enabled: boolean;
+  done_at?: string | null;
 }
 
 export type HealthType = "bp" | "weight" | "sugar" | "mood";

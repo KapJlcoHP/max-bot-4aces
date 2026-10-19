@@ -87,7 +87,7 @@ export default function Reminders() {
 
   return (
     <div className="app narrow">
-      <Header title="Напоминания" subtitle="Ближайшие события маршрута" back="/" right={<button className="avatar" onClick={() => setAdding(true)} aria-label="Добавить"><I.plus size={18} /></button>} />
+      <Header title="Напоминания" subtitle="Личные напоминания" back="/" right={<button className="avatar" onClick={() => setAdding(true)} aria-label="Добавить"><I.plus size={18} /></button>} />
       <div className="screen-body">
         
         {adding && <div className="card reminder-form">
@@ -113,8 +113,8 @@ export default function Reminders() {
         {status === "loading" && <LoadingView />}
         {status === "ready" && (
           <>
-            {nextStep && <div className="card dashboard-next"><span className="badge badge-blue">СЛЕДУЮЩИЙ ШАГ</span><h3 className="h3" style={{ marginTop: 12 }}>{nextStep.title}</h3>{nextStep.deadline && <p className="muted">Срок: {fmtDeadline(nextStep.deadline, nextStep.deadline_time)}</p>}<Button style={{ marginTop: 14 }} onClick={() => nav(`/step/${nextStep.id}`)}>Открыть шаг</Button></div>}
-            <div className="section-h"><b>Предстоящие</b></div>
+            {nextStep && <div className="card dashboard-next"><span className="badge badge-blue">СЛЕДУЮЩИЙ ШАГ МАРШРУТА</span><h3 className="h3" style={{ marginTop: 12 }}>{nextStep.title}</h3>{nextStep.deadline && <p className="muted">Срок: {fmtDeadline(nextStep.deadline, nextStep.deadline_time)}</p>}<Button style={{ marginTop: 14 }} onClick={() => nav(`/step/${nextStep.id}`)}>Открыть шаг</Button></div>}
+            <div className="section-h"><b>Личные напоминания</b></div>
             {upcoming.length === 0 && <div className="card muted">Предстоящих напоминаний нет.</div>}
             {upcoming.map((r) => (
               <div key={r.id} className="card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
