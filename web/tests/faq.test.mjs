@@ -20,6 +20,7 @@ test("FAQ page loads the API and exposes an accessible accordion with retry", as
   assert.match(routes, /path="faq" element=\{<Faq \/>\}/);
   assert.match(profile, /title="Частые вопросы"/);
   assert.match(profile, /nav\("\/faq"\)/);
+  assert.ok(profile.indexOf('title="Частые вопросы"') < profile.indexOf('title="О приложении"'));
   assert.match(types, /interface FaqItem/);
   assert.match(types, /category: string/);
 });

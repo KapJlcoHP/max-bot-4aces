@@ -34,7 +34,7 @@ export default function Faq() {
         {status === "error" && <ErrorView onRetry={load} />}
         {status === "ready" && items && (
           <div className="faq-list">
-            <p className="muted">Короткие ответы о возможностях приложения.</p>
+            <p className="muted">Здесь собраны простые ответы о маршруте, сроках, напоминаниях и ваших данных.</p>
             {Array.from(new Set(items.map((item) => item.category))).map((category) => (
               <section className="faq-category" key={category} aria-labelledby={`faq-${category}`}>
                 <h2 id={`faq-${category}`}>{category}</h2>

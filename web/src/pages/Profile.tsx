@@ -256,20 +256,6 @@ export default function Profile() {
           <CellList mode="island">
             <CellSimple
               className="press"
-              before={<div className="ic"><I.info size={18} /></div>}
-              title="О приложении"
-              subtitle={`Данные и удаление профиля${consentDate ? ` · согласие от ${consentDate}` : ""}`}
-              showChevron
-              onClick={() => nav("/about")}
-              onKeyDown={(e) => {
-                if (e.target !== e.currentTarget) return;
-                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav("/about"); }
-              }}
-            />
-          </CellList>
-          <CellList mode="island">
-            <CellSimple
-              className="press"
               before={<div className="ic"><I.doc size={18} /></div>}
               title="Частые вопросы"
               subtitle="Ответы о возможностях приложения"
@@ -278,6 +264,20 @@ export default function Profile() {
               onKeyDown={(e) => {
                 if (e.target !== e.currentTarget) return;
                 if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav("/faq"); }
+              }}
+            />
+          </CellList>
+          <CellList mode="island">
+            <CellSimple
+              className="press"
+              before={<div className="ic"><I.info size={18} /></div>}
+              title="О приложении"
+              subtitle={`Данные и удаление профиля${consentDate ? ` · согласие от ${consentDate}` : ""}`}
+              showChevron
+              onClick={() => nav("/about")}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav("/about"); }
               }}
             />
           </CellList>

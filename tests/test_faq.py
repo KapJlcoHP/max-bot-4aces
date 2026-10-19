@@ -18,7 +18,7 @@ def test_faq_content_matches_schema_and_covers_required_topics():
     assert all(item.order >= 1 and item.category and item.question and item.answer for item in faq.items)
     ids = {item.id for item in faq.items}
     assert {
-        "future-step-not-current", "booking-vs-visit", "appointment-date",
+        "start-route", "future-step-not-current", "booking-vs-visit", "appointment-date",
         "event-vs-notification-time", "local-clinic-setting", "model-data", "delete-data",
     } <= ids
     text = json.dumps(payload, ensure_ascii=False).lower()
