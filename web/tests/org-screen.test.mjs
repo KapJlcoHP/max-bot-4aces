@@ -125,7 +125,7 @@ test("M4: map/list keep natural order, top scroll controls are gone, and explici
   assert.deepEqual(h.jumps.filter((jump) => jump.action === "focus").map((jump) => jump.id), ["org-card-2"]);
   h.click("К точке на карте");
   assert.deepEqual(h.jumps.filter((jump) => jump.action === "focus").map((jump) => jump.id), ["org-card-2", "org-map"]);
-  h.click("Построить путь в Яндексе");
+  h.click("Построить путь");
   assert.equal(h.navigation.at(-1), "https://yandex.ru/maps/?rtext=~57,41&rtt=auto");
   for (const id of [3, 7]) {
     await selectCard(h, id);

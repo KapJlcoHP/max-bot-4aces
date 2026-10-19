@@ -211,7 +211,7 @@ export default function Orgs() {
                   {!mapped && <p role="status">Координаты не указаны или некорректны. Организация доступна в списке; точка на карте не показана.</p>}
                   <div className="org-jumps">
                     {mapped && <Button variant="secondary" onClick={() => focusTarget("org-map")}>К точке на карте</Button>}
-                    <Button variant="secondary" onClick={() => openExternalLink(mapped ? `https://yandex.ru/maps/?rtext=~${org.lat},${org.lon}&rtt=auto` : `https://yandex.ru/maps/?text=${encodeURIComponent(org.address)}`)}>{mapped ? "Построить путь в Яндексе" : "Искать адрес в Яндексе"}</Button>
+                    <Button variant="secondary" onClick={() => openExternalLink(mapped ? `https://yandex.ru/maps/?rtext=~${org.lat},${org.lon}&rtt=auto` : `https://yandex.ru/maps/?text=${encodeURIComponent(org.address)}`)}>{mapped ? "Построить путь" : "Искать адрес в Яндексе"}</Button>
                   </div>
                   {org.org_type === "Поликлиники" && org.region !== user.region && <p className="muted">Для выбора доступны только поликлиники региона профиля.</p>}
                 </div>}
