@@ -13,7 +13,10 @@ test("catalog and map browse only; existing choice is marked and cannot be repla
   const h = clinicHarness({ user, orgs });
   await h.flush();
   assert.match(h.text(), /Прикреплённая поликлиника/);
-  assert.doesNotMatch(h.text(), /Выбрать поликлинику/);
+  assert.doesNotMatch(h.text(), /Выбрать поликлинику|Сменить поликлинику/);
+  h.node((node) => node.type === "button" && node.props["aria-controls"] === "org-details-1").props.onClick({});
+  await h.flush();
+  assert.doesNotMatch(h.text(), /Выбрать поликлинику|Сменить поликлинику/);
   h.node((node) => node.type === "OrganizationMap").props.onSelect(2);
   await h.flush();
   assert.equal(h.node((node) => node.type === "OrganizationMap").props.selectedId, 2);

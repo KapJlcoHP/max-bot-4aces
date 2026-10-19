@@ -214,7 +214,6 @@ export default function Orgs() {
                     <Button variant="secondary" onClick={() => openExternalLink(mapped ? `https://yandex.ru/maps/?rtext=~${org.lat},${org.lon}&rtt=auto` : `https://yandex.ru/maps/?text=${encodeURIComponent(org.address)}`)}>{mapped ? "Построить путь в Яндексе" : "Искать адрес в Яндексе"}</Button>
                   </div>
                   {org.org_type === "Поликлиники" && org.region !== user.region && <p className="muted">Для выбора доступны только поликлиники региона профиля.</p>}
-                  {!changeMode && user.attached_clinic_id !== null && org.org_type === "Поликлиники" && <Button variant="secondary" onClick={() => nav("/orgs?mode=change")}>Сменить поликлинику</Button>}
                 </div>}
                 {canChooseClinic(org, user, changeMode) && <Button variant="secondary" disabled={choice.busy || choice.conflicted} onClick={() => choice.choose(org)}>Выбрать поликлинику</Button>}
               </article>;
