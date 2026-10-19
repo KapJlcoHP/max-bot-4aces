@@ -24,11 +24,11 @@ const UNITS: Record<HealthType, string> = {
   mood: "",
 };
 
-/** Серии давления на общей шкале: цвет = фирменная палитра. */
+/** Серии давления: давление и пульс используют разные шкалы и единицы. */
 const BP_SERIES = [
-  { key: "sys", label: "Систолическое", color: "#006DF8", get: (r: HealthRecord) => r.systolic },
-  { key: "dia", label: "Диастолическое", color: "#DE2129", get: (r: HealthRecord) => r.diastolic },
-  { key: "pulse", label: "Пульс", color: "#22C55E", get: (r: HealthRecord) => r.pulse },
+  { key: "sys", label: "Систолическое", color: "#006DF8", unit: "мм рт. ст.", yAxisID: "pressure", get: (r: HealthRecord) => r.systolic },
+  { key: "dia", label: "Диастолическое", color: "#DE2129", unit: "мм рт. ст.", yAxisID: "pressure", get: (r: HealthRecord) => r.diastolic },
+  { key: "pulse", label: "Пульс", color: "#22C55E", unit: "уд/мин", yAxisID: "pulse", get: (r: HealthRecord) => r.pulse },
 ] as const;
 
 type BpSeriesKey = (typeof BP_SERIES)[number]["key"];
@@ -265,7 +265,7 @@ export default function HealthDiary() {
   }, [latest, type]);
 
   const historyLine = (r: HealthRecord): { b: string; s: string } => {
-    if (type === "bp") return { b: `${r.systolic}/${r.diastolic} · ${r.pulse ?? "—"} уд/мин`, s: `${fmtWhen(r.at)}${r.tag ? ` · ${r.tag}` : ""}` };
+    if (type === "bp") return { b: `${r.systolic}/${r.diastolic} мм рт. ст. · ${r.pulse ?? "—"} уд/мин`, s: `${fmtWhen(r.at)}${r.tag ? ` · ${r.tag}` : ""}` };
     if (type === "weight") return { b: `${String(r.weight_kg).replace(".", ",")} кг`, s: `${fmtWhen(r.at)}${r.tag ? ` · ${r.tag}` : ""}` };
     if (type === "sugar") return { b: `${String(r.sugar_mmol).replace(".", ",")} ммоль/л`, s: `${fmtWhen(r.at)}${r.meal_tag ? ` · ${r.meal_tag}` : ""}` };
     const painText = (r.pain === null || r.pain === undefined)
@@ -295,10 +295,12 @@ export default function HealthDiary() {
   };
 
   const activeSeries = useMemo(() => {
-    if (type === "bp") return BP_SERIES.filter((s) => !hidden[s.key]).map((s) => ({ key: s.key, label: s.label, color: s.color }));
-    if (type === "weight" || type === "sugar") return [{ key: "v", label: TITLES[type], color: stroke }];
+    if (type === "bp") return BP_SERIES.filter((s) => !hidden[s.key]).map((s) => ({
+      key: s.key, label: s.label, color: s.color, unit: s.unit, yAxisID: s.yAxisID,
+    }));
+    if (type === "weight" || type === "sugar") return [{ key: "v", label: TITLES[type], color: stroke, unit, yAxisID: "y" }];
     return [];
-  }, [type, hidden, stroke]);
+  }, [type, hidden, stroke, unit]);
 
   return (
     <div className="app narrow">
@@ -319,6 +321,7 @@ export default function HealthDiary() {
               {type === "bp" && <div className="route-status"><div className="label"><span>Последнее измерение</span></div></div>}
               <div className="big-nums">
                 <span className="n">{bigValue}</span>
+                {type === "bp" && <span className="of">мм рт. ст.</span>}
                 {type === "weight" && <span className="of">кг</span>}
                 {type === "sugar" && <span className="of">ммоль/л</span>}
               </div>
@@ -372,6 +375,7 @@ export default function HealthDiary() {
                           borderColor: s.color,
                           backgroundColor: s.color,
                           borderWidth: 2.5,
+                          yAxisID: s.yAxisID,
                           pointRadius: 0,
                           pointHoverRadius: 4,
                           tension: 0.35,
@@ -394,7 +398,8 @@ export default function HealthDiary() {
                               label: (item) => {
                                 const raw = item.raw;
                                 const v = typeof raw === "number" ? raw.toLocaleString("ru-RU", { maximumFractionDigits: 1 }) : "—";
-                                return `${item.dataset.label}: ${v}${unit ? ` ${unit}` : ""}`;
+                                const series = activeSeries.find((candidate) => candidate.label === item.dataset.label);
+                                return `${item.dataset.label}: ${v}${series?.unit ? ` ${series.unit}` : ""}`;
                               },
                             },
                           },
@@ -411,12 +416,28 @@ export default function HealthDiary() {
                               autoSkip: true,
                             },
                           },
-                          y: {
-                            grid: { color: "#E5E9F2" },
-                            border: { display: false },
-                            ticks: { color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
-                            title: { display: !!unit, text: unit, color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
-                          },
+                          ...(type === "bp" ? {
+                            pressure: {
+                              grid: { color: "#E5E9F2" },
+                              border: { display: false },
+                              ticks: { color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                              title: { display: true, text: "мм рт. ст.", color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                            },
+                            pulse: {
+                              position: "right" as const,
+                              grid: { drawOnChartArea: false },
+                              border: { display: false },
+                              ticks: { color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                              title: { display: true, text: "уд/мин", color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                            },
+                          } : {
+                            y: {
+                              grid: { color: "#E5E9F2" },
+                              border: { display: false },
+                              ticks: { color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                              title: { display: !!unit, text: unit, color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                            },
+                          }),
                         },
                       }}
                     />

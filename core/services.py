@@ -38,6 +38,20 @@ def active_route(db: Session, user_id: int) -> Route | None:
 # ---------- маршрут ----------
 
 
+def lock_user_writes(db: Session, user_id: int) -> None:
+    """Hold the user's write lock until commit/rollback.
+
+    SQLite obtains its writer lock from the real UPDATE; PostgreSQL locks the
+    user row.  This is needed for any read-then-write operation whose rows
+    are protected by a user's ownership, including medication intake slots.
+    """
+    db.execute(
+        update(User).where(User.id == user_id).values(id=User.id)
+        .execution_options(synchronize_session=False)
+    )
+    db.flush()
+
+
 def lock_route_writes(db: Session, user_id: int) -> None:
     """Hold until commit/rollback: SQLite writer lock, PostgreSQL user row lock.
 
@@ -46,13 +60,9 @@ def lock_route_writes(db: Session, user_id: int) -> None:
     Refresh loaded route objects after waiting; expire_on_commit may be False.
     """
     with db.no_autoflush:
-        db.execute(
-            update(User).where(User.id == user_id).values(id=User.id)
-            .execution_options(synchronize_session=False)
-        )
         # Composed callers (e.g. demo setup, commit=False) may have staged
         # changes. Persist them under the lock before refreshing stale reads.
-        db.flush()
+        lock_user_writes(db, user_id)
         for obj in list(db.identity_map.values()):
             if isinstance(obj, (Route, RouteStep)) and obj not in db.new and obj not in db.deleted:
                 db.expire(obj)
@@ -189,6 +199,10 @@ def user_today(user: User, now: datetime | None = None) -> date:
 
 def take_med(db: Session, user_id: int, course_id: int, at_time: str, day: date | None = None) -> MedIntake:
     """Отметить приём (односторонне: снимает только API через intake-toggle с undo)."""
+    # The existence check and insert must be serialized per user.  Otherwise
+    # two bot/API clicks can both observe a missing slot and race on the
+    # unique (course, day, time) constraint.
+    lock_user_writes(db, user_id)
     course = db.query(MedCourse).filter(MedCourse.id == course_id, MedCourse.user_id == user_id).first()
     if course is None:
         raise ServiceError("Курс лекарства не найден", 404)

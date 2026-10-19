@@ -72,7 +72,7 @@ export default function Report() {
     if (typeof nav.canShare === "function" && nav.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: "Сводка для врача" });
-        showToast("Готово — PDF отправлен");
+        showToast("PDF подготовлен к отправке");
         return true;
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") return true; // закрыли шер сами
@@ -88,7 +88,7 @@ export default function Report() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    showToast("PDF скачан");
+    showToast("PDF подготовлен для скачивания");
     return true;
   };
 
@@ -112,6 +112,10 @@ export default function Report() {
       setBusy(false);
       return;
     } catch {
+      // A previous request may already be shown as sent.  Clear it before
+      // using the direct fallback so that this attempt is not presented as
+      // bot delivery without a fresh delivery receipt.
+      setQueue(null);
       showToast("Не удалось отправить в чат — пробуем скачать…");
     }
     // запасной путь (только если бот недоступен): скачивание из браузера
@@ -167,10 +171,11 @@ export default function Report() {
                 <b style={{ fontSize: 15 }}>Давление и пульс</b>
                 <div className="big-nums" style={{ margin: "8px 0 4px" }}>
                   <span className="n" style={{ fontSize: 30 }}>{report.bp_avg}</span>
+                  <span className="of">мм рт. ст.</span>
                   <span className="of">среднее</span>
                 </div>
                 <div className="muted" style={{ fontSize: 13 }}>
-                  {report.bp_count} измерений{report.pulse_avg ? ` · пульс в среднем ${report.pulse_avg} уд/мин` : ""}
+                  {report.bp_count} измерений{report.pulse_avg !== null && report.pulse_avg !== undefined ? ` · пульс в среднем ${report.pulse_avg} уд/мин` : ""}
                 </div>
               </div>
             )}

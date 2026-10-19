@@ -60,11 +60,14 @@ docker compose up -d --build
 
 → API и мини-приложение: **http://localhost:8000** (OpenAPI: http://localhost:8000/openapi.json, `/docs`).
 
-Чат-бот (нужен `MAX_BOT_TOKEN` в `.env`; **экземпляр должен быть ровно один** — long polling):
+Полный локальный стек **app + bot** (нужен `MAX_BOT_TOKEN` в `.env`; **экземпляр
+бота должен быть ровно один** — long polling):
 
 ```bash
 docker compose --profile bot up -d --build
 ```
+
+Эта команда запускает оба сервиса: API/мини-ап `app` и чат-бот `bot`.
 
 Прод с HTTPS (VPS + домен, см. `MEDROUTE_DOMAIN`):
 

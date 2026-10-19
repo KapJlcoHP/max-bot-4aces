@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from core.db.models import MedCourse, MedIntake, User
 from core.schemas import MedAddIn, MedCourseDto, MedIntakeToggleIn, MedSlotDto, MedsOut
-from core.services import ServiceError, take_med, user_today
+from core.services import ServiceError, lock_user_writes, take_med, user_today
 from core.time import normalize_clock_time, user_local
 from .common import consented_user, db_session
 
@@ -82,6 +82,10 @@ def toggle_intake(
     user: User = Depends(consented_user),
     db: Session = Depends(db_session),
 ):
+    # Serialize the read/undo/insert decision as one user-owned write.  This
+    # keeps two simultaneous clicks from observing the same slot state and
+    # then overwriting or duplicating one another.
+    lock_user_writes(db, user.id)
     raw_at_time = body.at_time.strip()
     at_time = normalize_clock_time(raw_at_time)
     if at_time is None:

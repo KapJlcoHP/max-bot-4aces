@@ -78,6 +78,23 @@ def _daily_averages(rows: list[HealthRecord], getter, tz: str | None = None) -> 
     return [lbl for _, (lbl, _) in ordered], [sum(vs) / len(vs) for _, (_, vs) in ordered]
 
 
+def _daily_points(rows: list[HealthRecord], getter, tz: str | None = None) -> dict[str, tuple[str, float]]:
+    """Return one averaged numeric point per local day, keyed by ISO day."""
+    by_day: dict[str, tuple[str, list[float]]] = {}
+    for r in rows:
+        at = user_local(r.at, tz)
+        key = at.strftime("%Y-%m-%d")
+        v = getter(r)
+        if v is None:
+            continue
+        label = at.strftime("%d.%m")
+        if key in by_day:
+            by_day[key][1].append(v)
+        else:
+            by_day[key] = (label, [v])
+    return {key: (label, sum(values) / len(values)) for key, (label, values) in by_day.items()}
+
+
 def _fill_gaps(values: list[float | None]) -> list[float]:
     """reportlab требует числовые ряды одной длины: пропуски закрываем соседними точками."""
     known = [v for v in values if v is not None]
@@ -137,22 +154,43 @@ def _line_chart(
 
 
 def _bp_chart(rows: list[HealthRecord], tz: str | None = None) -> Drawing | None:
-    """Давление: систолическое, диастолическое и пульс на общей шкале."""
+    """Давление: систолическое и диастолическое на шкале мм рт. ст.
+
+    Пульс intentionally lives in ``_pulse_chart``.  It has a different unit
+    and an optional value, so putting it into this same ReportLab chart makes
+    a missing pulse turn the complete chart into an invalid mixed-length data
+    set and also makes the y-axis ambiguous.
+    """
     ascending = list(reversed(rows))
-    labels, sys_vals = _daily_averages(ascending, lambda r: r.systolic, tz)
-    if len([v for v in sys_vals if v is not None]) < 2:
+    sys_points = _daily_points(ascending, lambda r: r.systolic, tz)
+    if len(sys_points) < 2:
         return None
-    _, dia_vals = _daily_averages(ascending, lambda r: r.diastolic, tz)
-    _, pulse_vals = _daily_averages(ascending, lambda r: r.pulse, tz)
-    # reportlab требует числовые ряды одной длины: пропуски (например, пульс) закрываем соседними точками
-    series = [
-        (BLUE, _fill_gaps(sys_vals)),
-        (RED, _fill_gaps(dia_vals)),
-        (GREEN, _fill_gaps(pulse_vals)),
-    ]
+    keys = sorted(sys_points)
+    labels = [sys_points[key][0] for key in keys]
+    sys_vals = [sys_points[key][1] for key in keys]
+    dia_points = _daily_points(ascending, lambda r: r.diastolic, tz)
+    dia_vals = [dia_points.get(key, ("", None))[1] for key in keys]
+    series = [(BLUE, sys_vals)]
+    legend_items = [(BLUE, "верхнее, мм рт. ст.")]
+    if any(value is not None for value in dia_vals):
+        series.append((RED, _fill_gaps(dia_vals)))
+        legend_items.append((RED, "нижнее, мм рт. ст."))
     return _line_chart(
         labels, series,
-        legend_items=[(BLUE, "верхнее"), (RED, "нижнее"), (GREEN, "пульс")],
+        legend_items=legend_items,
+    )
+
+
+def _pulse_chart(rows: list[HealthRecord], tz: str | None = None) -> Drawing | None:
+    """Пульс на отдельной шкале уд/мин; отсутствие пульса не скрывает АД."""
+    ascending = list(reversed(rows))
+    labels, values = _daily_averages(ascending, lambda r: r.pulse, tz)
+    if len(values) < 2:
+        return None
+    return _line_chart(
+        labels,
+        [(GREEN, values)],
+        legend_items=[(GREEN, "пульс, уд/мин")],
     )
 
 
@@ -167,7 +205,9 @@ def _record_line(r: HealthRecord, tz: str | None = None) -> tuple[str, str]:
     when = at.strftime("%d.%m.%Y %H:%M")
     context = " · ".join(x for x in (r.tag, r.meal_tag) if x)
     if r.type == "bp":
-        value = f"{r.systolic}/{r.diastolic}" + (f", пульс {r.pulse}" if r.pulse is not None else "")
+        value = f"{r.systolic}/{r.diastolic} мм рт. ст."
+        if r.pulse is not None:
+            value += f", пульс {r.pulse} уд/мин"
     elif r.type == "weight":
         value = f"{_num(r.weight_kg)} кг"
     elif r.type == "sugar":
@@ -221,8 +261,8 @@ def build_health_pdf(db: Session, user: User, report: HealthReportOut, enabled: 
     # ---- агрегаты ----
     agg: list[str] = []
     if report.bp_avg:
-        agg.append(f"Давление: среднее <b>{report.bp_avg}</b> ({report.bp_count} изм."
-                   + (f", пульс ~{report.pulse_avg} уд/мин" if report.pulse_avg else "") + ")")
+        agg.append(f"Давление: среднее <b>{report.bp_avg} мм рт. ст.</b> ({report.bp_count} изм."
+                   + (f", пульс ~{report.pulse_avg} уд/мин" if report.pulse_avg is not None else "") + ")")
     if report.weight_latest is not None:
         delta = report.weight_delta
         delta_txt = "" if delta is None or delta == 0 else f" ({'+' if delta > 0 else '−'}{_num(abs(delta))} кг за период)"
@@ -249,6 +289,11 @@ def build_health_pdf(db: Session, user: User, report: HealthReportOut, enabled: 
             chart = _bp_chart(rows, user.tz)
             if chart:
                 story.append(chart)
+                story.append(Spacer(1, 4))
+            pulse_chart = _pulse_chart(rows, user.tz)
+            if pulse_chart:
+                story.append(Paragraph("Пульс", st["h2"]))
+                story.append(pulse_chart)
                 story.append(Spacer(1, 4))
             data = [["Дата", "Значение"]] + [_record_line(r, user.tz) for r in rows]
             table = Table(data, colWidths=[34 * mm, None])

@@ -1522,6 +1522,24 @@
         }
       }
     },
+    "/api/v1/faq": {
+      "get": {
+        "summary": "Faq",
+        "operationId": "faq_api_v1_faq_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FaqOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "summary": "Health",
@@ -2057,6 +2075,75 @@
           "color"
         ],
         "title": "FamilyMemberDto"
+      },
+      "FaqItemDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Category"
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Question"
+          },
+          "answer": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Answer"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Order"
+          },
+          "source_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "question",
+          "answer",
+          "order"
+        ],
+        "title": "FaqItemDto",
+        "description": "One plain-language answer from the versioned static FAQ content."
+      },
+      "FaqOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FaqItemDto"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "FaqOut"
       },
       "HTTPValidationError": {
         "properties": {
