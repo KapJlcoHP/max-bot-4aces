@@ -431,6 +431,10 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 .step-date-time-field { display: grid; min-width: 0; gap: 4px; font-size: 13px; }
 .step-date-time-row input { width: 100%; max-width: 100%; }
 .step-date-time-row input:focus { border-color: var(--blue); }
+.step-schedule-card > .own-row > label {
+  display: grid; flex: 1 1 100%; min-width: 0; gap: 4px; font-size: 13px;
+}
+.step-schedule-card > .own-row > label input { width: 100%; max-width: 100%; }
 .own-row .date { flex: 0 0 110px; }
 .own-row .add {
   flex: 0 0 46px; height: 46px; border-radius: 12px; border: none;

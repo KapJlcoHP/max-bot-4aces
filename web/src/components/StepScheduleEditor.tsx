@@ -80,7 +80,7 @@ export default function StepScheduleEditor({ step, user, now, onSaved, disabled 
       setBusy(false);
     }
   };
-  return <div className="card">
+  return <div className="card step-schedule-card">
     <h3 className="h3">{scheduleTitle(step.kind)}</h3>
     <p className="muted">{step.kind === "booking" ? "Это отдельный срок действия «записаться» и его напоминание, не дата полученного события. Прежнее точное время сохранено; новое время оформления записи не задаётся." : "Проверьте фактическую дату приёма или свой срок. Если дата неизвестна, её можно очистить. Время необязательно."} Время указано в вашем местном времени.</p>
     <div className="own-row" style={{ flexWrap: "wrap" }}>
