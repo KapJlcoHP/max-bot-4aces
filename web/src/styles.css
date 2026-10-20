@@ -545,6 +545,7 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   padding: 0 12px; font-family: inherit; font-size: 14.5px; outline: none; background: #fff; color: var(--text);
 }
 .field:focus { border-color: var(--blue); }
+.field + .btn { margin-top: 8px; }
 .field.tall { height: auto; padding: 10px 12px; min-height: 72px; resize: vertical; }
 
 /* ===== онбординг ===== */
