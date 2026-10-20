@@ -317,7 +317,7 @@ export default function RoutePage() {
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
           />
-          {newKind === "booking" ? <label>На какую дату вы записались?<input type="date" aria-label="На какую дату вы записались?" value={newDate} onChange={(e) => setNewDate(e.target.value)} /></label> : <EventDateTimeInputs date={newDate} time={newTime} onChange={(d, t) => { setNewDate(d); setNewTime(t); }} />}
+          {newKind === "booking" ? <label className="date-only-field">На какую дату вы записались?<input type="date" aria-label="На какую дату вы записались?" value={newDate} onChange={(e) => setNewDate(e.target.value)} /></label> : <EventDateTimeInputs date={newDate} time={newTime} onChange={(d, t) => { setNewDate(d); setNewTime(t); }} />}
           <button className="add" onClick={addStep} disabled={busy || !newTitle.trim()} aria-label="Добавить">+</button>
         </div>
         <Button style={{ marginTop: 14 }} disabled={busy || !newTitle.trim()} onClick={addStep}>

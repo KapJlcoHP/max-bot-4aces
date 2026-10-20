@@ -438,6 +438,15 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   display: grid; min-width: 0; gap: 4px; font-size: 13px;
 }
 .step-schedule-date-row > label input { width: 100%; max-width: 100%; }
+.date-only-field {
+  display: grid; flex: 0 1 100%; gap: 6px; width: 100%; max-width: 100%; min-width: 0;
+  box-sizing: border-box; font-size: 14px;
+}
+.date-only-field input {
+  box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; padding: 10px;
+  border: 1px solid var(--border); border-radius: 10px; font: inherit;
+  background: var(--card); color: inherit;
+}
 .own-row .date { flex: 0 0 110px; }
 .own-row .add {
   flex: 0 0 46px; height: 46px; border-radius: 12px; border: none;
