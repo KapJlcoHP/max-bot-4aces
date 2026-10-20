@@ -5,12 +5,14 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from core.db.models import (
     BpRecord,
     ChecklistItem,
     ExportRequest,
+    FamilyAccess,
     FamilyMember,
     HealthRecord,
     HealthSetting,
@@ -267,6 +269,9 @@ def delete_my_data(user: User | PendingUser = Depends(current_user), db: Session
         return {"status": "deleted"}
     route_ids = db.query(Route.id).filter(Route.user_id == user.id)
     db.query(RouteStep).filter(RouteStep.route_id.in_(route_ids)).delete(synchronize_session=False)
+    db.query(FamilyAccess).filter(
+        or_(FamilyAccess.owner_id == user.id, FamilyAccess.viewer_id == user.id)
+    ).delete(synchronize_session=False)
     for model, field in (
         (Route, "user_id"),
         (ChecklistItem, "user_id"),

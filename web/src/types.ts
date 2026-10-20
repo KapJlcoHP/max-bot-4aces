@@ -287,3 +287,68 @@ export interface FamilyMember {
   role: string;
   color: string;
 }
+
+export type FamilyAccessStatus = "pending" | "active" | "revoked" | "expired";
+
+export interface FamilyAccess {
+  id: number;
+  status: FamilyAccessStatus;
+  label: string;
+  owner_name: string;
+  viewer_name: string | null;
+  scopes: string[];
+  created_at: string;
+  accepted_at: string | null;
+  expires_at: string;
+  revoked_at: string | null;
+}
+
+export interface FamilyInvite {
+  access: FamilyAccess;
+  code: string;
+}
+
+export interface FamilyDiaryStatus {
+  diary: string;
+  label: string;
+  enabled: boolean;
+  filled_today: boolean;
+  last_record_at: string | null;
+}
+
+export interface FamilyMedicationStatus {
+  active_courses: number;
+  planned_today: number;
+  taken_today: number;
+}
+
+export interface FamilyStepSnapshot {
+  id: number;
+  position: number;
+  title: string;
+  kind: StepKind;
+  status: string;
+  appointment_date: string | null;
+  deadline: string | null;
+  deadline_time: string | null;
+  place: string;
+  completed_at: string | null;
+}
+
+export interface FamilyRouteSnapshot {
+  title: string;
+  subtitle: string;
+  active: boolean;
+  total_steps: number;
+  done_steps: number;
+  steps: FamilyStepSnapshot[];
+}
+
+export interface FamilySnapshot {
+  access_id: number;
+  owner_name: string;
+  generated_at: string;
+  route: FamilyRouteSnapshot | null;
+  diaries: FamilyDiaryStatus[];
+  medication: FamilyMedicationStatus;
+}

@@ -485,6 +485,78 @@ class FamilyAddIn(OrmDto):
     role: str = "Родственник"
 
 
+class FamilyInviteIn(BaseModel):
+    label: str = Field(default="Помощник", min_length=1, max_length=120)
+    expires_days: int = Field(default=7, ge=1, le=30)
+
+
+class FamilyAcceptIn(BaseModel):
+    code: str = Field(min_length=8, max_length=32)
+
+
+class FamilyAccessDto(BaseModel):
+    id: int
+    status: Literal["pending", "active", "revoked", "expired"]
+    label: str
+    owner_name: str
+    viewer_name: str | None = None
+    scopes: list[str]
+    created_at: datetime
+    accepted_at: datetime | None = None
+    expires_at: datetime
+    revoked_at: datetime | None = None
+
+
+class FamilyInviteOut(BaseModel):
+    access: FamilyAccessDto
+    code: str
+
+
+class FamilyDiaryStatusDto(BaseModel):
+    diary: str
+    label: str
+    enabled: bool
+    filled_today: bool
+    last_record_at: datetime | None = None
+
+
+class FamilyMedicationStatusDto(BaseModel):
+    active_courses: int
+    planned_today: int
+    taken_today: int
+
+
+class FamilyStepSnapshotDto(BaseModel):
+    id: int
+    position: int
+    title: str
+    kind: StepKind
+    status: str
+    appointment_date: Date | None = None
+    deadline: Date | None = None
+    deadline_time: str | None = None
+    place: str = ""
+    completed_at: datetime | None = None
+
+
+class FamilyRouteSnapshotDto(BaseModel):
+    title: str
+    subtitle: str
+    active: bool
+    total_steps: int
+    done_steps: int
+    steps: list[FamilyStepSnapshotDto]
+
+
+class FamilySnapshotDto(BaseModel):
+    access_id: int
+    owner_name: str
+    generated_at: datetime
+    route: FamilyRouteSnapshotDto | None = None
+    diaries: list[FamilyDiaryStatusDto]
+    medication: FamilyMedicationStatusDto
+
+
 class SettingsIn(OrmDto):
     notifications_on: bool | None = None
     notify_day_before: bool | None = None

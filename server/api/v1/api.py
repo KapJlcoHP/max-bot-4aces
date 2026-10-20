@@ -96,6 +96,12 @@ toggle_reminder = misc.toggle_reminder
 add_reminder = misc.add_reminder
 family = misc.family
 add_family_member = misc.add_family_member
+family_access_list = misc.family_access_list
+create_family_invitation = misc.create_family_invitation
+accept_family_invitation = misc.accept_family_invitation
+revoke_family_access = misc.revoke_family_access
+family_observed = misc.family_observed
+family_snapshot = misc.family_snapshot
 
 health_settings = health.health_settings
 update_health_settings = health.update_health_settings

@@ -272,3 +272,24 @@ class FamilyMember(Base):
     name: Mapped[str] = mapped_column(String(120))
     role: Mapped[str] = mapped_column(String(60))
     color: Mapped[str] = mapped_column(String(16), default="blue")  # pink | yellow | blue
+
+
+class FamilyAccess(Base):
+    """Одноразовое приглашение и активный read-only доступ помощника."""
+
+    __tablename__ = "family_accesses"
+    __table_args__ = (
+        UniqueConstraint("invite_hash", name="uq_family_access_invite_hash"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    viewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    label: Mapped[str] = mapped_column(String(120), default="Помощник")
+    invite_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | active | revoked | expired
+    scopes: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

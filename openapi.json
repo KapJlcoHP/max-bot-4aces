@@ -1011,6 +1011,208 @@
         }
       }
     },
+    "/api/v1/family/access": {
+      "get": {
+        "summary": "Family Access List",
+        "description": "Доступы, которыми владеет текущий пользователь.",
+        "operationId": "family_access_list_api_v1_family_access_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FamilyAccessDto"
+                  },
+                  "type": "array",
+                  "title": "Response Family Access List Api V1 Family Access Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/family/access/invite": {
+      "post": {
+        "summary": "Create Family Invitation",
+        "description": "Создать одноразовый код для read-only помощника.",
+        "operationId": "create_family_invitation_api_v1_family_access_invite_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyInviteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyInviteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/family/access/accept": {
+      "post": {
+        "summary": "Accept Family Invitation",
+        "operationId": "accept_family_invitation_api_v1_family_access_accept_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyAcceptIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyAccessDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/family/access/{access_id}": {
+      "delete": {
+        "summary": "Revoke Family Access",
+        "operationId": "revoke_family_access_api_v1_family_access__access_id__delete",
+        "parameters": [
+          {
+            "name": "access_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Access Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyAccessDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/family/observed": {
+      "get": {
+        "summary": "Family Observed",
+        "description": "Активные read-only доступы текущего пользователя.",
+        "operationId": "family_observed_api_v1_family_observed_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FamilyAccessDto"
+                  },
+                  "type": "array",
+                  "title": "Response Family Observed Api V1 Family Observed Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/family/observed/{access_id}": {
+      "get": {
+        "summary": "Family Snapshot",
+        "description": "Безопасная агрегированная витрина маршрута: без заметок и сырых измерений.",
+        "operationId": "family_snapshot_api_v1_family_observed__access_id__get",
+        "parameters": [
+          {
+            "name": "access_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Access Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilySnapshotDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/family": {
       "get": {
         "summary": "Family",
@@ -2030,6 +2232,110 @@
         ],
         "title": "DoctorAssignmentIn"
       },
+      "FamilyAcceptIn": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 8,
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "FamilyAcceptIn"
+      },
+      "FamilyAccessDto": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "active",
+              "revoked",
+              "expired"
+            ],
+            "title": "Status"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "owner_name": {
+            "type": "string",
+            "title": "Owner Name"
+          },
+          "viewer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer Name"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "label",
+          "owner_name",
+          "scopes",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "FamilyAccessDto"
+      },
       "FamilyAddIn": {
         "properties": {
           "name": {
@@ -2047,6 +2353,106 @@
           "name"
         ],
         "title": "FamilyAddIn"
+      },
+      "FamilyDiaryStatusDto": {
+        "properties": {
+          "diary": {
+            "type": "string",
+            "title": "Diary"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "filled_today": {
+            "type": "boolean",
+            "title": "Filled Today"
+          },
+          "last_record_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Record At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "diary",
+          "label",
+          "enabled",
+          "filled_today"
+        ],
+        "title": "FamilyDiaryStatusDto"
+      },
+      "FamilyInviteIn": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label",
+            "default": "Помощник"
+          },
+          "expires_days": {
+            "type": "integer",
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Expires Days",
+            "default": 7
+          }
+        },
+        "type": "object",
+        "title": "FamilyInviteIn"
+      },
+      "FamilyInviteOut": {
+        "properties": {
+          "access": {
+            "$ref": "#/components/schemas/FamilyAccessDto"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access",
+          "code"
+        ],
+        "title": "FamilyInviteOut"
+      },
+      "FamilyMedicationStatusDto": {
+        "properties": {
+          "active_courses": {
+            "type": "integer",
+            "title": "Active Courses"
+          },
+          "planned_today": {
+            "type": "integer",
+            "title": "Planned Today"
+          },
+          "taken_today": {
+            "type": "integer",
+            "title": "Taken Today"
+          }
+        },
+        "type": "object",
+        "required": [
+          "active_courses",
+          "planned_today",
+          "taken_today"
+        ],
+        "title": "FamilyMedicationStatusDto"
       },
       "FamilyMemberDto": {
         "properties": {
@@ -2075,6 +2481,186 @@
           "color"
         ],
         "title": "FamilyMemberDto"
+      },
+      "FamilyRouteSnapshotDto": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "subtitle": {
+            "type": "string",
+            "title": "Subtitle"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          },
+          "total_steps": {
+            "type": "integer",
+            "title": "Total Steps"
+          },
+          "done_steps": {
+            "type": "integer",
+            "title": "Done Steps"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyStepSnapshotDto"
+            },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "subtitle",
+          "active",
+          "total_steps",
+          "done_steps",
+          "steps"
+        ],
+        "title": "FamilyRouteSnapshotDto"
+      },
+      "FamilySnapshotDto": {
+        "properties": {
+          "access_id": {
+            "type": "integer",
+            "title": "Access Id"
+          },
+          "owner_name": {
+            "type": "string",
+            "title": "Owner Name"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FamilyRouteSnapshotDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diaries": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyDiaryStatusDto"
+            },
+            "type": "array",
+            "title": "Diaries"
+          },
+          "medication": {
+            "$ref": "#/components/schemas/FamilyMedicationStatusDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_id",
+          "owner_name",
+          "generated_at",
+          "diaries",
+          "medication"
+        ],
+        "title": "FamilySnapshotDto"
+      },
+      "FamilyStepSnapshotDto": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "visit",
+              "booking",
+              "investigation",
+              "task",
+              "process"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "appointment_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Date"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "deadline_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Time"
+          },
+          "place": {
+            "type": "string",
+            "title": "Place",
+            "default": ""
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "position",
+          "title",
+          "kind",
+          "status"
+        ],
+        "title": "FamilyStepSnapshotDto"
       },
       "FaqItemDto": {
         "properties": {

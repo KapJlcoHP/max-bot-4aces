@@ -458,6 +458,35 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 .ic.g { background: var(--green-tint); color: var(--green); }
 .ic.r { background: var(--red-tint); color: var(--red); }
 .cell-note { color: var(--muted); font-size: 13px; font-weight: 500; text-align: right; }
+
+/* Семейный read-only доступ */
+.family-info-card, .family-readonly-banner { display: flex; align-items: flex-start; gap: 12px; }
+.family-info-icon { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--blue-tint); color: var(--blue); }
+.family-invite-code { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; padding: 12px; border-radius: 12px; background: var(--blue-tint); color: var(--text); font-size: 13px; line-height: 1.4; }
+.family-invite-code strong { color: var(--blue); font-size: 22px; letter-spacing: 2px; text-align: center; }
+.family-access-list { display: grid; gap: 10px; }
+.family-access-card { display: flex; flex-direction: column; gap: 10px; }
+.family-access-top, .family-step-top, .family-status-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.family-observed-card { width: 100%; border: 0; text-align: left; cursor: pointer; font: inherit; }
+.family-readonly-banner { background: var(--blue-tint); box-shadow: none; color: var(--blue); }
+.family-readonly-banner p { margin-top: 4px; color: var(--text); }
+.family-route-summary { display: flex; flex-direction: column; gap: 14px; }
+.family-route-summary h2 { font-size: 19px; margin: 0; }
+.family-progress { height: 8px; border-radius: 99px; background: var(--border); overflow: hidden; }
+.family-progress span { display: block; height: 100%; border-radius: inherit; background: var(--blue); }
+.family-step-list { display: grid; gap: 8px; }
+.family-step-card { display: flex; gap: 12px; padding: 13px; }
+.family-step-marker { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--border); color: var(--muted); font-size: 12px; font-weight: 800; }
+.family-step-done .family-step-marker { background: var(--green-tint); color: var(--green); }
+.family-step-current .family-step-marker { background: var(--blue); color: #fff; }
+.family-step-top { align-items: flex-start; }
+.family-step-top h3 { margin: 0; font-size: 15px; line-height: 1.25; }
+.family-step-card .muted { display: flex; align-items: center; gap: 5px; margin-top: 7px; }
+.family-status-list { display: grid; gap: 13px; }
+.family-status-row { font-size: 14px; }
+.family-status-row > span:last-child { text-align: right; font-size: 13px; }
+.status-ok { color: var(--green); font-weight: 700; }
+.family-updated { color: var(--muted); text-align: center; font-size: 12px; margin: 14px 0; }
 .cell-h-btn {
   background: none; border: none; color: var(--blue);
   font-weight: 700; font-size: 13.5px; cursor: pointer; font-family: inherit; padding: 4px 8px;
