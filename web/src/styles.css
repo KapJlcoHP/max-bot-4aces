@@ -418,23 +418,26 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 }
 .pick.on { background: var(--blue-tint); border-color: var(--blue); color: var(--blue); }
 .own-row { display: flex; gap: 8px; }
-.own-row input, .step-date-time-row input {
+.own-row input, .step-date-time-row input, .step-schedule-date-row input {
   flex: 1; height: 46px; border: 1.5px solid var(--border); border-radius: 12px;
   padding: 0 12px; font-family: inherit; font-size: 14px; outline: none; min-width: 0;
   background: #fff; color: var(--text);
 }
-.own-row input:focus { border-color: var(--blue); }
+.own-row input:focus, .step-schedule-date-row input:focus { border-color: var(--blue); }
 .step-date-time-row {
   display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-  gap: 8px; width: 100%; min-width: 0; flex: 1 0 100%; order: 2;
+  gap: 8px; width: 100%; min-width: 0; max-width: 100%; flex: 0 1 100%; order: 2;
 }
 .step-date-time-field { display: grid; min-width: 0; gap: 4px; font-size: 13px; }
 .step-date-time-row input { width: 100%; max-width: 100%; }
 .step-date-time-row input:focus { border-color: var(--blue); }
-.step-schedule-card > .own-row > label {
-  display: grid; flex: 1 1 100%; min-width: 0; gap: 4px; font-size: 13px;
+.step-schedule-date-row {
+  display: block; width: 100%; min-width: 0; max-width: 100%;
 }
-.step-schedule-card > .own-row > label input { width: 100%; max-width: 100%; }
+.step-schedule-date-row > label {
+  display: grid; min-width: 0; gap: 4px; font-size: 13px;
+}
+.step-schedule-date-row > label input { width: 100%; max-width: 100%; }
 .own-row .date { flex: 0 0 110px; }
 .own-row .add {
   flex: 0 0 46px; height: 46px; border-radius: 12px; border: none;

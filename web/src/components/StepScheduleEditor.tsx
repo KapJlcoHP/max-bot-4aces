@@ -83,7 +83,7 @@ export default function StepScheduleEditor({ step, user, now, onSaved, disabled 
   return <div className="card step-schedule-card">
     <h3 className="h3">{scheduleTitle(step.kind)}</h3>
     <p className="muted">{step.kind === "booking" ? "Это отдельный срок действия «записаться» и его напоминание, не дата полученного события. Прежнее точное время сохранено; новое время оформления записи не задаётся." : "Проверьте фактическую дату приёма или свой срок. Если дата неизвестна, её можно очистить. Время необязательно."} Время указано в вашем местном времени.</p>
-    <div className="own-row" style={{ flexWrap: "wrap" }}>
+    <div className="step-schedule-date-row">
       {step.kind === "booking" ? <label>Срок действия записи<input type="date" aria-label="Срок действия записи" value={date} disabled={controlsDisabled} onChange={(e) => {
         setDate(e.target.value); setConfirmed(false); if (!e.target.value) { setTime(""); setMode("profile"); setMoment(""); }
       }} /></label> : <EventDateTimeInputs date={date} time={time} disabled={controlsDisabled} label="Срок шага" onChange={(d, t) => {
