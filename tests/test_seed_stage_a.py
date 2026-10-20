@@ -45,7 +45,7 @@ class SeedStageATests(unittest.TestCase):
             for table in Base.metadata.sorted_tables
         }
 
-    def test_actual_catalog_has_18_rows_both_centers_and_stable_ids(self):
+    def test_actual_catalog_has_21_rows_both_centers_and_stable_ids(self):
         expected = {
             (region["title"], item["title"]): item
             for region in seed.load_regions()
@@ -71,6 +71,14 @@ class SeedStageATests(unittest.TestCase):
         self.db.refresh(user)
         self.assertEqual(user.attached_clinic_id, clinic.id)
         self.assertEqual(clinic.phone, expected[clinic.region, clinic.title]["phone"])
+
+    def test_catalog_does_not_keep_old_model_cards(self):
+        titles = {item["title"] for region in seed.load_regions() for item in region["organizations"]}
+        self.assertIn("Ивановская городская поликлиника №2", titles)
+        self.assertIn("Городская клиническая больница №5 (ПО «Автоприбор» и «Точмаш»)", titles)
+        self.assertIn("Республиканский клинический онкологический диспансер имени профессора М.З. Сигала", titles)
+        self.assertNotIn("Городская поликлиника №12", titles)
+        self.assertNotIn("ГКБ им. С.П. Боткина №3", titles)
 
     def test_old_title_collapsed_catalog_recovers_without_relocating_existing_ids(self):
         # This is exactly the former title-only seed's initial state (20 rows).

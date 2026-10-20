@@ -354,7 +354,7 @@ def test_unrelated_manual_doctor_duplicate_and_inactive_steps_not_bound(fixture,
     assert project_step_clinic(visit)["place"] == "История"
 
 
-def test_repeated_catalog_seed_keeps_ids_and_real_number_12(fixture):
+def test_repeated_catalog_seed_keeps_ids_and_real_ivanovo_clinic(fixture):
     db, user, _ = fixture
     seed_organizations(db)
     clinic = db.query(Organization).filter(Organization.org_type == "Поликлиники", Organization.region == REGION).first()
@@ -364,4 +364,4 @@ def test_repeated_catalog_seed_keeps_ids_and_real_number_12(fixture):
     assert [(org.id, org.title) for org in db.query(Organization).order_by(Organization.id)] == before
     db.refresh(user)
     assert user.attached_clinic_id == clinic.id
-    assert any("№12" in title for _, title in before)
+    assert any("Ивановская городская поликлиника №2" == title for _, title in before)
