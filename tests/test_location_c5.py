@@ -37,6 +37,18 @@ def test_supported_city_derives_internal_tz_without_exposing_it(db):
     assert "tz" not in UserDto.model_validate(saved).model_dump()
 
 
+def test_kazan_is_available_as_a_second_pilot_city(db):
+    user = User(max_user_id=610007, region="Республика Татарстан")
+    db.add(user)
+    db.commit()
+
+    saved = profile.give_consent_impl(
+        ConsentIn(region="Республика Татарстан", city="Казань"), user, db
+    )
+
+    assert (saved.city, saved.region, saved.tz) == ("Казань", "Республика Татарстан", "Europe/Moscow")
+
+
 @pytest.mark.parametrize("city, region", [
     ("Владимир", "Ивановская область"),  # city belongs to another region
     ("Иваново", "Владимирская область"),  # region is outside the pilot

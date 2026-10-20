@@ -68,13 +68,13 @@ def test_pending_onboarding_user_keeps_default_and_can_explicitly_browse_all(cat
     assert len(read(client, region="")) == 3
 
 
-def test_seed_keeps_18_rows_both_regional_centers_and_readback_after_repeated_seed(catalog):
+def test_seed_keeps_21_rows_both_regional_centers_and_readback_after_repeated_seed(catalog):
     client, db, user, _, _ = catalog
     seed_organizations(db)
     first = read(client, region="")
     seed_organizations(db)
     second = read(client, region="")
-    assert len(first) == len(second) == 18
+    assert len(first) == len(second) == 21
     assert first == second
     centers = [row for row in second if row["title"] == "Областной перинатальный центр"]
     assert {row["region"] for row in centers} == {"Владимирская область", "Ярославская область"}

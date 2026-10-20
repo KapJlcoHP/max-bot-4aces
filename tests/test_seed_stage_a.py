@@ -51,7 +51,7 @@ class SeedStageATests(unittest.TestCase):
             for region in seed.load_regions()
             for item in region["organizations"]
         }
-        self.assertEqual(len(expected), 18)
+        self.assertEqual(len(expected), 21)
         seed.seed_organizations(self.db)
         organizations = self.organizations()
         self.assertEqual(set(organizations), set(expected))
@@ -73,7 +73,7 @@ class SeedStageATests(unittest.TestCase):
         self.assertEqual(clinic.phone, expected[clinic.region, clinic.title]["phone"])
 
     def test_old_title_collapsed_catalog_recovers_without_relocating_existing_ids(self):
-        # This is exactly the former title-only seed's initial state (17 rows).
+        # This is exactly the former title-only seed's initial state (20 rows).
         collapsed = {
             item["title"]: {**item, "region": region["title"]}
             for region in seed.load_regions()
@@ -88,7 +88,7 @@ class SeedStageATests(unittest.TestCase):
         seed.seed_organizations(self.db)
 
         current = self.organizations()
-        self.assertEqual(len(current), 18)
+        self.assertEqual(len(current), 21)
         self.assertEqual({key: current[key].id for key in original}, original)
         self.assertIn(("Владимирская область", "Областной перинатальный центр"), current)
         self.db.refresh(user)
@@ -109,7 +109,7 @@ class SeedStageATests(unittest.TestCase):
 
         seed.seed_organizations(self.db)
 
-        self.assertEqual(self.db.query(Organization).count(), 18)
+        self.assertEqual(self.db.query(Organization).count(), 21)
         self.assertIsNone(self.db.get(Organization, duplicate_id))
         self.assertIsNone(self.db.get(Organization, obsolete_id))
         for user in (attached, duplicate_user, foreign_user, obsolete_user):
