@@ -6,12 +6,12 @@ export default function EventDateTimeInputs({ date, time, onChange, disabled = f
   disabled?: boolean;
   label?: string;
 }) {
-  return <div className="own-row" style={{ flex: "1 0 100%", order: 2, flexWrap: "wrap" }}>
-    <label style={{ flex: "1 1 140px", display: "grid", gap: 4, fontSize: 13 }}>{label}
+  return <div className="step-date-time-row">
+    <label className="step-date-time-field">{label}
       <input type="date" aria-label={label} value={date} disabled={disabled} style={{ width: "100%" }}
         onChange={(e) => onChange(e.target.value, e.target.value ? time : "")} />
     </label>
-    <label style={{ flex: "1 1 110px", display: "grid", gap: 4, fontSize: 13 }}>Время (необязательно)
+    <label className="step-date-time-field">Время (необязательно)
       <input type="time" aria-label={`${label}: время (необязательно)`} value={time} disabled={disabled || !date} style={{ width: "100%" }}
         onChange={(e) => onChange(date, e.target.value)} />
     </label>
