@@ -120,7 +120,7 @@ export default function Family() {
 
             <div className="section-h"><b>Мои помощники</b></div>
             <div className="card">
-              <div className="field"><input value={inviteLabel} onChange={(e) => setInviteLabel(e.target.value)} placeholder="Имя помощника, например Иван" aria-label="Имя помощника" /></div>
+              <input className="field" value={inviteLabel} onChange={(e) => setInviteLabel(e.target.value)} placeholder="Имя помощника, например Иван" aria-label="Имя помощника" />
               <Button onClick={createInvite} disabled={inviteBusy}>{inviteBusy ? "Создаём…" : "Создать одноразовый код"}</Button>
               {invite && (
                 <div className="family-invite-code" role="status">
@@ -151,7 +151,7 @@ export default function Family() {
             <div className="section-h"><b>Я помогаю другим</b></div>
             <div className="card">
               <p className="muted">Введите одноразовый код, который передал владелец маршрута.</p>
-              <div className="field"><input value={acceptCode} onChange={(e) => setAcceptCode(e.target.value)} placeholder="XXXX-XXXX-XXXX" aria-label="Код приглашения" autoCapitalize="characters" /></div>
+              <input className="field" value={acceptCode} onChange={(e) => setAcceptCode(e.target.value)} placeholder="XXXX-XXXX-XXXX" aria-label="Код приглашения" autoCapitalize="characters" />
               <Button variant="secondary" onClick={accept} disabled={acceptBusy || !acceptCode.trim()}>{acceptBusy ? "Проверяем…" : "Принять приглашение"}</Button>
             </div>
 
