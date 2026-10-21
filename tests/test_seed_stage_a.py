@@ -80,6 +80,23 @@ class SeedStageATests(unittest.TestCase):
         self.assertNotIn("Городская поликлиника №12", titles)
         self.assertNotIn("ГКБ им. С.П. Боткина №3", titles)
 
+    def test_catalog_keeps_verified_yaroslavl_facility_addresses(self):
+        expected = {
+            item["title"]: item["address"]
+            for region in seed.load_regions()
+            if region["key"] == "yaroslavl"
+            for item in region["organizations"]
+        }
+        self.assertEqual(
+            expected["Клинико-диагностический центр Областной детской клинической больницы"],
+            "г. Ярославль, Тутаевское шоссе, д. 27",
+        )
+        self.assertEqual(
+            expected["Ярославская областная клиническая онкологическая больница"],
+            "г. Ярославль, пр-т Октября, д. 67",
+        )
+        self.assertEqual(expected["Областная клиническая туберкулёзная больница"], "г. Ярославль, ул. Бабича, д. 3")
+
     def test_old_title_collapsed_catalog_recovers_without_relocating_existing_ids(self):
         # This is exactly the former title-only seed's initial state (20 rows).
         collapsed = {
