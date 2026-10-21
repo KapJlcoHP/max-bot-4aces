@@ -47,6 +47,7 @@ def test_invitation_is_one_time_and_binds_to_real_viewer(family_db):
 
 def test_snapshot_contains_route_and_aggregated_statuses_but_no_raw_health_data(family_db):
     db, owner, viewer = family_db
+    owner.tz = "Europe/Moscow"
     route = Route(user_id=owner.id, situation_key="doctor", title="Маршрут к врачу", subtitle="Подготовка", active=True)
     db.add(route)
     db.flush()
@@ -74,6 +75,32 @@ def test_snapshot_contains_route_and_aggregated_statuses_but_no_raw_health_data(
     assert snapshot.medication.taken_today == 1
     assert not hasattr(snapshot.diaries[0], "systolic")
     assert not hasattr(snapshot.diaries[0], "note")
+
+
+def test_snapshot_formats_utc_timestamps_in_owner_timezone(family_db):
+    db, owner, viewer = family_db
+    owner.tz = "Europe/Moscow"
+    route = Route(user_id=owner.id, situation_key="doctor", title="Маршрут", subtitle="", active=True)
+    db.add(route)
+    db.flush()
+    db.add(RouteStep(
+        route_id=route.id,
+        position=1,
+        title="Визит",
+        kind="visit",
+        status="done",
+        completed_at=datetime(2026, 10, 20, 9, 0),
+    ))
+    db.commit()
+
+    invitation = misc.create_family_invitation(FamilyInviteIn(), owner, db)
+    misc.accept_family_invitation(FamilyAcceptIn(code=invitation.code), viewer, db)
+    with patch.object(misc, "utcnow", return_value=datetime(2026, 10, 20, 9, 30)):
+        snapshot = misc.family_snapshot(invitation.access.id, viewer, db)
+
+    assert snapshot.route is not None
+    assert snapshot.route.steps[0].completed_at.isoformat() == "2026-10-20T12:00:00+03:00"
+    assert snapshot.generated_at.isoformat() == "2026-10-20T12:30:00+03:00"
 
 
 def test_revoke_is_immediate_and_expired_access_cannot_read(family_db):

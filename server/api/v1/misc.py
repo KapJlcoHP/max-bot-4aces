@@ -363,7 +363,11 @@ def family_snapshot(
             deadline=step.deadline,
             deadline_time=step.deadline_time,
             place=step.place,
-            completed_at=step.completed_at,
+            # Route timestamps are stored as UTC-naive values.  The family
+            # screen formats an API timestamp as a local wall-clock value,
+            # so convert it to the owner's city timezone just like the
+            # regular reminders/diary endpoints do.
+            completed_at=user_local(step.completed_at, owner.tz) if step.completed_at is not None else None,
         ) for step in route.steps]
         route_snapshot = FamilyRouteSnapshotDto(
             title=route.title,
@@ -405,7 +409,7 @@ def family_snapshot(
     return FamilySnapshotDto(
         access_id=access.id,
         owner_name=_family_name(owner) or "Пользователь",
-        generated_at=utcnow(),
+        generated_at=user_local(utcnow(), owner.tz),
         route=route_snapshot,
         diaries=diary_rows,
         medication=FamilyMedicationStatusDto(
