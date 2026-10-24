@@ -359,7 +359,7 @@ export default function StepCard() {
 
       <Sheet open={assignSheet} onClose={closeAssignments}>
         <h3>Что назначил врач?</h3>
-        <div className="sub">{step.status === "current" && "Шаг будет выполнен только после подтверждения. "}Добавим шагами в маршрут. Дата и время необязательны (в вашем местном времени); уведомления получает только текущий шаг.</div>
+        <div className="sub">{step.status === "current" && "Шаг будет выполнен только после подтверждения. "}Добавим шагами в маршрут. Дата и время указываются в вашем местном времени; уведомления получает только текущий шаг.</div>
         {assignmentError && <p role="alert" className="muted">{assignmentError}</p>}
         {assignmentError && !uncertain && <Button variant="secondary" disabled={busy} onClick={() => {
           if (inFlight.current || pendingSubmission.current) return;

@@ -101,7 +101,7 @@ test("server failure retains changed event and notification fields for retry", a
     return { ...custom, ...body, reminder_at: "2030-01-03T03:00:00Z" };
   } });
   await page.flush();
-  page.change("Срок шага: время (необязательно)", "16:15");
+  page.change("Срок шага: время", "16:15");
   page.change("Дата и время напоминания", "2030-01-03T12:00");
   await page.flush();
   page.confirm();
@@ -110,7 +110,7 @@ test("server failure retains changed event and notification fields for retry", a
   await page.flush();
   assert.match(page.text(), /Время неоднозначно/);
   assert.equal(page.saved.length, 0);
-  assert.equal(page.input("Срок шага: время (необязательно)").props.value, "16:15");
+  assert.equal(page.input("Срок шага: время").props.value, "16:15");
   assert.equal(page.input("Дата и время напоминания").props.value, "2030-01-03T12:00");
   await page.click("Сохранить срок и напоминание");
   await page.flush();
@@ -124,8 +124,8 @@ test("clearing event date clears dependent time and custom override, with an exp
   page.change("Срок шага", "");
   await page.flush();
   assert.match(page.text(), /также уберёт время события и отдельное напоминание/);
-  assert.equal(page.input("Срок шага: время (необязательно)").props.value, "");
-  assert.equal(page.input("Срок шага: время (необязательно)").props.disabled, true);
+  assert.equal(page.input("Срок шага: время").props.value, "");
+  assert.equal(page.input("Срок шага: время").props.disabled, true);
   assert.doesNotMatch(page.text(), /За час|За день|В другое время…/);
   assert.match(page.text(), /Сначала укажите дату события/);
   await page.click("Сохранить срок и напоминание");
@@ -197,12 +197,12 @@ test("own route step preserves date/time after failure, retries once, and clears
   page.change("Название шага", "Своя запись");
   page.change("Срок", "2030-01-04");
   await page.flush();
-  page.change("Срок: время (необязательно)", "11:20");
+  page.change("Срок: время", "11:20");
   await page.flush();
   await page.click("Добавить в маршрут");
   await page.flush();
   assert.equal(page.input("Срок").props.value, "2030-01-04");
-  assert.equal(page.input("Срок: время (необязательно)").props.value, "11:20");
+  assert.equal(page.input("Срок: время").props.value, "11:20");
   assert.equal(page.calls.find((c) => c.method === "post").payload.deadline_time, "11:20");
   const button = page.button("Добавить в маршрут");
   const one = button.props.onClick(), two = button.props.onClick();
@@ -217,12 +217,12 @@ test("own route step preserves date/time after failure, retries once, and clears
   await page.flush();
   page.change("Срок", "2030-01-04");
   await page.flush();
-  page.change("Срок: время (необязательно)", "11:20");
+  page.change("Срок: время", "11:20");
   await page.flush();
   page.change("Срок", "");
   await page.flush();
-  assert.equal(page.input("Срок: время (необязательно)").props.value, "");
-  assert.equal(page.input("Срок: время (необязательно)").props.disabled, true);
+  assert.equal(page.input("Срок: время").props.value, "");
+  assert.equal(page.input("Срок: время").props.disabled, true);
 });
 
 test("builder sends optional event time and keeps saved draft steps on failure", async () => {
@@ -233,7 +233,7 @@ test("builder sends optional event time and keeps saved draft steps on failure",
   page.change("Название шага", "Анализ");
   page.change("Срок", "2030-01-04");
   await page.flush();
-  page.change("Срок: время (необязательно)", "07:45");
+  page.change("Срок: время", "07:45");
   await page.flush();
   page.input("Добавить").props.onClick();
   await page.flush();
@@ -257,14 +257,14 @@ test("doctor assignment carries optional time and remains editable after HTTP va
   page.change("Название назначения", "МРТ");
   page.change("Срок", "2030-01-04");
   await page.flush();
-  page.change("Срок: время (необязательно)", "17:30");
+  page.change("Срок: время", "17:30");
   await page.flush();
   page.input("Добавить назначение").props.onClick();
   await page.flush();
   await page.click("Готово — добавить 1");
   await page.flush();
   assert.equal(page.calls.find((c) => c.method === "post").payload.assignments[0].deadline_time, "17:30");
-  assert.equal(page.input("Срок: МРТ: время (необязательно)").props.value, "17:30");
+  assert.equal(page.input("Срок: МРТ: время").props.value, "17:30");
   assert.equal(page.input("Срок: МРТ").props.disabled, false);
   assert.deepEqual(page.navigation, []);
 });
@@ -281,7 +281,7 @@ async function addAssignment(page, title, date = "", time = "") {
   page.change("Название назначения", title);
   page.change("Срок", date);
   await page.flush();
-  if (time) { page.change("Срок: время (необязательно)", time); await page.flush(); }
+  if (time) { page.change("Срок: время", time); await page.flush(); }
   page.input("Добавить назначение").props.onClick();
   await page.flush();
 }

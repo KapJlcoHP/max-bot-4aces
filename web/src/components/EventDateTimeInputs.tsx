@@ -11,8 +11,8 @@ export default function EventDateTimeInputs({ date, time, onChange, disabled = f
       <input type="date" aria-label={label} value={date} disabled={disabled} style={{ width: "100%" }}
         onChange={(e) => onChange(e.target.value, e.target.value ? time : "")} />
     </label>
-    <label className="step-date-time-field step-time-field">Время (необязательно)
-      <input type="time" aria-label={`${label}: время (необязательно)`} value={time} disabled={disabled || !date} style={{ width: "100%" }}
+    <label className="step-date-time-field step-time-field">Время
+      <input type="time" aria-label={`${label}: время`} value={time} disabled={disabled || !date} style={{ width: "100%" }}
         onChange={(e) => onChange(date, e.target.value)} />
     </label>
   </div>;

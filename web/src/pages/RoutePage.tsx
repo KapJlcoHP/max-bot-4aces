@@ -295,7 +295,7 @@ export default function RoutePage() {
 
       <Sheet open={sheet} onClose={() => setSheet(false)}>
         <h3>Добавить шаг</h3>
-        <div className="sub">Проверьте фактическую дату; неизвестную можно оставить пустой. Время необязательно (в вашем местном времени). Уведомления получает только текущий шаг.</div>
+        <div className="sub">Проверьте фактическую дату; неизвестную можно оставить пустой. Время указано в вашем местном времени. Уведомления получает только текущий шаг.</div>
         <StepKindSelect value={newKind} onChange={(kind) => { setNewKind(kind); setNewTime(""); }} disabled={busy} />
         <label className="kind-select">Размещение
           <select aria-label="Добавить перед шагом" value={beforeId} disabled={busy} onChange={(e) => { setBeforeId(e.target.value); setNewTarget(""); }}>
