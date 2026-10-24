@@ -440,7 +440,7 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   flex: 0 1 100%; width: 100%; min-width: 0; max-width: 100%;
 }
 .step-date-time-field { display: grid; min-width: 0; gap: 4px; font-size: 13px; }
-.step-time-field { white-space: normal; line-height: 1.2; font-size: 12px; }
+.step-time-field { white-space: normal; line-height: 1.2; font-size: 13px; }
 .step-date-time-row input,
 .step-schedule-date-row input,
 .step-schedule-card input[type="datetime-local"] {
