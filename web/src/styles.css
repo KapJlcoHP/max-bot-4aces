@@ -205,7 +205,11 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 
 /* переключатель — сам Switch берётся из @maxhub/max-ui */
 .switch-wrap { flex: 0 0 auto; display: inline-flex; align-items: center; }
-.switch-control { margin: -8px; padding: 8px; }
+.switch-control {
+  position: relative; width: 67px; height: 47px; display: inline-flex;
+  align-items: center; justify-content: center;
+}
+.switch-control input { inset: -8px; }
 
 /* плитки 2×2 */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
