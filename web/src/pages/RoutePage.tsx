@@ -310,7 +310,7 @@ export default function RoutePage() {
             {newTargets.map((s) => <option key={s.id} value={s.id}>Шаг {s.position}: {s.title} (#{s.id})</option>)}
           </select>
         </label><p className="muted">Для связи разместите запись перед выбранным событием. Полученная дата сохраняется в записи, но не меняет событие до явного подтверждения в карточке. Без связи напоминаний о событии из этой записи нет.</p></>}
-        <div className="own-row" style={{ flexWrap: "wrap" }}>
+        <div className="own-row route-add-row">
           <input
             placeholder="Например, МРТ"
             aria-label="Название шага"
