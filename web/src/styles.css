@@ -441,15 +441,20 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 }
 .step-date-time-field { display: grid; min-width: 0; gap: 4px; font-size: 13px; }
 .step-time-field { white-space: normal; line-height: 1.2; font-size: 12px; }
-.step-date-time-row input { width: 100%; max-width: 100%; }
+.step-date-time-row input,
+.step-schedule-date-row input,
+.step-schedule-card input[type="datetime-local"] {
+  display: block; width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; inline-size: 100%;
+  overflow: hidden; font-size: 16px;
+}
 .step-date-time-row input:focus { border-color: var(--blue); }
 .step-schedule-date-row {
-  display: block; width: 100%; min-width: 0; max-width: 100%;
+  display: block; width: 100%; min-width: 0; max-width: 100%; overflow: hidden;
 }
 .step-schedule-date-row > label {
   display: grid; min-width: 0; gap: 4px; font-size: 13px;
 }
-.step-schedule-date-row > label input { width: 100%; max-width: 100%; }
+.step-schedule-date-row > label input { min-width: 0; min-inline-size: 0; }
 .date-only-field {
   display: grid; flex: 0 1 100%; gap: 6px; width: 100%; max-width: 100%; min-width: 0;
   box-sizing: border-box; font-size: 14px;
