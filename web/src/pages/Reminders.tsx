@@ -4,7 +4,7 @@ import { Input } from "@maxhub/max-ui";
 import { useNavigate } from "react-router-dom";
 import { fmtDeadline, fmtWhen, parseDate } from "../format";
 import type { Reminder, RouteDto } from "../types";
-import { Button, Header, LoadingView, useToast } from "../components/ui";
+import { Button, Header, LoadingView, Switch, useToast } from "../components/ui";
 import { I } from "../icons";
 
 export default function Reminders() {
@@ -120,16 +120,11 @@ export default function Reminders() {
               <div key={r.id} className="card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span className="badge badge-blue">{fmtWhen(r.at)}</span>
-                  <button
-                    type="button"
-                    className={`reminder-toggle${r.enabled ? " on" : ""}`}
-                    role="switch"
-                    aria-checked={r.enabled}
-                    aria-label={`${r.enabled ? "Отключить" : "Включить"} напоминание: ${r.title}`}
-                    onClick={() => void toggle(r.id)}
-                  >
-                    {r.enabled ? "Включено" : "Выключено"}
-                  </button>
+                  <Switch
+                    on={r.enabled}
+                    onChange={() => void toggle(r.id)}
+                    label={`${r.enabled ? "Отключить" : "Включить"} напоминание: ${r.title}`}
+                  />
                 </div>
                 <h3 style={{ fontSize: 16, fontWeight: 700 }}>{r.title}</h3>
                 {r.place && <p style={{ fontSize: 13, color: "#8E8E93" }}>{r.place}</p>}
@@ -140,16 +135,11 @@ export default function Reminders() {
               <div key={r.id} className="card" style={{ display: "flex", flexDirection: "column", gap: 8, opacity: 0.75 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span className="badge badge-gray">{fmtWhen(r.at)}</span>
-                  <button
-                    type="button"
-                    className={`reminder-toggle${r.enabled ? " on" : ""}`}
-                    role="switch"
-                    aria-checked={r.enabled}
-                    aria-label={`${r.enabled ? "Отключить" : "Включить"} напоминание: ${r.title}`}
-                    onClick={() => void toggle(r.id)}
-                  >
-                    {r.enabled ? "Включено" : "Выключено"}
-                  </button>
+                  <Switch
+                    on={r.enabled}
+                    onChange={() => void toggle(r.id)}
+                    label={`${r.enabled ? "Отключить" : "Включить"} напоминание: ${r.title}`}
+                  />
                 </div>
                 <h3 style={{ fontSize: 16, fontWeight: 700, color: "#6B6B6B" }}>{r.title}</h3>
                 {r.place && <p style={{ fontSize: 13, color: "#9B9B9B" }}>{r.place}</p>}

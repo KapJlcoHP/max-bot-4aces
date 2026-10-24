@@ -205,13 +205,6 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 
 /* переключатель — сам Switch берётся из @maxhub/max-ui */
 .switch-wrap { flex: 0 0 auto; display: inline-flex; align-items: center; }
-.reminder-toggle {
-  flex: 0 0 auto; min-width: 92px; min-height: 34px; padding: 6px 10px;
-  border: 1px solid var(--border); border-radius: 999px; background: var(--bg);
-  color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
-}
-.reminder-toggle.on { border-color: var(--blue); background: var(--blue-tint); color: var(--blue-dark); }
-.reminder-toggle:disabled { opacity: 0.5; cursor: default; }
 
 /* плитки 2×2 */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

@@ -59,21 +59,19 @@ test("independent reminders are labelled separately from the route step", async 
   assert.match(page.text(), /Личные вопросы/);
 });
 
-test("personal reminders expose an explicit on/off control", async () => {
+test("personal reminders expose the standard switch control", async () => {
   const page = reminderHarness("pages/Reminders.tsx", { api: {
     get: async (path) => path.endsWith("/route") ? null : [{ id: 41, title: "Личные вопросы", place: "", at: "2030-01-03T10:00:00+03:00", enabled: true, done_at: null }],
     post: async () => ({ id: 41, title: "Личные вопросы", place: "", at: "2030-01-03T10:00:00+03:00", enabled: false, done_at: null }),
   } });
   await page.flush();
-  const toggle = page.find((node) => node.type === "button" && node.props?.role === "switch");
-  assert.equal(toggle.props["aria-checked"], true);
-  assert.equal(toggle.props.children, "Включено");
-  await toggle.props.onClick();
+  const toggle = page.find((node) => node.type === "Switch");
+  assert.equal(toggle.props.on, true);
+  toggle.props.onChange(false);
   await page.flush();
   assert.equal(page.calls.at(-1).path, "/api/v1/reminders/41/toggle");
-  const updated = page.find((node) => node.type === "button" && node.props?.role === "switch");
-  assert.equal(updated.props["aria-checked"], false);
-  assert.equal(updated.props.children, "Выключено");
+  const updated = page.find((node) => node.type === "Switch");
+  assert.equal(updated.props.on, false);
 });
 
 test("empty home state does not imply personal reminders require a route", async () => {
