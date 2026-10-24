@@ -29,4 +29,5 @@ test("mobile add-step date and time fields can wrap without horizontal overlap",
   assert.match(css, /\.route-add-row\s*>\s*\.step-date-time-row[^}]*grid-column:\s*1 \/ -1[^}]*grid-row:\s*2/);
   assert.match(css, /\.step-date-time-row input,[\s\S]*\.step-schedule-date-row input,[\s\S]*min-width:\s*0;[^}]*min-inline-size:\s*0;[^}]*inline-size:\s*100%/);
   assert.match(css, /\.step-schedule-date-row\s*\{[^}]*overflow:\s*hidden/);
+  assert.match(css, /@supports \(-webkit-touch-callout:\s*none\)[\s\S]*-webkit-appearance:\s*none/);
 });

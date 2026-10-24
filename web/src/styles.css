@@ -455,6 +455,16 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   display: grid; min-width: 0; gap: 4px; font-size: 13px;
 }
 .step-schedule-date-row > label input { min-width: 0; min-inline-size: 0; }
+/* iOS Safari gives native calendar/time controls a min-content width larger
+   than their grid track. Remove that native sizing so the fields can shrink. */
+@supports (-webkit-touch-callout: none) {
+  .step-date-time-row input[type="date"],
+  .step-date-time-row input[type="time"],
+  .step-schedule-date-row input[type="date"],
+  .step-schedule-card input[type="datetime-local"] {
+    -webkit-appearance: none; appearance: none; width: 100%; min-width: 0; min-inline-size: 0;
+  }
+}
 .date-only-field {
   display: grid; flex: 0 1 100%; gap: 6px; width: 100%; max-width: 100%; min-width: 0;
   box-sizing: border-box; font-size: 14px;
