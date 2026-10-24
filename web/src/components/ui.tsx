@@ -24,14 +24,27 @@ export function Button({
 
 /** Переключатель из MAX-UI. Клик самого контрола не должен срабатывать на строке-родителе. */
 export function Switch({ on, onChange, label, className }: { on: boolean; onChange?: (v: boolean) => void; label?: string; className?: string }) {
+  const expandedHitbox = className === "switch-control";
   return (
     <span className={`switch-wrap${className ? ` ${className}` : ""}`}>
       <MaxSwitch
         checked={on}
-        aria-label={label ?? "Переключить"}
+        aria-label={expandedHitbox ? undefined : (label ?? "Переключить")}
+        aria-hidden={expandedHitbox ? true : undefined}
+        tabIndex={expandedHitbox ? -1 : undefined}
         onClick={(e) => e.stopPropagation()}
-        onChange={(e) => onChange?.(e.target.checked)}
+        onChange={(e) => { if (!expandedHitbox) onChange?.(e.target.checked); }}
       />
+      {expandedHitbox && (
+        <button
+          type="button"
+          className="switch-hitbox"
+          role="switch"
+          aria-checked={on}
+          aria-label={label ?? "Переключить"}
+          onClick={(e) => { e.stopPropagation(); onChange?.(!on); }}
+        />
+      )}
     </span>
   );
 }

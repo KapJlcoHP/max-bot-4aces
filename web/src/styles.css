@@ -209,7 +209,11 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   position: relative; width: 67px; height: 47px; display: inline-flex;
   align-items: center; justify-content: center;
 }
-.switch-control input { inset: -8px; }
+.switch-control > span { pointer-events: none; }
+.switch-hitbox {
+  position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%;
+  margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer;
+}
 
 /* плитки 2×2 */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
