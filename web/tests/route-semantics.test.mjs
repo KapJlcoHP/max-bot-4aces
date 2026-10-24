@@ -67,6 +67,7 @@ test("personal reminders expose the standard switch control", async () => {
   await page.flush();
   const toggle = page.find((node) => node.type === "Switch");
   assert.equal(toggle.props.on, true);
+  assert.equal(toggle.props.className, "switch-control");
   toggle.props.onChange(false);
   await page.flush();
   assert.equal(page.calls.at(-1).path, "/api/v1/reminders/41/toggle");

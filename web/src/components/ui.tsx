@@ -23,10 +23,11 @@ export function Button({
 }
 
 /** Переключатель из MAX-UI. Клик самого контрола не должен срабатывать на строке-родителе. */
-export function Switch({ on, onChange, label }: { on: boolean; onChange?: (v: boolean) => void; label?: string }) {
+export function Switch({ on, onChange, label, className }: { on: boolean; onChange?: (v: boolean) => void; label?: string; className?: string }) {
   return (
     <span className="switch-wrap">
       <MaxSwitch
+        className={className}
         checked={on}
         aria-label={label ?? "Переключить"}
         onClick={(e) => e.stopPropagation()}

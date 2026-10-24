@@ -124,6 +124,7 @@ export default function Reminders() {
                     on={r.enabled}
                     onChange={() => void toggle(r.id)}
                     label={`${r.enabled ? "Отключить" : "Включить"} напоминание: ${r.title}`}
+                    className="switch-control"
                   />
                 </div>
                 <h3 style={{ fontSize: 16, fontWeight: 700 }}>{r.title}</h3>
@@ -139,6 +140,7 @@ export default function Reminders() {
                     on={r.enabled}
                     onChange={() => void toggle(r.id)}
                     label={`${r.enabled ? "Отключить" : "Включить"} напоминание: ${r.title}`}
+                    className="switch-control"
                   />
                 </div>
                 <h3 style={{ fontSize: 16, fontWeight: 700, color: "#6B6B6B" }}>{r.title}</h3>
