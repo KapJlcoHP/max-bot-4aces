@@ -16,3 +16,11 @@ test("desktop route shell keeps page app outside the inner screen scroll context
   assert.match(css, /@media \(min-width: 900px\)[\s\S]*\.screen-body\s*\{[^}]*var\(--desktop-tabbar-gap\)/);
   assert.match(css, /@media \(min-width: 900px\)[\s\S]*\.foot\s*\{[^}]*var\(--desktop-tabbar-gap\)/);
 });
+
+test("mobile add-step date and time fields can wrap without horizontal overlap", async () => {
+  const css = await readFile(resolve(webRoot, "src/styles.css"), "utf8");
+
+  assert.match(css, /\.step-date-time-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(0,\s*1fr\)/);
+  assert.match(css, /\.step-time-field\s*\{[^}]*white-space:\s*normal/);
+  assert.match(css, /\.own-row input, \.step-date-time-row input, \.step-schedule-date-row input\s*\{[^}]*box-sizing:\s*border-box;[^}]*min-width:\s*0/);
+});

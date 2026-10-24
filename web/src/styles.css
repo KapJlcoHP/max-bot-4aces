@@ -420,16 +420,16 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 .own-row { display: flex; gap: 8px; }
 .own-row input, .step-date-time-row input, .step-schedule-date-row input {
   flex: 1; height: 46px; border: 1.5px solid var(--border); border-radius: 12px;
-  padding: 0 12px; font-family: inherit; font-size: 14px; outline: none; min-width: 0;
+  box-sizing: border-box; min-width: 0; padding: 0 12px; font-family: inherit; font-size: 14px; outline: none;
   background: #fff; color: var(--text);
 }
 .own-row input:focus, .step-schedule-date-row input:focus { border-color: var(--blue); }
 .step-date-time-row {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px; width: 100%; min-width: 0; max-width: 100%; flex: 0 1 100%; order: 2;
+  align-items: start; gap: 8px; width: 100%; min-width: 0; max-width: 100%; flex: 0 1 100%; order: 2;
 }
 .step-date-time-field { display: grid; min-width: 0; gap: 4px; font-size: 13px; }
-.step-time-field { white-space: nowrap; font-size: 12px; }
+.step-time-field { white-space: normal; line-height: 1.2; font-size: 12px; }
 .step-date-time-row input { width: 100%; max-width: 100%; }
 .step-date-time-row input:focus { border-color: var(--blue); }
 .step-schedule-date-row {
