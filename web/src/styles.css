@@ -202,16 +202,21 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   background: none; border: none; color: var(--blue);
   font-weight: 700; font-size: 13.5px; cursor: pointer; font-family: inherit;
 }
-.reminder-form { display: grid; gap: 12px; }
+.reminder-form { display: grid; gap: 12px; min-width: 0; width: 100%; max-width: 100%; }
 .reminder-form > .h3 { margin-bottom: 2px; }
-.reminder-form .reminder-date-field { display: grid; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; }
+.reminder-form .reminder-date-field { display: grid; gap: 6px; min-width: 0; width: 100%; max-width: 100%; font-size: 13px; font-weight: 600; }
 .reminder-form .date-field {
-  display: block; width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0;
+  display: block; width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; max-inline-size: 100%;
   box-sizing: border-box; height: 46px; padding: 0 12px; border: 1.5px solid var(--border);
   border-radius: 12px; background: #fff; color: var(--text); font: inherit; font-size: 16px;
 }
 .reminder-form .date-field:focus { border-color: var(--blue); outline: none; }
 .reminder-form-actions { margin-top: 4px; gap: 10px; }
+@supports (-webkit-touch-callout: none) {
+  .reminder-form .date-field[type="datetime-local"] {
+    -webkit-appearance: none; appearance: none; width: 100%; min-width: 0; min-inline-size: 0; max-width: 100%; max-inline-size: 100%;
+  }
+}
 
 /* переключатель — сам Switch берётся из @maxhub/max-ui */
 .switch-wrap { flex: 0 0 auto; display: inline-flex; align-items: center; }
