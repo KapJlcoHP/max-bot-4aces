@@ -1,0 +1,302 @@
+"""Регрессионные проверки блокеров этапа 1."""
+
+import unittest
+from datetime import date, datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from core.db.models import Base, HealthRecord, NotificationLog, Organization, Route, RouteStep, User
+from core.db.demo import fill_demo
+from core.db.seed import build_route_for, seed_organizations
+from core.schemas import CustomStepIn, HealthReportOut, ReportNote, RouteStartIn, StepUpdateIn
+from server.deps import validate_init_data
+from server.health_pdf import _record_line, build_health_pdf
+
+
+class Stage1RegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.db = Session(self.engine)
+        self.user = User(
+            max_user_id=710001,
+            first_name="Пациент <тест>",
+            last_name="Иванов & сын",
+            consent_at=datetime.now(timezone.utc),
+        )
+        self.db.add(self.user)
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+        self.engine.dispose()
+
+    def test_custom_step_keeps_time_and_place(self):
+        route = build_route_for(
+            self.db,
+            self.user,
+            "custom",
+            custom_steps=[{
+                "title": "Сдать анализы",
+                "deadline": date(2026, 10, 20),
+                "deadline_time": "14:30",
+                "place": "Лаборатория №2",
+            }],
+        )
+
+        step = route.steps[0]
+        self.assertEqual(step.deadline_time, "14:30")
+        self.assertEqual(step.place, "Лаборатория №2")
+
+    def test_custom_step_api_keeps_dto_time_and_place(self):
+        from server.api.v1 import api
+
+        route = api.start_route(
+            RouteStartIn(
+                situation_key="custom",
+                custom_steps=[CustomStepIn(
+                    title="Сдать анализы", deadline=date(2026, 10, 20),
+                    deadline_time="14:30", place="Лаборатория №2",
+                )],
+            ),
+            user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(route.steps[0].deadline_time, "14:30")
+        self.assertEqual(route.steps[0].place, "Лаборатория №2")
+
+    def test_route_start_replaces_active_route_instead_of_returning_409(self):
+        from server.api.v1 import api
+
+        first = api.start_route(RouteStartIn(situation_key="custom"), user=self.user, db=self.db)
+        second = api.start_route(RouteStartIn(situation_key="chronic"), user=self.user, db=self.db)
+
+        self.assertNotEqual(first.id, second.id)
+        self.assertTrue(second.active)
+
+    def test_demo_default_region_matches_organization_region(self):
+        # Проверяем контракт справочника, на котором ломался список организаций.
+        fill_demo(self.db, self.user)
+        seed_organizations(self.db)
+        self.assertGreater(
+            self.db.query(Organization).filter(Organization.region == self.user.region).count(),
+            0,
+        )
+
+    def test_non_ascii_hash_is_rejected_as_bad_auth_not_server_error(self):
+        raw = "auth_date=1791720000&user=%7B%22id%22%3A1%7D&hash=подделка"
+        with patch("server.deps.get_settings", return_value=SimpleNamespace(max_bot_token="token")):
+            self.assertIsNone(validate_init_data(raw))
+
+    def test_pdf_escapes_markup_in_note_and_profile(self):
+        from reportlab.platypus import Paragraph
+
+        self.user.first_name = '<b>Пациент</b> <font color="red">Иван</font>'
+        self.user.last_name = 'Иванов & сын <тест>'
+        patient = f"{self.user.first_name} {self.user.last_name}"
+
+        for note in (
+            "боль < 3 и > 10 & «кавычки»",
+            "<b>x</b>",
+            '<font color="red">x</font>',
+            "Буквальная сущность &lt;b&gt;x&lt;/b&gt;",
+        ):
+            with self.subTest(note=note):
+                paragraphs = []
+
+                def capture_paragraph(*args, **kwargs):
+                    paragraph = Paragraph(*args, **kwargs)
+                    paragraphs.append(paragraph)
+                    return paragraph
+
+                report = HealthReportOut(notes=[ReportNote(at=datetime.now(), note=note)])
+                with patch("server.health_pdf.Paragraph", side_effect=capture_paragraph):
+                    pdf = build_health_pdf(self.db, self.user, report, {"mood": True})
+
+                self.assertTrue(pdf.startswith(b"%PDF"))
+                # Проверяем текст после разбора ReportLab: теги должны остаться
+                # видимыми символами, а & не должен экранироваться дважды.
+                rendered_text = "\n".join(p.getPlainText() for p in paragraphs)
+                self.assertIn(f"Пациент: {patient} ·", rendered_text)
+                self.assertIn(f"— «{note}»", rendered_text)
+
+    def test_report_and_settings_use_the_same_diary_defaults(self):
+        from server.api.v1 import api
+
+        self.db.add(HealthRecord(
+            user_id=self.user.id, type="sugar", at=datetime.now(), sugar_mmol=5.5,
+        ))
+        self.db.commit()
+
+        settings = api.health_settings(user=self.user, db=self.db)
+        report = api.health_report(user=self.user, db=self.db)
+
+        self.assertEqual({s.diary: s.enabled for s in settings.diaries}, {
+            "bp": True, "weight": True, "sugar": False, "mood": True,
+        })
+        self.assertEqual(report.sugar_count, 0)
+
+    def test_moving_deadline_removes_old_step_notification_dedup(self):
+        from server.api.v1 import api
+
+        route = Route(user_id=self.user.id, situation_key="custom", title="Маршрут")
+        self.db.add(route)
+        self.db.flush()
+        step = RouteStep(
+            route_id=route.id, position=1, title="Визит", status="current",
+            deadline=date(2026, 10, 20),
+        )
+        self.db.add(step)
+        self.db.flush()
+        self.db.add(NotificationLog(
+            user_id=self.user.id, kind="step", ref_id=step.id, lead="day",
+        ))
+        self.db.commit()
+
+        api.update_step(
+            step.id,
+            body=StepUpdateIn(deadline=date(2026, 10, 21)),
+            user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(self.db.query(NotificationLog).filter_by(ref_id=step.id).count(), 0)
+
+    def test_pdf_renders_stored_utc_in_users_local_timezone(self):
+        row = HealthRecord(
+            user_id=self.user.id,
+            type="mood",
+            at=datetime(2026, 10, 11, 9, 0),  # 12:00 in Europe/Moscow
+            mood="Хорошо",
+        )
+        self.user.tz = "Europe/Moscow"
+        self.db.add(row)
+        self.db.commit()
+
+        when, _ = _record_line(row, self.user.tz)
+
+        self.assertIn("12:00", when)
+
+    def test_report_keeps_structured_zero_and_omits_missing_pain(self):
+        now = datetime.now()
+        self.db.add_all([
+            HealthRecord(
+                user_id=self.user.id, type="mood", at=now,
+                mood="Хорошо", pain=0,
+            ),
+            HealthRecord(
+                user_id=self.user.id, type="mood", at=now,
+                mood="Нормально", pain=None,
+            ),
+        ])
+        self.db.commit()
+
+        from server.api.v1 import api
+        report = api.health_report(user=self.user, db=self.db)
+        notes = [item.note for item in report.notes]
+
+        self.assertIn("Самочувствие: Хорошо · боль 0/10", notes)
+        self.assertIn("Самочувствие: Нормально", notes)
+        self.assertTrue(all("Нормально · боль" not in note for note in notes))
+
+    def test_pdf_distinguishes_explicit_zero_from_missing_pain(self):
+        zero = HealthRecord(
+            user_id=self.user.id, type="mood", at=datetime(2026, 10, 11, 9, 0),
+            mood="Хорошо", pain=0,
+        )
+        missing = HealthRecord(
+            user_id=self.user.id, type="mood", at=datetime(2026, 10, 11, 10, 0),
+            mood="Хорошо", pain=None,
+        )
+
+        _, zero_text = _record_line(zero, "Europe/Moscow")
+        _, missing_text = _record_line(missing, "Europe/Moscow")
+
+        self.assertIn("боль 0/10", zero_text)
+        self.assertNotIn("боль", missing_text)
+
+    def test_export_endpoint_passes_test_token_to_authentication(self):
+        from server.api.v1 import api
+
+        request = SimpleNamespace(headers={"X-Test-Token": "secret-token"})
+        with (
+            patch.object(api, "get_authenticated_user", return_value=self.user) as auth,
+            patch.object(api, "health_report", return_value=HealthReportOut()),
+            patch.object(api, "_get_diary_settings", return_value={}),
+            patch.object(api, "build_health_pdf", return_value=b"%PDF-1.7"),
+        ):
+            response = api.export_health_pdf(request, t=None, db=self.db)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.body, b"%PDF-1.7")
+        self.assertEqual(auth.call_args.kwargs["test_token"], "secret-token")
+
+    def test_pdf_worker_opens_its_own_session(self):
+        from bot import exporter
+
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(engine)
+        sessions = sessionmaker(bind=engine, expire_on_commit=False)
+        with sessions() as db:
+            worker_user = User(max_user_id=710002)
+            db.add(worker_user)
+            db.commit()
+            worker_user_id = worker_user.id
+
+        with patch.object(exporter, "SessionLocal", sessions):
+            with patch.object(exporter, "_build_pdf", return_value=(b"%PDF", "demo.pdf")) as build:
+                result = exporter._build_pdf_in_thread(worker_user_id)
+
+        self.assertEqual(result, (b"%PDF", "demo.pdf"))
+        self.assertEqual(build.call_args.args[1].id, worker_user_id)
+        engine.dispose()
+
+    def test_step_dto_exposes_completed_at_and_uncomplete_clears_it(self):
+        from server.api.v1 import api
+
+        route = api.start_route(
+            RouteStartIn(
+                situation_key="custom",
+                custom_steps=[CustomStepIn(title="Приём врача")],
+            ),
+            user=self.user,
+            db=self.db,
+        )
+        step_id = route.steps[0].id
+
+        completed = api.complete_step(step_id, body=None, user=self.user, db=self.db)
+        self.assertIsNotNone(completed.step.completed_at)
+
+        restored = api.uncomplete_step(step_id, user=self.user, db=self.db)
+        self.assertIsNone(restored.steps[0].completed_at)
+
+    def test_deleting_last_step_removes_route_in_one_operation(self):
+        from server.api.v1 import api
+
+        route = api.start_route(
+            RouteStartIn(
+                situation_key="custom",
+                custom_steps=[CustomStepIn(title="Единственный шаг")],
+            ),
+            user=self.user,
+            db=self.db,
+        )
+
+        result = api.delete_step(route.steps[0].id, user=self.user, db=self.db)
+
+        self.assertIsNone(result)
+        self.assertIsNone(self.db.query(Route).filter_by(id=route.id).first())
+        self.assertEqual(self.db.query(RouteStep).filter_by(route_id=route.id).count(), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -8,6 +8,8 @@ import { Button, ErrorView, Header, LoadingView, useToast } from "../components/
 import { I } from "../icons";
 
 const num = (v: number | null | undefined) => (v === null || v === undefined ? "—" : String(v).replace(".", ","));
+type QueueStatus = "idle" | "queued" | "processing" | "retry" | "failed" | "sent";
+type PdfQueue = { status: QueueStatus; attempts: number; error?: string | null; can_retry: boolean };
 
 export default function Report() {
   const nav = useNavigate();
@@ -15,6 +17,10 @@ export default function Report() {
   const [report, setReport] = useState<HealthReport | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
+  const [queue, setQueue] = useState<PdfQueue | null>(null);
+  const [queueRefresh, setQueueRefresh] = useState(0);
+  const [queueError, setQueueError] = useState(false);
+  const queueActive = queue?.status === "queued" || queue?.status === "processing" || queue?.status === "retry";
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -24,6 +30,30 @@ export default function Report() {
   }, []);
 
   useEffect(load, []);
+
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const latest = await api.get<PdfQueue>("/api/v1/health/send-to-bot");
+        if (!active) return;
+        setQueue(latest);
+        setQueueError(false);
+        if (latest.status !== "queued" && latest.status !== "processing" && latest.status !== "retry") return;
+      } catch {
+        if (!active) return;
+        // Сетевой сбой проверки не означает отмену или успешную доставку PDF.
+        setQueueError(true);
+      }
+      timer = setTimeout(poll, 3000);
+    };
+    void poll();
+    return () => {
+      active = false;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [queueRefresh]);
 
   /** Запасной путь (используется только если бот недоступен): каскад share → a.download → ссылка с токеном. */
   const downloadInWebview = async () => {
@@ -42,7 +72,7 @@ export default function Report() {
     if (typeof nav.canShare === "function" && nav.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: "Сводка для врача" });
-        showToast("Готово — PDF отправлен");
+        showToast("PDF подготовлен к отправке");
         return true;
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") return true; // закрыли шер сами
@@ -58,7 +88,7 @@ export default function Report() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    showToast("PDF скачан");
+    showToast("PDF подготовлен для скачивания");
     return true;
   };
 
@@ -71,14 +101,21 @@ export default function Report() {
   };
 
   const downloadPdf = async () => {
+    if (busy || queueActive) return;
     setBusy(true);
     try {
       // единый путь для всех устройств: файл доставляет бот в чат
-      await api.post("/api/v1/health/send-to-bot", {});
-      showToast("Собираю — PDF придёт в чат бота через несколько секунд");
+      const requested = await api.post<{ status: QueueStatus }>("/api/v1/health/send-to-bot", {});
+      setQueue((prev) => ({ ...(prev ?? { attempts: 0, can_retry: false }), status: requested.status }));
+      showToast(requested.status === "queued" ? "Собираю — PDF придёт в чат бота после обработки" : "PDF уже находится в очереди");
+      setQueueRefresh((value) => value + 1);
       setBusy(false);
       return;
     } catch {
+      // A previous request may already be shown as sent.  Clear it before
+      // using the direct fallback so that this attempt is not presented as
+      // bot delivery without a fresh delivery receipt.
+      setQueue(null);
       showToast("Не удалось отправить в чат — пробуем скачать…");
     }
     // запасной путь (только если бот недоступен): скачивание из браузера
@@ -111,15 +148,34 @@ export default function Report() {
         {status === "loading" && <LoadingView />}
         {status === "ready" && report && (
           <>
+            {queue?.status === "failed" && (
+              <div className="card" role="alert">
+                <b>PDF не удалось доставить</b>
+                <div className="muted" style={{ marginTop: 6 }}>Нажмите «PDF в чат» ещё раз, чтобы повторить отправку.</div>
+              </div>
+            )}
+            {queueError && (
+              <div className="card muted" role="status">Не удалось проверить доставку PDF. Повторяем проверку автоматически.</div>
+            )}
+            {(queue?.status === "queued" || queue?.status === "processing") && (
+              <div className="card muted">PDF готовится и будет отправлен в чат бота после обработки.</div>
+            )}
+            {queue?.status === "retry" && (
+              <div className="card muted" role="status">PDF пока не удалось отправить. Повторим автоматически — новый запрос не нужен.</div>
+            )}
+            {queue?.status === "sent" && (
+              <div className="card muted" role="status">PDF отправлен в чат бота.</div>
+            )}
             {report.bp_avg && (
               <div className="card">
                 <b style={{ fontSize: 15 }}>Давление и пульс</b>
                 <div className="big-nums" style={{ margin: "8px 0 4px" }}>
                   <span className="n" style={{ fontSize: 30 }}>{report.bp_avg}</span>
+                  <span className="of">мм рт. ст.</span>
                   <span className="of">среднее</span>
                 </div>
                 <div className="muted" style={{ fontSize: 13 }}>
-                  {report.bp_count} измерений{report.pulse_avg ? ` · пульс в среднем ${report.pulse_avg} уд/мин` : ""}
+                  {report.bp_count} измерений{report.pulse_avg !== null && report.pulse_avg !== undefined ? ` · пульс в среднем ${report.pulse_avg} уд/мин` : ""}
                 </div>
               </div>
             )}
@@ -164,7 +220,7 @@ export default function Report() {
                 ))}
               </div>
             )}
-            {!report.bp_avg && !report.weight_latest && !report.sugar_avg && report.meds.length === 0 && (
+            {!report.bp_avg && !report.weight_latest && !report.sugar_avg && report.meds.length === 0 && report.notes.length === 0 && (
               <div className="empty-card">
                 <b style={{ fontSize: 15 }}>Пока нечего показывать</b>
                 <div className="muted">Записи дневников и приёмы лекарств появятся в сводке по мере накопления.</div>
@@ -176,8 +232,8 @@ export default function Report() {
       <div className="foot">
         <div className="btn-row">
           <Button variant="secondary" onClick={() => nav("/health")}><I.back size={18} />Назад</Button>
-          <Button disabled={busy} onClick={downloadPdf}>
-            <I.doc size={18} />{busy ? "Готовим…" : "PDF в чат"}
+          <Button disabled={busy || queueActive} onClick={downloadPdf}>
+            <I.doc size={18} />{busy ? "Готовим…" : queueActive ? "PDF в очереди…" : "PDF в чат"}
           </Button>
         </div>
       </div>

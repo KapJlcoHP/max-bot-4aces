@@ -41,23 +41,55 @@ def init_db() -> None:
 def _migrate_sqlite() -> None:
     """create_all не ALTER-ит существующие таблицы — досоздаём колонки, появившиеся после релиза."""
     from sqlalchemy import inspect, text  # noqa: PLC0415
+    from core.export_queue import MAX_ATTEMPTS
 
     if not _settings.database_url.startswith("sqlite"):
         return
-    inspector = inspect(engine)
     plans: dict[str, list[tuple[str, str]]] = {
         "users": [
             ("consent_at", "DATETIME NULL"),
+            ("contains_demo_data", "BOOLEAN NOT NULL DEFAULT 0"),
             ("avatar_url", "VARCHAR(500) NULL DEFAULT ''"),
             ("tz", "VARCHAR(64) NOT NULL DEFAULT 'Europe/Moscow'"),
             ("region", "VARCHAR(100) NOT NULL DEFAULT ''"),
+            ("city", "VARCHAR(100) NULL"),
+            ("attached_clinic_id", "INTEGER NULL"),
+            ("notify_day_before", "BOOLEAN NOT NULL DEFAULT 1"),
+            ("notify_hour_before", "BOOLEAN NOT NULL DEFAULT 1"),
+            ("notify_at_deadline", "BOOLEAN NOT NULL DEFAULT 1"),
+            ("step_day_before_time", "VARCHAR(5) NOT NULL DEFAULT '09:00'"),
         ],
-        "route_steps": [("source", "VARCHAR(16) NOT NULL DEFAULT 'template'")],
-        "organizations": [("region", "VARCHAR(100) NOT NULL DEFAULT ''")],
+        "route_steps": [
+            ("kind", "VARCHAR(20) NOT NULL DEFAULT 'unknown'"),
+            ("template_key", "VARCHAR(100) NULL"),
+            ("booking_target_step_id", "INTEGER NULL REFERENCES route_steps(id) ON DELETE SET NULL"),
+            ("appointment_date", "DATE NULL"),
+            ("reminder_mode", "VARCHAR(16) NOT NULL DEFAULT 'profile'"),
+            ("reminder_at", "DATETIME NULL"),
+            ("activated_at", "DATETIME NULL"),
+            ("reminder_revision", "INTEGER NOT NULL DEFAULT 0"),
+            ("source", "VARCHAR(16) NOT NULL DEFAULT 'template'"),
+            ("source_id", "VARCHAR(80) NULL"),
+        ],
+        "organizations": [
+            ("region", "VARCHAR(100) NOT NULL DEFAULT ''"),
+            ("lat", "FLOAT NULL"),
+            ("lon", "FLOAT NULL"),
+        ],
         "reminders": [("sent_at", "DATETIME NULL"), ("done_at", "DATETIME NULL")],
         "health_settings": [("push_time", "VARCHAR(5) NULL")],
+        "export_requests": [
+            ("status", "VARCHAR(16) NOT NULL DEFAULT 'queued'"),
+            ("next_attempt_at", "DATETIME NULL"),
+            ("last_error", "VARCHAR(500) NULL"),
+        ],
     }
     with engine.begin() as conn:
+        # API и bot могут стартовать одновременно. Проверяем схему и ALTER
+        # под одной SQLite writer-lock, а introspection использует то же
+        # соединение (особенно важно для in-memory тестов).
+        conn.exec_driver_sql("BEGIN IMMEDIATE")
+        inspector = inspect(conn)
         for table, columns in plans.items():
             if table not in inspector.get_table_names():
                 continue
@@ -66,6 +98,126 @@ def _migrate_sqlite() -> None:
                 if name not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
             inspector.clear_cache()
+
+        if "users" in inspector.get_table_names():
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_users_attached_clinic_id "
+                "ON users (attached_clinic_id)"
+            ))
+
+            # A legacy profile may only have an IANA zone. Populate a city
+            # only when the directory gives one exact answer in that region;
+            # an empty/ambiguous match intentionally stays NULL.
+            from core.location import legacy_city_candidates
+
+            conn.execute(text("CREATE TABLE IF NOT EXISTS data_migrations (name VARCHAR(100) PRIMARY KEY)"))
+            if not conn.execute(text("SELECT 1 FROM data_migrations WHERE name = 'user_city_v1'")).first():
+                for user_id, region, tz, city in conn.execute(text(
+                    "SELECT id, region, tz, city FROM users WHERE city IS NULL OR city = ''"
+                )).fetchall():
+                    candidates = legacy_city_candidates(tz, region or None)
+                    if len(candidates) == 1:
+                        conn.execute(text("UPDATE users SET city = :city WHERE id = :id"), {
+                            "city": candidates[0]["title"], "id": user_id,
+                        })
+                conn.execute(text("INSERT INTO data_migrations (name) VALUES ('user_city_v1')"))
+
+        if "route_steps" in inspector.get_table_names() and "routes" in inspector.get_table_names():
+            from core.db.seed import load_scenarios, load_sources
+
+            scenarios, sources = load_scenarios(), load_sources()
+            # Позиция могла измениться после исключения/вставки шагов. Для
+            # старых маршрутов сопоставляем только однозначное название
+            # внутри исходного сценария; ручным шагам источник не приписываем.
+            for step_id, title, situation_key in conn.execute(text(
+                "SELECT s.id, s.title, r.situation_key FROM route_steps s "
+                "JOIN routes r ON r.id = s.route_id "
+                "WHERE s.source = 'template' AND s.source_id IS NULL"
+            )).fetchall():
+                candidates = {
+                    step.get("source_id")
+                    for step in scenarios.get(situation_key, {}).get("steps", [])
+                    if step["title"] == title and step.get("source_id") in sources
+                }
+                if len(candidates) == 1:
+                    conn.execute(text("UPDATE route_steps SET source_id = :source_id WHERE id = :id"), {
+                        "source_id": candidates.pop(), "id": step_id,
+                    })
+
+        # Существующие заявки получают явные состояния. Отправленные заявки
+        # никогда не должны блокировать новую заявку пользователя.
+        if "export_requests" in inspector.get_table_names():
+            conn.execute(text("UPDATE export_requests SET status = 'sent' WHERE sent_at IS NOT NULL"))
+            conn.execute(text("UPDATE export_requests SET status = 'queued' WHERE status IS NULL OR status = ''"))
+            conn.execute(text(
+                "UPDATE export_requests SET status = 'failed', next_attempt_at = NULL, "
+                "last_error = COALESCE(last_error, 'Лимит попыток исчерпан') "
+                "WHERE sent_at IS NULL AND attempts >= :max_attempts AND status NOT IN ('failed', 'sent')"
+            ), {"max_attempts": MAX_ATTEMPTS})
+            # При обновлении могли остаться несколько старых активных заявок.
+            # Оставляем последнюю, остальные переводим в понятный terminal-state.
+            duplicates = conn.execute(text(
+                "SELECT user_id, MAX(id) AS keep_id FROM export_requests "
+                "WHERE sent_at IS NULL AND status NOT IN ('failed', 'sent') GROUP BY user_id "
+                "HAVING COUNT(*) > 1"
+            )).fetchall()
+            for user_id, keep_id in duplicates:
+                conn.execute(
+                    text(
+                        "UPDATE export_requests SET status = 'failed', last_error = 'superseded by newer request' "
+                        "WHERE user_id = :user_id AND sent_at IS NULL AND status NOT IN ('failed', 'sent') AND id <> :keep_id"
+                    ),
+                    {"user_id": user_id, "keep_id": keep_id},
+                )
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_export_active_user "
+                "ON export_requests (user_id) WHERE sent_at IS NULL AND status NOT IN ('failed', 'sent')"
+            ))
+
+        # В ранней схеме дедуп был глобальным по kind/ref/lead: одинаковые id
+        # разных пользователей взаимно подавляли пуши. SQLite не умеет снять
+        # UNIQUE constraint через ALTER TABLE, поэтому аккуратно пересоздаём
+        # только эту небольшую таблицу при обнаружении старого constraint.
+        if "notification_log" in inspector.get_table_names():
+            constraints = inspector.get_unique_constraints("notification_log")
+            old = any(c.get("name") == "uq_notification_kind_ref_lead" for c in constraints)
+            if old:
+                conn.execute(text(
+                    "CREATE TABLE notification_log_new ("
+                    "id INTEGER NOT NULL PRIMARY KEY, user_id INTEGER NOT NULL, kind VARCHAR(16) NOT NULL, "
+                    "ref_id INTEGER NOT NULL, lead VARCHAR(16) NOT NULL, sent_at DATETIME NOT NULL, "
+                    "CONSTRAINT uq_notification_user_kind_ref_lead UNIQUE (user_id, kind, ref_id, lead), "
+                    "FOREIGN KEY(user_id) REFERENCES users(id))"
+                ))
+                conn.execute(text(
+                    "INSERT INTO notification_log_new (id, user_id, kind, ref_id, lead, sent_at) "
+                    "SELECT id, user_id, kind, ref_id, lead, sent_at FROM notification_log"
+                ))
+                conn.execute(text("DROP TABLE notification_log"))
+                conn.execute(text("ALTER TABLE notification_log_new RENAME TO notification_log"))
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_notification_user_kind_ref_lead "
+                "ON notification_log (user_id, kind, ref_id, lead)"
+            ))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notification_log_user_id ON notification_log (user_id)"))
+
+        # Старые Reminder.at были пользовательским настенным временем. Перевод
+        # выполняется один раз; новые записи уже нормализуются API при записи.
+        if "reminders" in inspector.get_table_names() and "users" in inspector.get_table_names():
+            from datetime import datetime
+            from core.time import db_utc, user_zone
+
+            conn.execute(text("CREATE TABLE IF NOT EXISTS data_migrations (name VARCHAR(100) PRIMARY KEY)"))
+            if not conn.execute(text("SELECT 1 FROM data_migrations WHERE name = 'reminder_at_utc_v1'")).first():
+                for reminder_id, at, tz in conn.execute(text(
+                    "SELECT r.id, r.at, u.tz FROM reminders r JOIN users u ON u.id = r.user_id"
+                )).fetchall():
+                    value = datetime.fromisoformat(at) if isinstance(at, str) else at
+                    conn.execute(text("UPDATE reminders SET at = :at WHERE id = :id"), {
+                        "at": db_utc(value, user_zone(tz)), "id": reminder_id,
+                    })
+                conn.execute(text("INSERT INTO data_migrations (name) VALUES ('reminder_at_utc_v1')"))
+
 
 
 def _migrate_bp_records() -> None:

@@ -7,6 +7,8 @@
 # Все проверки выполняются одной тестовой учётной записью (роль `tester`),
 # запросы аутентифицируются заголовком X-Test-Token — см. TEST-DATA.json.
 # Полное машинное описание эндпоинтов: openapi.json (OpenAPI 3.1).
+# Это тестовый сценарий, не разрешение менять указанный стенд: запускать только
+# в отдельно согласованном тестовом окружении/аккаунте; локальные тесты — изолированные БД.
 
 version: "1.0"
 
@@ -27,16 +29,15 @@ auth:
       description: "Тестовый доступ для проверки API (значение передаётся организаторам отдельно)"
   roles:
     - id: tester
-      description: "Тестовый профиль без привязки к MAX; запись создаётся при согласии"
+      description: "Тестовая учётная запись без привязки к MAX; создаётся при первом запросе"
 
 # --- обязательные проверки ---
-# Порядок важен: проверка 1 возвращает временный профиль, проверка 2 создаёт
-# учётную запись и фиксирует согласие,
-# 3-4 — справочники, 5-8 — сценарий маршрута, 9-12 — дневники/лекарства/сводка,
-# 13 — полный сброс учётной записи (можно перезапустить проверку с чистого листа).
+# Порядок важен: профиль/согласие, справочники, маршрут/семантика, дневники/лекарства,
+# затем полный сброс тестовой учётной записи. ID шагов брать из фактических ответов,
+# не из позиций старых шаблонов; независимая операция всегда получает новый UUID.
 checks:
   - id: me-profile
-    title: "Временный профиль тестовой учётной записи"
+    title: "Профиль тестовой учётной записи (создаётся автоматически)"
     role: tester
     method: GET
     path: /me
@@ -45,7 +46,7 @@ checks:
     response:
       format: application/json
       required_fields: [id, max_user_id, first_name, consent_at]
-      notes: "id = 0, consent_at = null — профиль проверен, но ещё не записан в БД"
+      notes: "consent_at = null — согласие ещё не дано; contains_demo_data маркирует загрузку синтетического демо"
 
   - id: consent
     title: "Согласие на обработку данных (152-ФЗ) — блокирующий шаг сценария"
@@ -53,7 +54,7 @@ checks:
     method: POST
     path: /me/consent
     params:
-      body: { tz: "Europe/Moscow" }
+      body: { city: "Иваново", region: "Ивановская область" }
     expected_status: [200]
     response:
       format: application/json
@@ -69,8 +70,8 @@ checks:
     expected_status: [200]
     response:
       format: application/json
-      required_fields: ["[].key", "[].title", "[].pilot"]
-      notes: "3 региона: Ивановская (pilot=true), Владимирская, Ярославская"
+      required_fields: ["[].key", "[].title", "[].pilot", "[].cities[].title"]
+      notes: "4 региона: Ивановская и Татарстан (pilot=true), Владимирская, Ярославская"
 
   - id: catalog
     title: "Каталог ситуаций (шаблоны маршрутов)"
@@ -82,19 +83,32 @@ checks:
     response:
       format: application/json
       required_fields: ["[].key", "[].title"]
+      notes: "8 доступных шаблонов, 32 базовых шага суммарно. family — скрытая неподключённая заготовка"
+
+  - id: template-preview
+    title: "Предпросмотр видов и явной цели записи"
+    role: tester
+    method: GET
+    path: /catalog/doctor/steps
+    params: {}
+    expected_status: [200]
+    response:
+      format: application/json
+      required_fields: ["[].position", "[].key", "[].kind", "[].booking_target_key", "[].description"]
+      notes: "3 шага: booking D-BOOK связан с D-VISIT, task D-PREP между ними; вид не определяется названием"
 
   - id: route-start
-    title: "Создание маршрута из шаблона «Наблюдаться по хроническому»"
+    title: "Создание маршрута подготовки к контрольному приёму"
     role: tester
     method: POST
     path: /route/start
     params:
       body: { situation_key: "chronic" }
-    expected_status: [200, 409]
+    expected_status: [200]
     response:
       format: application/json
       required_fields: [id, situation_key, total_steps, steps]
-      notes: "409 допустим, если активный маршрут у учётной записи уже существует"
+      notes: "4 шага, один current; даты/время null. Новые шаблоны не пересобирают историю прежнего маршрута"
 
   - id: route-get
     title: "Текущий маршрут с шагами"
@@ -105,7 +119,7 @@ checks:
     expected_status: [200]
     response:
       format: application/json
-      required_fields: [id, total_steps, steps, "steps[].id", "steps[].status"]
+      required_fields: [id, total_steps, steps, "steps[].id", "steps[].status", "steps[].kind", "steps[].template_key", "steps[].booking_target_step_id", "steps[].appointment_date", "steps[].reminder_revision"]
 
   - id: step-complete
     title: "Отметить текущий шаг выполненным"
@@ -134,6 +148,40 @@ checks:
     response:
       format: application/json
       required_fields: [id, total_steps, steps]
+
+  - id: booking-save-unlinked
+    title: "Сохранить сведения о полученной записи без завершения и без скрытого переноса даты"
+    role: tester
+    method: POST
+    path: "/route/steps/{booking_id}/booking"
+    params:
+      path:
+        booking_id: "id kind=booking C-BOOK из GET /route; может оставаться pending"
+      body:
+        request_id: "17d84220-573e-4fb3-b138-2dd8dd794b30"
+        complete: false
+        appointment_date: "2035-10-24"
+        target_step_id: null
+        expected_target_revision: null
+        confirm_target_change: false
+        target_reminder_action: keep
+    expected_status: [200, 409]
+    response:
+      format: application/json
+      required_fields: [step, route, next_step]
+      notes: "Заменить пример request_id новым UUID на каждый независимый прогон; повтор запроса — тот же UUID/тело. Дата в step.appointment_date, deadline и статус не меняются; отсутствие связи явно. Для применения к реальной цели нужны её ID/revision и подтверждение чужого расписания — ROUTE-SEMANTICS.md. 409 — ключ уже использован/состояние изменилось, не повторять с новым ключом вслепую"
+
+  - id: booking-readback
+    title: "Прочитать сохранённую полученную дату отдельно от срока шага"
+    role: tester
+    method: GET
+    path: /route
+    params: {}
+    expected_status: [200]
+    response:
+      format: application/json
+      required_fields: [steps, "steps[].kind", "steps[].appointment_date", "steps[].deadline"]
+      notes: "У C-BOOK дата 2035-10-24, deadline null, цель null; не было скрытой даты/таймера у визита. Проверка назначений, связанной цели, повтора и миграции — tests/test_route_booking.py"
 
   - id: health-add-bp
     title: "Внести измерение давления (дневник здоровья)"
@@ -195,4 +243,4 @@ checks:
     response:
       format: application/json
       required_fields: [status]
-      notes: "после удаления GET /me вернёт временный профиль с id = 0; аккаунт снова создаётся при POST /me/consent"
+      notes: "после этого проверку можно перезапустить: следующая проверка me-profile создаст учётную запись заново"

@@ -26,21 +26,36 @@
     "consent": { "tz": "Europe/Moscow" },
     "route": {
       "situation_key": "chronic",
-      "title_hint": "Наблюдение по хроническому заболеванию"
+      "title_hint": "Подготовка к конкретному контрольному приёму",
+      "base_steps": 4,
+      "semantics": "task → booking C-BOOK → task → visit C-VISIT; booking_target_step_id адресует визит, не подготовку; расписание обычного шаблона пустое"
     },
     "health_record_bp": { "systolic": 124, "diastolic": 82, "pulse": 71, "tag": "утром" },
     "med_course": { "name": "Эналаприл 10 мг", "times": ["08:00", "20:00"] },
-    "invalid_example_bp_422": { "systolic": 999, "diastolic": 10 }
+    "invalid_example_bp_422": { "systolic": 999, "diastolic": 10 },
+    "booking_example": {
+      "request_id": "17d84220-573e-4fb3-b138-2dd8dd794b30",
+      "complete": false,
+      "appointment_date": "2035-10-24",
+      "target_step_id": null,
+      "expected_target_revision": null,
+      "confirm_target_change": false,
+      "target_reminder_action": "keep"
+    },
+    "booking_rules": "Пример UUID заменить новым для независимой операции; для безопасного повтора сохранить исходный UUID/тело. booking_id брать по kind/template_key из GET /route. Без связи дата хранится только сведением, не создаёт таймер визита. Контракт связанных операций: ROUTE-SEMANTICS.md"
   },
   "scenario_order": [
     "GET /me",
     "POST /me/consent",
     "GET /regions",
     "GET /catalog",
+    "GET /catalog/doctor/steps",
     "POST /route/start",
     "GET /route",
     "POST /route/steps/{step_id}/complete",
     "POST /route/steps/{step_id}/uncomplete",
+    "POST /route/steps/{booking_id}/booking",
+    "GET /route",
     "POST /health/bp",
     "GET /health/bp/records",
     "POST /meds",
@@ -48,5 +63,5 @@
     "DELETE /me/data"
   ],
   "cleanup": "DELETE /me/data — полное удаление тестовой учётной записи; проверку можно перезапускать",
-  "notes": "Реальные пользователи аутентифицируются подписанным initData платформы MAX (заголовок X-Max-Init-Data) — тестовый токен нужен только для воспроизводимой машинной проверки. Продукт не оценивает значения показателей (правило кейса: без «норма/не норма»)."
+  "notes": "Запускать только в отдельно согласованном тестовом окружении/аккаунте, не на рабочей БД; указание base_url не разрешает деплой или мутацию стенда. Доступны 8 шаблонов (32 базовых шага), family скрыт. Реальные пользователи аутентифицируются подписанным initData платформы MAX (заголовок X-Max-Init-Data) — тестовый токен нужен только для воспроизводимой машинной проверки. Продукт не оценивает показатели и не назначает лечение. contains_demo_data маркирует наличие синтетического демо в UI/PDF; экспертная медицинская/правовая проверка источников отдельно."
 }

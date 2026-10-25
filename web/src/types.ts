@@ -6,14 +6,34 @@ export interface UserDto {
   email: string;
   avatar_url: string;
   notifications_on: boolean;
+  notify_day_before: boolean;
+  notify_hour_before: boolean;
+  notify_at_deadline: boolean;
+  step_day_before_time: string;
   region: string;
+  city: string | null;
+  attached_clinic_id: number | null;
   consent_at: string | null;
+  contains_demo_data?: boolean;
+}
+
+export interface ClinicChangePayload {
+  attached_clinic_id: number;
+  expected_clinic_id: number | null;
+  expected_region: string;
 }
 
 export interface Region {
   key: string;
   title: string;
   pilot: boolean;
+  cities?: City[];
+}
+
+export interface City {
+  key: string;
+  title: string;
+  region: string;
 }
 
 export interface Situation {
@@ -23,20 +43,56 @@ export interface Situation {
   icon: string;
 }
 
+export interface FaqItem {
+  id: string;
+  category: string;
+  question: string;
+  answer: string;
+  order: number;
+  source_ids?: string[] | null;
+}
+
+export interface FaqResponse {
+  items: FaqItem[];
+}
+
 export type StepSource = "template" | "user" | "doctor";
+export type StepKind = "unknown" | "visit" | "booking" | "investigation" | "task" | "process";
+export type StepReminderMode = "profile" | "day" | "hour" | "custom";
+
+export interface ContentSource {
+  id: string;
+  title: string;
+  url: string;
+  checked_at: string | null;
+  checked_by: string | null;
+  checked_where: string | null;
+  scope: string;
+}
 
 export interface Step {
   id: number;
+  kind: StepKind;
+  template_key: string | null;
+  booking_target_step_id: number | null;
+  appointment_date: string | null;
+  reminder_revision: number;
   position: number;
   title: string;
   description: string;
   place: string;
   deadline: string | null;
   deadline_time: string | null;
+  reminder_mode: StepReminderMode;
+  reminder_at: string | null;
+  activated_at: string | null;
   status: "pending" | "current" | "done";
   has_checklist: boolean;
   note: string | null;
   source: StepSource;
+  reason: string;
+  source_id: string | null;
+  source_info: ContentSource | null;
   completed_at?: string | null;
 }
 
@@ -57,10 +113,52 @@ export interface CompleteStepResult {
   next_step: Step | null;
 }
 
+export interface StepAssignmentsIn {
+  request_id: string;
+  complete: boolean;
+  assignments: {
+    title: string;
+    appointment_date?: string | null;
+    kind: StepKind;
+    deadline: string | null;
+    deadline_time: string | null;
+    place?: string;
+  }[];
+}
+
+export interface StepAssignmentsResult extends CompleteStepResult {
+  added_step_ids: number[];
+}
+
 export interface CustomStepIn {
   title: string;
+  kind: StepKind;
+  client_key?: string;
+  booking_target_key?: string | null;
+  before_position?: number | null;
+  appointment_date?: string | null;
   deadline?: string | null;
   deadline_time?: string | null;
+}
+
+/** Omitted fields are preserved; null date also clears the event time. */
+export interface StepUpdateIn {
+  kind?: StepKind;
+  booking_target_step_id?: number | null;
+  deadline?: string | null;
+  deadline_time?: string | null;
+  reminder_mode?: StepReminderMode;
+  reminder_at?: string | null;
+}
+
+export interface StepBookingIn {
+  request_id: string;
+  complete: boolean;
+  appointment_date: string | null;
+  target_step_id: number | null;
+  expected_target_revision: number | null;
+  confirm_target_change: boolean;
+  target_reminder_action: "keep" | "profile";
 }
 
 export interface ChecklistItem {
@@ -84,6 +182,22 @@ export interface Organization {
   phone: string;
   hours: string;
   services: string[];
+  lat: number | null;
+  lon: number | null;
+}
+
+/** Публичная конфигурация Yandex Maps JS API, отдаваемая сервером. */
+export interface MapConfig {
+  api_key: string;
+  lang?: string;
+  enabled: boolean;
+}
+
+export interface ConsentPayload {
+  region: string;
+  city: string | null;
+  attached_clinic_id: number | null;
+  diaries: HealthSetting[];
 }
 
 export interface Reminder {
@@ -92,6 +206,7 @@ export interface Reminder {
   place: string;
   at: string;
   enabled: boolean;
+  done_at?: string | null;
 }
 
 export type HealthType = "bp" | "weight" | "sugar" | "mood";
@@ -171,4 +286,69 @@ export interface FamilyMember {
   name: string;
   role: string;
   color: string;
+}
+
+export type FamilyAccessStatus = "pending" | "active" | "revoked" | "expired";
+
+export interface FamilyAccess {
+  id: number;
+  status: FamilyAccessStatus;
+  label: string;
+  owner_name: string;
+  viewer_name: string | null;
+  scopes: string[];
+  created_at: string;
+  accepted_at: string | null;
+  expires_at: string;
+  revoked_at: string | null;
+}
+
+export interface FamilyInvite {
+  access: FamilyAccess;
+  code: string;
+}
+
+export interface FamilyDiaryStatus {
+  diary: string;
+  label: string;
+  enabled: boolean;
+  filled_today: boolean;
+  last_record_at: string | null;
+}
+
+export interface FamilyMedicationStatus {
+  active_courses: number;
+  planned_today: number;
+  taken_today: number;
+}
+
+export interface FamilyStepSnapshot {
+  id: number;
+  position: number;
+  title: string;
+  kind: StepKind;
+  status: string;
+  appointment_date: string | null;
+  deadline: string | null;
+  deadline_time: string | null;
+  place: string;
+  completed_at: string | null;
+}
+
+export interface FamilyRouteSnapshot {
+  title: string;
+  subtitle: string;
+  active: boolean;
+  total_steps: number;
+  done_steps: number;
+  steps: FamilyStepSnapshot[];
+}
+
+export interface FamilySnapshot {
+  access_id: number;
+  owner_name: string;
+  generated_at: string;
+  route: FamilyRouteSnapshot | null;
+  diaries: FamilyDiaryStatus[];
+  medication: FamilyMedicationStatus;
 }

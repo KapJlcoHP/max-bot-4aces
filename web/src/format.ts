@@ -20,6 +20,47 @@ export function fmtDeadline(iso: string | null | undefined, time?: string | null
   return time ? `${base}, ${time}` : `до ${base}`;
 }
 
+/** Календарные дни до срока в часовом поясе пользователя, независимо от пояса устройства. */
+export function deadlineCountdown(
+  iso: string | null | undefined,
+  time: string | null | undefined,
+  tz: string,
+  now = new Date(),
+): { text: string; overdue: boolean } {
+  const missing = { text: "Срок не указан", overdue: false };
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? "");
+  if (!match) return missing;
+  const [, year, month, day] = match.map(Number);
+  const due = new Date(Date.UTC(year, month - 1, day));
+  if (due.getUTCFullYear() !== year || due.getUTCMonth() !== month - 1 || due.getUTCDate() !== day) return missing;
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  };
+  let formatter: Intl.DateTimeFormat;
+  try {
+    formatter = new Intl.DateTimeFormat("en-GB", options);
+  } catch {
+    formatter = new Intl.DateTimeFormat("en-GB", { ...options, timeZone: "Europe/Moscow" });
+  }
+  const parts = Object.fromEntries(formatter.formatToParts(now).map((part) => [part.type, part.value]));
+  const today = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+  const days = Math.round((due.getTime() - today) / 86400000);
+  const count = Math.abs(days);
+  const noun = count % 10 === 1 && count % 100 !== 11 ? "день"
+    : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? "дня" : "дней";
+  if (days < 0) return { text: `Просрочено на ${count} ${noun}`, overdue: true };
+  if (days > 0) return { text: `${noun === "день" ? "Остался" : "Осталось"} ${days} ${noun}`, overdue: false };
+  const clock = /^(\d{2}):(\d{2})$/.exec(time ?? "");
+  if (clock && Number(clock[1]) < 24 && Number(clock[2]) < 60) {
+    const dueMinute = Number(clock[1]) * 60 + Number(clock[2]);
+    const currentMinute = Number(parts.hour) * 60 + Number(parts.minute);
+    if (currentMinute > dueMinute) return { text: "Срок прошёл сегодня", overdue: true };
+    if (currentMinute === dueMinute) return { text: "Срок наступил", overdue: false };
+  }
+  return { text: "Сегодня", overdue: false };
+}
+
 /** «Сегодня, 08:30» / «Вчера, 20:15» / «14 сентября, 08:10» */
 export function fmtWhen(iso: string | null | undefined): string {
   const d = parseDate(iso);

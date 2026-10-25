@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # тестовой учётной записью. Пусто — доступ выключен. Секрет, в репо не попадает.
     test_api_token: str = ""
 
+    # Публичный ключ JavaScript API Яндекс.Карт; ограничивается доменом в кабинете.
+    yandex_maps_api_key: str = ""
+
     allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
 

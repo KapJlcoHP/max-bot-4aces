@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { Input } from "@maxhub/max-ui";
 import { useNavigate } from "react-router-dom";
@@ -17,29 +17,54 @@ export default function Reminders() {
   const [draft, setDraft] = useState({ title: "", place: "", at: "" });
   const [busy, setBusy] = useState(false);
   const [attempted, setAttempted] = useState(false);
+  const loadRequestId = useRef(0);
+  const togglingIds = useRef(new Set<number>());
 
   const load = useCallback(() => {
+    const requestId = ++loadRequestId.current;
     setStatus("loading");
     api.get<Reminder[]>("/api/v1/reminders")
-      .then((r) => { setRows(r); setStatus("ready"); })
-      .catch(() => setStatus("error"));
-    api.get<RouteDto | null>("/api/v1/route").then(setRoute).catch(() => setRoute(null));
+      .then((r) => {
+        if (requestId !== loadRequestId.current) return;
+        setRows(r);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (requestId === loadRequestId.current) setStatus("error");
+      });
+    api.get<RouteDto | null>("/api/v1/route")
+      .then((result) => {
+        if (requestId === loadRequestId.current) setRoute(result);
+      })
+      .catch(() => {
+        if (requestId === loadRequestId.current) setRoute(null);
+      });
   }, []);
 
   useEffect(load, []);
 
   const toggle = async (id: number) => {
+    if (togglingIds.current.has(id)) return;
+    const requestId = loadRequestId.current;
+    togglingIds.current.add(id);
     try {
       const row = await api.post<Reminder>(`/api/v1/reminders/${id}/toggle`);
-      setRows((rs) => rs?.map((r) => (r.id === id ? row : r)) ?? rs);
+      if (requestId === loadRequestId.current) {
+        setRows((rs) => rs?.map((r) => (r.id === id ? row : r)) ?? rs);
+      } else {
+        load();
+      }
     } catch {
-      showToast("Не удалось изменить напоминание");
+      if (requestId === loadRequestId.current) showToast("Не удалось изменить напоминание");
+    } finally {
+      togglingIds.current.delete(id);
     }
   };
 
   const add = async () => {
+    if (busy) return;
     setAttempted(true);
-    if (!draft.title.trim() || !draft.at || busy) { showToast("Заполните событие и дату с временем"); return; }
+    if (!draft.title.trim() || !draft.at) { showToast("Заполните событие и дату с временем"); return; }
     setBusy(true);
     try {
       const row = await api.post<Reminder>("/api/v1/reminders", draft);
@@ -62,21 +87,24 @@ export default function Reminders() {
 
   return (
     <div className="app narrow">
-      <Header title="Напоминания" subtitle="Ближайшие события маршрута" back="/" right={<button className="avatar" onClick={() => setAdding(true)} aria-label="Добавить"><I.plus size={18} /></button>} />
+      <Header title="Напоминания" subtitle="Личные напоминания" back="/" right={<button className="avatar" onClick={() => setAdding(true)} aria-label="Добавить"><I.plus size={18} /></button>} />
       <div className="screen-body">
         
         {adding && <div className="card reminder-form">
           <h3 className="h3">Новое напоминание</h3>
           <Input value={draft.title} className={attempted && !draft.title.trim() ? "invalid" : undefined} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Событие" aria-label="Событие" />
           <Input value={draft.place} onChange={(e) => setDraft({ ...draft, place: e.target.value })} placeholder="Место (необязательно)" aria-label="Место" />
-          <input
-            className={`date-field${attempted && !draft.at ? " invalid" : ""}`}
-            type="datetime-local"
-            value={draft.at}
-            onChange={(e) => setDraft({ ...draft, at: e.target.value })}
-            aria-label="Дата и время"
-          />
-          <div className="btn-row"><Button variant="secondary" onClick={() => setAdding(false)}>Отмена</Button><Button onClick={add} disabled={busy}>Сохранить</Button></div>
+          <label className="reminder-date-field">
+            <span>Дата и время</span>
+            <input
+              className={`date-field${attempted && !draft.at ? " invalid" : ""}`}
+              type="datetime-local"
+              value={draft.at}
+              onChange={(e) => setDraft({ ...draft, at: e.target.value })}
+              aria-label="Дата и время"
+            />
+          </label>
+          <div className="btn-row reminder-form-actions"><Button variant="secondary" onClick={() => setAdding(false)}>Отмена</Button><Button onClick={add} disabled={busy}>Сохранить</Button></div>
         </div>}
         {status === "error" && (
           <div className="state-wrap">
@@ -88,14 +116,19 @@ export default function Reminders() {
         {status === "loading" && <LoadingView />}
         {status === "ready" && (
           <>
-            {nextStep && <div className="card dashboard-next"><span className="badge badge-blue">СЛЕДУЮЩИЙ ШАГ</span><h3 className="h3" style={{ marginTop: 12 }}>{nextStep.title}</h3>{nextStep.deadline && <p className="muted">Срок: {fmtDeadline(nextStep.deadline, nextStep.deadline_time)}</p>}<Button style={{ marginTop: 14 }} onClick={() => nav(`/step/${nextStep.id}`)}>Открыть шаг</Button></div>}
-            <div className="section-h"><b>Предстоящие</b></div>
+            {nextStep && <div className="card dashboard-next"><span className="badge badge-blue">СЛЕДУЮЩИЙ ШАГ МАРШРУТА</span><h3 className="h3" style={{ marginTop: 12 }}>{nextStep.title}</h3>{nextStep.deadline && <p className="muted">Срок: {fmtDeadline(nextStep.deadline, nextStep.deadline_time)}</p>}<Button style={{ marginTop: 14 }} onClick={() => nav(`/step/${nextStep.id}`)}>Открыть шаг</Button></div>}
+            <div className="section-h"><b>Личные напоминания</b></div>
             {upcoming.length === 0 && <div className="card muted">Предстоящих напоминаний нет.</div>}
             {upcoming.map((r) => (
               <div key={r.id} className="card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span className="badge badge-blue">{fmtWhen(r.at)}</span>
-                  <Switch on={r.enabled} onChange={() => toggle(r.id)} />
+                  <Switch
+                    on={r.enabled}
+                    onChange={() => void toggle(r.id)}
+                    label={`${r.enabled ? "Отключить" : "Включить"} напоминание: ${r.title}`}
+                    className="switch-control"
+                  />
                 </div>
                 <h3 style={{ fontSize: 16, fontWeight: 700 }}>{r.title}</h3>
                 {r.place && <p style={{ fontSize: 13, color: "#8E8E93" }}>{r.place}</p>}
@@ -106,7 +139,12 @@ export default function Reminders() {
               <div key={r.id} className="card" style={{ display: "flex", flexDirection: "column", gap: 8, opacity: 0.75 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span className="badge badge-gray">{fmtWhen(r.at)}</span>
-                  <Switch on={r.enabled} onChange={() => toggle(r.id)} />
+                  <Switch
+                    on={r.enabled}
+                    onChange={() => void toggle(r.id)}
+                    label={`${r.enabled ? "Отключить" : "Включить"} напоминание: ${r.title}`}
+                    className="switch-control"
+                  />
                 </div>
                 <h3 style={{ fontSize: 16, fontWeight: 700, color: "#6B6B6B" }}>{r.title}</h3>
                 {r.place && <p style={{ fontSize: 13, color: "#9B9B9B" }}>{r.place}</p>}

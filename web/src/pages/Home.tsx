@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { fmtDeadline, fmtWhen } from "../format";
+import { useNow } from "../hooks/useNow";
+import { deadlineCountdown, fmtDeadline, fmtWhen } from "../format";
 import type { HealthRecord, MedsOut, Reminder, RouteDto } from "../types";
 import { useApp } from "../App";
-import { ErrorView, InlineError, LoadingView, RootHeader } from "../components/ui";
+import { Button, ErrorView, LoadingView, RootHeader } from "../components/ui";
 import { I } from "../icons";
 
 const WEEKDAYS = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
 const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+
+function userTimeZone(city: string | null, legacyTz?: string): string {
+  return city === "Иваново" || city === "Владимир" || city === "Ярославль"
+    ? "Europe/Moscow"
+    : legacyTz || (Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Moscow");
+}
 
 export default function Home() {
   const nav = useNavigate();
@@ -18,18 +25,10 @@ export default function Home() {
   const [meds, setMeds] = useState<MedsOut | null>(null);
   const [bp, setBp] = useState<HealthRecord | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [routeError, setRouteError] = useState(false);
-  const [remindersError, setRemindersError] = useState(false);
-  const [medsError, setMedsError] = useState(false);
-  const [bpError, setBpError] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [retrying, setRetrying] = useState<Partial<Record<"reminders" | "meds" | "bp", boolean>>>({});
-  const loadId = useRef(0);
+  const now = useNow();
 
   const load = useCallback(() => {
-    const requestId = ++loadId.current;
-    setRefreshing(true);
-    setStatus((previous) => previous === "ready" ? "ready" : "loading");
+    setStatus("loading");
     Promise.allSettled([
       api.get<RouteDto | null>("/api/v1/route"),
       api.get<Reminder[]>("/api/v1/reminders"),
@@ -37,61 +36,19 @@ export default function Home() {
       api.get<HealthRecord[]>("/api/v1/health/bp/records?limit=1"),
     ])
       .then(([r, rem, m, b]) => {
-        if (requestId !== loadId.current) return;
-        if (r.status === "fulfilled") setRoute(r.value);
-        if (rem.status === "fulfilled") setReminders(rem.value);
-        if (m.status === "fulfilled") setMeds(m.value);
-        if (b.status === "fulfilled") setBp(b.value[0] ?? null);
-        setRouteError(r.status === "rejected");
-        setRemindersError(rem.status === "rejected");
-        setMedsError(m.status === "rejected");
-        setBpError(b.status === "rejected");
-        setStatus((previous) => r.status === "fulfilled" || previous === "ready" ? "ready" : "error");
-        setRefreshing(false);
+        if (r.status === "rejected") {
+          setStatus("error");
+          return;
+        }
+        setRoute(r.value);
+        setReminders(rem.status === "fulfilled" ? rem.value : []);
+        setMeds(m.status === "fulfilled" ? m.value : null);
+        setBp(b.status === "fulfilled" && b.value.length ? b.value[0] : null);
+        setStatus("ready");
       });
   }, []);
 
-  useEffect(() => {
-    load();
-    return () => { loadId.current += 1; };
-  }, [load]);
-
-  const retryReminders = async () => {
-    setRetrying((previous) => ({ ...previous, reminders: true }));
-    try {
-      setReminders(await api.get<Reminder[]>("/api/v1/reminders"));
-      setRemindersError(false);
-    } catch {
-      setRemindersError(true);
-    } finally {
-      setRetrying((previous) => ({ ...previous, reminders: false }));
-    }
-  };
-
-  const retryMeds = async () => {
-    setRetrying((previous) => ({ ...previous, meds: true }));
-    try {
-      setMeds(await api.get<MedsOut>("/api/v1/meds"));
-      setMedsError(false);
-    } catch {
-      setMedsError(true);
-    } finally {
-      setRetrying((previous) => ({ ...previous, meds: false }));
-    }
-  };
-
-  const retryBp = async () => {
-    setRetrying((previous) => ({ ...previous, bp: true }));
-    try {
-      const records = await api.get<HealthRecord[]>("/api/v1/health/bp/records?limit=1");
-      setBp(records[0] ?? null);
-      setBpError(false);
-    } catch {
-      setBpError(true);
-    } finally {
-      setRetrying((previous) => ({ ...previous, bp: false }));
-    }
-  };
+  useEffect(load, []);
 
   if (status === "error") {
     return (
@@ -102,9 +59,11 @@ export default function Home() {
     );
   }
 
-  const now = new Date();
   const dateLine = `${WEEKDAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]}`;
-  const nextStep = route?.steps.find((s) => s.status === "current") ?? null;
+  const nextStep = route?.steps.find((s) => s.status === "current")
+    ?? route?.steps.find((s) => s.status === "pending") ?? null;
+  const countdown = deadlineCountdown(nextStep?.deadline, nextStep?.deadline_time, userTimeZone(user.city, "tz" in user ? String(user.tz) : undefined), now);
+  const finished = route !== null && route.total_steps > 0 && route.done_steps === route.total_steps;
   const upcoming = reminders.filter((r) => r.enabled).slice(0, 3);
   const nextMed = meds?.today.find((s) => !s.taken) ?? null;
   const docsDone = null; // чек-лист считаем на маршруте; на плитке — без значения
@@ -121,11 +80,41 @@ export default function Home() {
 
         {status === "ready" && (
           <>
-            {routeError && <InlineError message="Не удалось обновить маршрут. Показаны последние данные." onRetry={load} retrying={refreshing} />}
             <div className="greeting">
               <h2>Здравствуйте, {user.first_name}</h2>
               <p>{dateLine}</p>
             </div>
+            <section className={`card home-focus${nextStep && countdown.overdue ? " is-overdue" : ""}`} aria-labelledby="home-focus-title">
+              <div className="home-focus-top">
+                <p className="home-focus-label">Главное сейчас</p>
+                <span className={`badge badge-${finished ? "green" : nextStep && countdown.overdue ? "red" : "blue"}`}>
+                  {nextStep ? nextStep.status === "current" ? "Текущий шаг" : "Следующий шаг"
+                    : finished ? "Маршрут завершён" : route ? "Маршрут создан" : "Начало маршрута"}
+                </span>
+              </div>
+              <h2 id="home-focus-title">
+                {nextStep?.title ?? (finished ? "Все шаги пройдены" : route ? "Добавьте первый шаг" : "Выберите свою первую ситуацию")}
+              </h2>
+              {nextStep ? (
+                <>
+                  <p className="home-focus-deadline">
+                    {nextStep.kind === "booking" && <span>{nextStep.appointment_date ? `Полученная дата события: ${nextStep.appointment_date}` : "Дата полученного события неизвестна"}. {!route!.steps.some((s) => s.id === nextStep.booking_target_step_id) && "Без связи с событием."}</span>}
+                    {nextStep.deadline && <span>{nextStep.kind === "booking" && "Прежний срок действия записи: "}{fmtDeadline(nextStep.deadline, nextStep.deadline_time)}</span>}
+                    <strong>{nextStep.kind === "booking" && "Срок действия записи: "}{countdown.text}</strong>
+                  </p>
+                  <p className="muted">{route!.title} · Шаг {nextStep.position} из {route!.total_steps}</p>
+                </>
+              ) : (
+                <p className="muted">
+                  {finished ? "Можно выбрать новую ситуацию и построить следующий маршрут."
+                    : route ? "Добавьте свои назначения или дела, чтобы начать движение по маршруту."
+                      : "Выберите шаблон или создайте свой маршрут — здесь появятся следующий шаг и его срок."}
+                </p>
+              )}
+              <Button onClick={() => nav(nextStep ? `/step/${nextStep.id}` : finished || !route ? "/builder" : "/route")}>
+                {nextStep ? "Открыть шаг" : finished ? "Создать новый маршрут" : route ? "Открыть маршрут" : "Создать маршрут"}
+              </Button>
+            </section>
             <div className="split">
               <div className="col">
                 <div className="section-h">
@@ -133,32 +122,28 @@ export default function Home() {
                   {!empty && <button onClick={() => nav("/route")}>Открыть</button>}
                 </div>
                 {empty ? (
-                  <div className="card hero tinted press" onClick={() => nav("/builder")}>
-                    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                      <div className="cta-ic"><I.plus size={22} /></div>
-                      <div>
-                        <b style={{ color: "var(--blue)", fontSize: 16 }}>Выберите свою первую ситуацию</b>
-                        <div className="muted" style={{ marginTop: 4 }}>
-                          Например, «Подготовка к приёму у врача» — и маршрут появится здесь, шаг за шагом.
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <div className="card muted">После создания маршрута здесь появится прогресс выполнения.</div>
                 ) : (
-                  <div className="card hero route-status press" onClick={() => nav("/route")}>
+                  <div
+                    className="card route-status home-route-summary press"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Открыть маршрут ${route!.title}`}
+                    onClick={() => nav("/route")}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        nav("/route");
+                      }
+                    }}
+                  >
                     <div className="label"><span>{route!.title}</span></div>
                     <div className="big-nums">
                       <span className="n">{route!.done_steps}</span>
                       <span className="of">из {route!.total_steps} шагов</span>
                     </div>
-                    <div className="progress"><i style={{ width: `${Math.round((route!.done_steps / route!.total_steps) * 100)}%` }} /></div>
-                    {nextStep && (
-                      <div className="next">
-                        <span className="dot" />
-                        Дальше: {nextStep.title.toLowerCase()}
-                        {nextStep.deadline && <small>· {fmtDeadline(nextStep.deadline, nextStep.deadline_time)}</small>}
-                      </div>
-                    )}
+                    <div className="progress"><i style={{ width: `${route!.total_steps ? Math.round((route!.done_steps / route!.total_steps) * 100) : 0}%` }} /></div>
                   </div>
                 )}
               </div>
@@ -166,20 +151,19 @@ export default function Home() {
               <div className="col">
                 <div className="section-h">
                   <b>Напоминания</b>
-                  {!empty && <button onClick={() => nav("/reminders")}>Все</button>}
+                  <button onClick={() => nav("/reminders")}>Все</button>
                 </div>
-                {remindersError && <InlineError message="Не удалось загрузить напоминания." onRetry={retryReminders} retrying={retrying.reminders} />}
-                {!remindersError && upcoming.length === 0 ? (
+                {upcoming.length === 0 ? (
                   <div className="card empty-card">
                     <div className="empty-ico"><I.bell size={20} /></div>
                     <b style={{ fontSize: 14.5 }}>Пока тихо</b>
                     <div className="muted">
                       {empty
-                        ? "Напоминания появятся после первого шага маршрута — бот пришлёт их прямо в MAX."
+                        ? "Личные напоминания можно добавить отдельно от маршрута — бот пришлёт их прямо в MAX."
                         : "Все напоминания выключены или уже прошли."}
                     </div>
                   </div>
-                ) : upcoming.length > 0 && (
+                ) : (
                   <div className="card" style={{ padding: "8px 16px" }}>
                     {upcoming.map((r) => {
                       const d = new Date(r.at);
@@ -223,22 +207,16 @@ export default function Home() {
             <div className="ic r"><I.building size={20} /></div>
             <b>Организации</b><span>поликлиники рядом</span>
           </button>
-          <div className="tile-slot">
-            <button className="tile" onClick={() => nav("/meds")}>
-              {nextMed && <span className="val">{nextMed.at_time}</span>}
-              <div className="ic r"><I.pill size={20} /></div>
-              <b>Приём лекарств</b><span>{medsError && !meds ? "данные недоступны" : nextMed ? "следующий приём" : "добавьте курс"}</span>
-            </button>
-            {medsError && <InlineError message="Лекарства не загрузились." onRetry={retryMeds} retrying={retrying.meds} />}
-          </div>
-          <div className="tile-slot">
-            <button className="tile" onClick={() => nav("/health")}>
-              {bp && bp.systolic !== null && <span className="val">{bp.systolic}/{bp.diastolic}</span>}
-              <div className="ic g"><I.pulse size={20} /></div>
-              <b>Дневник здоровья</b><span>{bpError && !bp ? "данные недоступны" : bp ? fmtWhen(bp.at) : "настроить под себя"}</span>
-            </button>
-            {bpError && <InlineError message="Давление не загрузилось." onRetry={retryBp} retrying={retrying.bp} />}
-          </div>
+          <button className="tile" onClick={() => nav("/meds")}>
+            {nextMed && <span className="val">{nextMed.at_time}</span>}
+            <div className="ic r"><I.pill size={20} /></div>
+            <b>Приём лекарств</b><span>{nextMed ? "следующий приём" : "добавьте курс"}</span>
+          </button>
+          <button className="tile" onClick={() => nav("/health")}>
+            {bp && bp.systolic !== null && <span className="val">{bp.systolic}/{bp.diastolic}</span>}
+            <div className="ic g"><I.pulse size={20} /></div>
+            <b>Дневник здоровья</b><span>{bp ? fmtWhen(bp.at) : "настроить под себя"}</span>
+          </button>
         </div>
       </div>
     </div>

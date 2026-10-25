@@ -24,14 +24,19 @@ export default function App() {
   const location = useLocation();
 
   const load = () => {
-    setStatus("loading");
+    const initialLoad = user === null;
+    if (initialLoad) setStatus("loading");
     api
       .get<UserDto>("/api/v1/me")
       .then((u) => {
         setUser(u);
         setStatus("ready");
       })
-      .catch((e) => setStatus(e?.status === 401 ? "auth-error" : "error"));
+      .catch((e) => {
+        // A background refresh must not replace the already rendered screen
+        // with an error page; the initial load still reports auth/network errors.
+        if (initialLoad) setStatus(e?.status === 401 ? "auth-error" : "error");
+      });
   };
 
   useEffect(load, []);
@@ -98,10 +103,11 @@ export default function App() {
 
   return (
     <Ctx.Provider value={{ user, refreshUser: load, updateUser: setUser }}>
-      <div className="app">
+      <div className="app-layout">
         {!isInsideMax() && (
-          <div className="demo-banner">Демо-режим (вне MAX): вход по dev-доступу</div>
+          <div className="demo-banner">Вне MAX: для проверки используйте только тестовый аккаунт и синтетические данные.</div>
         )}
+        {user.contains_demo_data && <div className="demo-banner" role="status">В аккаунте есть синтетические демо-данные. Добавленные позже свои записи могут отличаться по происхождению.</div>}
         <Outlet />
         {showNav && <TabBar />}
       </div>

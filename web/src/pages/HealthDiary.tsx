@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Line } from "react-chartjs-2";
 import { CategoryScale, Chart as ChartJS, LinearScale, LineElement, PointElement, Tooltip } from "chart.js";
@@ -24,11 +24,11 @@ const UNITS: Record<HealthType, string> = {
   mood: "",
 };
 
-/** Серии давления на общей шкале: цвет = фирменная палитра. */
+/** Серии давления: давление и пульс используют разные шкалы и единицы. */
 const BP_SERIES = [
-  { key: "sys", label: "Систолическое", color: "#006DF8", get: (r: HealthRecord) => r.systolic },
-  { key: "dia", label: "Диастолическое", color: "#DE2129", get: (r: HealthRecord) => r.diastolic },
-  { key: "pulse", label: "Пульс", color: "#22C55E", get: (r: HealthRecord) => r.pulse },
+  { key: "sys", label: "Систолическое", color: "#006DF8", unit: "мм рт. ст.", yAxisID: "pressure", get: (r: HealthRecord) => r.systolic },
+  { key: "dia", label: "Диастолическое", color: "#DE2129", unit: "мм рт. ст.", yAxisID: "pressure", get: (r: HealthRecord) => r.diastolic },
+  { key: "pulse", label: "Пульс", color: "#22C55E", unit: "уд/мин", yAxisID: "pulse", get: (r: HealthRecord) => r.pulse },
 ] as const;
 
 type BpSeriesKey = (typeof BP_SERIES)[number]["key"];
@@ -44,6 +44,21 @@ const PERIODS: { key: Period; label: string }[] = [
 
 const toIsoDay = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+const toFormNumber = (value: string): number | null => {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const isInRange = (value: string, min: number, max: number) => {
+  const parsed = toFormNumber(value);
+  return parsed !== null && parsed >= min && parsed <= max;
+};
+
+const isOptionalInRange = (value: string, min: number, max: number) =>
+  !value.trim() || isInRange(value, min, max);
 
 /** Дата в полночь (локальная) из «YYYY-MM-DD» */
 const fromIsoDay = (iso: string, endOfDay = false): Date | null => {
@@ -76,15 +91,39 @@ export default function HealthDiary() {
   const [attempted, setAttempted] = useState(false);
   const [mealTag, setMealTag] = useState("до еды");
   const [mood, setMood] = useState("Хорошо");
-  const [pain, setPain] = useState(2);
+  // null means the user did not provide a pain value; 0 is an explicit
+  // no-pain answer and must remain distinguishable from an untouched field.
+  const [pain, setPain] = useState<number | null>(null);
   const [tag, setTag] = useState("утром");
   const [note, setNote] = useState("");
+  const loadRequestId = useRef(0);
+
+  const resetForm = () => {
+    setSys("");
+    setDia("");
+    setPulse("");
+    setWeight("");
+    setSugar("");
+    setAttempted(false);
+    setMealTag("до еды");
+    setMood("Хорошо");
+    setPain(null);
+    setTag("утром");
+    setNote("");
+  };
 
   const load = useCallback(() => {
+    const requestId = ++loadRequestId.current;
     setStatus("loading");
     api.get<HealthRecord[]>(`/api/v1/health/${type}/records?limit=500`)
-      .then((r) => { setRecords(r); setStatus("ready"); })
-      .catch(() => setStatus("error"));
+      .then((r) => {
+        if (requestId !== loadRequestId.current) return;
+        setRecords(r);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (requestId === loadRequestId.current) setStatus("error");
+      });
   }, [type]);
 
   useEffect(load, [type]);
@@ -150,38 +189,68 @@ export default function HealthDiary() {
   }, [records, type, range]);
 
   const submit = async () => {
+    if (busy) return;
     setBusy(true);
+    const requestId = loadRequestId.current;
     try {
       if (type === "bp") {
-        await api.post("/api/v1/health/bp", { systolic: Number(sys), diastolic: Number(dia), pulse: pulse ? Number(pulse) : null, tag, note: note || null });
+        const systolic = toFormNumber(sys);
+        const diastolic = toFormNumber(dia);
+        const pulseValue = toFormNumber(pulse);
+        if (systolic === null || diastolic === null) return;
+        const body: { systolic: number; diastolic: number; pulse?: number; tag: string; note: string | null } = {
+          systolic,
+          diastolic,
+          tag,
+          note: note || null,
+        };
+        if (pulseValue !== null) body.pulse = pulseValue;
+        await api.post("/api/v1/health/bp", body);
       } else if (type === "weight") {
-        await api.post("/api/v1/health/weight", { weight_kg: Number(weight.replace(",", ".")), tag, note: note || null });
+        const weightValue = toFormNumber(weight);
+        if (weightValue === null) return;
+        await api.post("/api/v1/health/weight", { weight_kg: weightValue, tag, note: note || null });
       } else if (type === "sugar") {
-        await api.post("/api/v1/health/sugar", { sugar_mmol: Number(sugar.replace(",", ".")), meal_tag: mealTag, note: note || null });
+        const sugarValue = toFormNumber(sugar);
+        if (sugarValue === null) return;
+        await api.post("/api/v1/health/sugar", { sugar_mmol: sugarValue, meal_tag: mealTag, note: note || null });
       } else {
-        await api.post("/api/v1/health/mood", { mood, pain, note: note || null, tag: "вечером" });
+        const body: { mood: string; pain?: number; note: string | null; tag: string } = {
+          mood,
+          note: note || null,
+          tag: "вечером",
+        };
+        if (pain !== null) body.pain = pain;
+        await api.post("/api/v1/health/mood", body);
       }
+      if (requestId !== loadRequestId.current) return;
       setSheet(false);
-      setNote("");
+      resetForm();
       showToast("Запись сохранена");
       load();
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Не удалось сохранить запись");
+      if (requestId === loadRequestId.current) {
+        showToast(e instanceof Error ? e.message : "Не удалось сохранить запись");
+      }
     } finally {
       setBusy(false);
     }
   };
 
   const confirmDelRec = async () => {
-    if (!delRec) return;
+    if (!delRec || busy) return;
+    const record = delRec;
+    const deleteType = type;
+    const requestId = loadRequestId.current;
     setBusy(true);
     try {
-      await api.del(`/api/v1/health/${type}/${delRec.id}`);
+      await api.del(`/api/v1/health/${deleteType}/${record.id}`);
+      if (requestId !== loadRequestId.current) return;
       setDelRec(null);
       showToast("Запись удалена");
       load();
     } catch {
-      showToast("Не удалось удалить запись");
+      if (requestId === loadRequestId.current) showToast("Не удалось удалить запись");
     } finally {
       setBusy(false);
     }
@@ -196,20 +265,42 @@ export default function HealthDiary() {
   }, [latest, type]);
 
   const historyLine = (r: HealthRecord): { b: string; s: string } => {
-    if (type === "bp") return { b: `${r.systolic}/${r.diastolic} · ${r.pulse ?? "—"} уд/мин`, s: `${fmtWhen(r.at)}${r.tag ? ` · ${r.tag}` : ""}` };
+    if (type === "bp") return { b: `${r.systolic}/${r.diastolic} мм рт. ст. · ${r.pulse ?? "—"} уд/мин`, s: `${fmtWhen(r.at)}${r.tag ? ` · ${r.tag}` : ""}` };
     if (type === "weight") return { b: `${String(r.weight_kg).replace(".", ",")} кг`, s: `${fmtWhen(r.at)}${r.tag ? ` · ${r.tag}` : ""}` };
     if (type === "sugar") return { b: `${String(r.sugar_mmol).replace(".", ",")} ммоль/л`, s: `${fmtWhen(r.at)}${r.meal_tag ? ` · ${r.meal_tag}` : ""}` };
-    return { b: `${r.mood}${r.pain ? ` · боль ${r.pain}/10` : " · без боли"}`, s: `${fmtWhen(r.at)}${r.note ? ` · ${r.note}` : ""}` };
+    const painText = (r.pain === null || r.pain === undefined)
+      ? " · боль не указана"
+      : r.pain === 0
+        ? " · без боли"
+        : ` · боль ${r.pain}/10`;
+    return { b: `${r.mood}${painText}`, s: `${fmtWhen(r.at)}${r.note ? ` · ${r.note}` : ""}` };
   };
 
   const stroke = type === "weight" ? "#22C55E" : type === "sugar" ? "#DE2129" : "#006DF8";
   const unit = UNITS[type];
 
+  const validateForm = (): string | null => {
+    if (type === "bp") {
+      if (!isInRange(sys, 50, 260)) return sys.trim() ? "САД должен быть от 50 до 260 мм рт. ст." : "Заполните САД";
+      if (!isInRange(dia, 30, 150)) return dia.trim() ? "ДАД должен быть от 30 до 150 мм рт. ст." : "Заполните ДАД";
+      if (!isOptionalInRange(pulse, 25, 220)) return "Пульс должен быть от 25 до 220 уд/мин";
+    }
+    if (type === "weight" && !isInRange(weight, 20, 300)) {
+      return weight.trim() ? "Вес должен быть от 20 до 300 кг" : "Заполните вес";
+    }
+    if (type === "sugar" && !isInRange(sugar, 1, 35)) {
+      return sugar.trim() ? "Сахар должен быть от 1 до 35 ммоль/л" : "Заполните сахар";
+    }
+    return null;
+  };
+
   const activeSeries = useMemo(() => {
-    if (type === "bp") return BP_SERIES.filter((s) => !hidden[s.key]).map((s) => ({ key: s.key, label: s.label, color: s.color }));
-    if (type === "weight" || type === "sugar") return [{ key: "v", label: TITLES[type], color: stroke }];
+    if (type === "bp") return BP_SERIES.filter((s) => !hidden[s.key]).map((s) => ({
+      key: s.key, label: s.label, color: s.color, unit: s.unit, yAxisID: s.yAxisID,
+    }));
+    if (type === "weight" || type === "sugar") return [{ key: "v", label: TITLES[type], color: stroke, unit, yAxisID: "y" }];
     return [];
-  }, [type, hidden, stroke]);
+  }, [type, hidden, stroke, unit]);
 
   return (
     <div className="app narrow">
@@ -230,6 +321,7 @@ export default function HealthDiary() {
               {type === "bp" && <div className="route-status"><div className="label"><span>Последнее измерение</span></div></div>}
               <div className="big-nums">
                 <span className="n">{bigValue}</span>
+                {type === "bp" && <span className="of">мм рт. ст.</span>}
                 {type === "weight" && <span className="of">кг</span>}
                 {type === "sugar" && <span className="of">ммоль/л</span>}
               </div>
@@ -245,7 +337,7 @@ export default function HealthDiary() {
                 <div className="section-h" style={{ marginBottom: 8 }}><b>Динамика</b></div>
                 <div className="pick-chips" style={{ marginBottom: 10 }}>
                   {PERIODS.map((p) => (
-                    <button key={p.key} className={`pick${period === p.key ? " on" : ""}`} onClick={() => setPeriod(p.key)}>
+                    <button type="button" key={p.key} className={`pick${period === p.key ? " on" : ""}`} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>
                       {p.label}
                     </button>
                   ))}
@@ -260,8 +352,10 @@ export default function HealthDiary() {
                   <div className="pick-chips" style={{ marginBottom: 10 }}>
                     {BP_SERIES.map((s) => (
                       <button
+                        type="button"
                         key={s.key}
                         className={`pick${hidden[s.key] ? "" : " on"}`}
+                        aria-pressed={!hidden[s.key]}
                         onClick={() => setHidden((h) => ({ ...h, [s.key]: !h[s.key] }))}
                       >
                         <i className="chip-dot" style={{ background: s.color }} />
@@ -281,6 +375,7 @@ export default function HealthDiary() {
                           borderColor: s.color,
                           backgroundColor: s.color,
                           borderWidth: 2.5,
+                          yAxisID: s.yAxisID,
                           pointRadius: 0,
                           pointHoverRadius: 4,
                           tension: 0.35,
@@ -303,7 +398,8 @@ export default function HealthDiary() {
                               label: (item) => {
                                 const raw = item.raw;
                                 const v = typeof raw === "number" ? raw.toLocaleString("ru-RU", { maximumFractionDigits: 1 }) : "—";
-                                return `${item.dataset.label}: ${v}${unit ? ` ${unit}` : ""}`;
+                                const series = activeSeries.find((candidate) => candidate.label === item.dataset.label);
+                                return `${item.dataset.label}: ${v}${series?.unit ? ` ${series.unit}` : ""}`;
                               },
                             },
                           },
@@ -320,12 +416,28 @@ export default function HealthDiary() {
                               autoSkip: true,
                             },
                           },
-                          y: {
-                            grid: { color: "#E5E9F2" },
-                            border: { display: false },
-                            ticks: { color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
-                            title: { display: !!unit, text: unit, color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
-                          },
+                          ...(type === "bp" ? {
+                            pressure: {
+                              grid: { color: "#E5E9F2" },
+                              border: { display: false },
+                              ticks: { color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                              title: { display: true, text: "мм рт. ст.", color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                            },
+                            pulse: {
+                              position: "right" as const,
+                              grid: { drawOnChartArea: false },
+                              border: { display: false },
+                              ticks: { color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                              title: { display: true, text: "уд/мин", color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                            },
+                          } : {
+                            y: {
+                              grid: { color: "#E5E9F2" },
+                              border: { display: false },
+                              ticks: { color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                              title: { display: !!unit, text: unit, color: "#7A8699", font: { family: "Figtree, sans-serif", size: 10 } },
+                            },
+                          }),
                         },
                       }}
                     />
@@ -349,7 +461,7 @@ export default function HealthDiary() {
                 return (
                   <div className="rem-item" key={r.id}>
                     <div className="what"><b>{ln.b}</b><small>{ln.s}</small></div>
-                    <button className="rem-del" onClick={() => setDelRec(r)} aria-label="Удалить запись">
+                    <button type="button" className="rem-del" onClick={() => setDelRec(r)} aria-label="Удалить запись">
                       <I.trash size={15} />
                     </button>
                   </div>
@@ -370,61 +482,61 @@ export default function HealthDiary() {
 
         {type === "bp" && (
           <div className="own-row" style={{ marginBottom: 10 }}>
-            <input inputMode="numeric" placeholder="Верхнее" value={sys} className={attempted && !sys ? "invalid" : undefined} onChange={(e) => setSys(e.target.value)} />
-            <input inputMode="numeric" placeholder="Нижнее" value={dia} className={attempted && !dia ? "invalid" : undefined} onChange={(e) => setDia(e.target.value)} />
-            <input inputMode="numeric" placeholder="Пульс" value={pulse} onChange={(e) => setPulse(e.target.value)} />
+            <input inputMode="numeric" placeholder="Верхнее" aria-label="Систолическое давление" value={sys} className={attempted && !isInRange(sys, 50, 260) ? "invalid" : undefined} onChange={(e) => setSys(e.target.value)} />
+            <input inputMode="numeric" placeholder="Нижнее" aria-label="Диастолическое давление" value={dia} className={attempted && !isInRange(dia, 30, 150) ? "invalid" : undefined} onChange={(e) => setDia(e.target.value)} />
+            <input inputMode="numeric" placeholder="Пульс" aria-label="Пульс" value={pulse} className={attempted && !isOptionalInRange(pulse, 25, 220) ? "invalid" : undefined} onChange={(e) => setPulse(e.target.value)} />
           </div>
         )}
         {type === "weight" && (
           <div className="own-row" style={{ marginBottom: 10 }}>
-            <input inputMode="decimal" placeholder="Вес, кг" value={weight} className={attempted && !weight ? "invalid" : undefined} onChange={(e) => setWeight(e.target.value)} />
+            <input inputMode="decimal" placeholder="Вес, кг" aria-label="Вес, кг" value={weight} className={attempted && !isInRange(weight, 20, 300) ? "invalid" : undefined} onChange={(e) => setWeight(e.target.value)} />
           </div>
         )}
         {type === "sugar" && (
           <div className="pick-chips">
             {["до еды", "после еды"].map((m) => (
-              <button key={m} className={`pick${mealTag === m ? " on" : ""}`} onClick={() => setMealTag(m)}>{m}</button>
+              <button type="button" key={m} className={`pick${mealTag === m ? " on" : ""}`} aria-pressed={mealTag === m} onClick={() => setMealTag(m)}>{m}</button>
             ))}
           </div>
         )}
         {type === "sugar" && (
           <div className="own-row" style={{ marginBottom: 10 }}>
-            <input inputMode="decimal" placeholder="ммоль/л" value={sugar} className={attempted && !sugar ? "invalid" : undefined} onChange={(e) => setSugar(e.target.value)} />
+            <input inputMode="decimal" placeholder="ммоль/л" aria-label="Сахар крови, ммоль/л" value={sugar} className={attempted && !isInRange(sugar, 1, 35) ? "invalid" : undefined} onChange={(e) => setSugar(e.target.value)} />
           </div>
         )}
         {type === "mood" && (
           <>
             <div className="pick-chips">
               {["Хорошо", "Нормально", "Плохо"].map((m) => (
-                <button key={m} className={`pick${mood === m ? " on" : ""}`} onClick={() => setMood(m)}>{m}</button>
+                <button type="button" key={m} className={`pick${mood === m ? " on" : ""}`} aria-pressed={mood === m} onClick={() => setMood(m)}>{m}</button>
               ))}
             </div>
             <div className="mini-btns" style={{ marginBottom: 10 }}>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                <button key={n} className={`pick${pain === n ? " on" : ""}`} onClick={() => setPain(n)}>{n}</button>
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                <button type="button" key={n} className={`pick${pain === n ? " on" : ""}`} aria-label={`Боль ${n} из 10`} aria-pressed={pain === n} onClick={() => setPain(n)}>{n}</button>
               ))}
             </div>
-            <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>Боль или дискомфорт, 1–10</div>
+            <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>Боль или дискомфорт, 0–10; 0 — без боли</div>
           </>
         )}
 
         {type !== "mood" && (
           <div className="pick-chips">
             {["утром", "вечером"].map((m) => (
-              <button key={m} className={`pick${tag === m ? " on" : ""}`} onClick={() => setTag(m)}>{m}</button>
+              <button type="button" key={m} className={`pick${tag === m ? " on" : ""}`} aria-pressed={tag === m} onClick={() => setTag(m)}>{m}</button>
             ))}
           </div>
         )}
-        <input className="field" placeholder="Заметка (необязательно)" value={note} onChange={(e) => setNote(e.target.value)} />
+        <input className="field" placeholder="Заметка (необязательно)" aria-label="Заметка (необязательно)" value={note} onChange={(e) => setNote(e.target.value)} />
 
         <Button
           style={{ marginTop: 14 }}
           disabled={busy}
           onClick={() => {
             setAttempted(true);
-            const missing = (type === "bp" && (!sys || !dia)) || (type === "weight" && !weight) || (type === "sugar" && !sugar);
-            if (missing) {
-              showToast("Заполните обязательные поля — они подсвечены красным");
+            const error = validateForm();
+            if (error) {
+              showToast(error);
               return;
             }
             submit();

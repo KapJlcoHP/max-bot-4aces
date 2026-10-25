@@ -5,6 +5,47 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/me/clinic": {
+      "post": {
+        "summary": "Change Clinic",
+        "operationId": "change_clinic_api_v1_me_clinic_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicChangeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Профиль изменился; обновите данные и подтвердите выбор заново"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "summary": "Me",
@@ -26,7 +67,6 @@
     "/api/v1/me/consent": {
       "post": {
         "summary": "Give Consent",
-        "description": "Создаём профиль только при согласии; настройки и профиль фиксируются вместе.",
         "operationId": "give_consent_api_v1_me_consent_post",
         "requestBody": {
           "content": {
@@ -72,7 +112,7 @@
     "/api/v1/me/data": {
       "delete": {
         "summary": "Delete My Data",
-        "description": "Право на удаление (152-ФЗ, ст. 21): стираем аккаунт целиком — при следующем входе\nпользователь зарегистрируется заново (согласие + демо-данные).",
+        "description": "Стереть аккаунт целиком; при следующем входе профиль создаётся заново.",
         "operationId": "delete_my_data_api_v1_me_data_delete",
         "responses": {
           "200": {
@@ -127,7 +167,6 @@
     "/api/v1/regions": {
       "get": {
         "summary": "Regions",
-        "description": "Справочник регионов из content/regions.json — источник и организаций (сид-синк на старте).",
         "operationId": "regions_api_v1_regions_get",
         "responses": {
           "200": {
@@ -172,7 +211,6 @@
     "/api/v1/catalog/{key}/steps": {
       "get": {
         "summary": "Catalog Steps",
-        "description": "Шаги шаблона — конструктору нужны тумблеры «включить/выключить шаг» до создания маршрута.",
         "operationId": "catalog_steps_api_v1_catalog__key__steps_get",
         "parameters": [
           {
@@ -190,7 +228,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateStepDto"
+                  },
+                  "title": "Response Catalog Steps Api V1 Catalog  Key  Steps Get"
+                }
               }
             }
           },
@@ -234,7 +278,6 @@
       },
       "delete": {
         "summary": "Delete Route",
-        "description": "Удалить активный маршрут целиком (шаги уходят каскадом).",
         "operationId": "delete_route_api_v1_route_delete",
         "responses": {
           "200": {
@@ -289,7 +332,6 @@
     "/api/v1/route/steps": {
       "post": {
         "summary": "Add Step",
-        "description": "Новый шаг маршрута. По умолчанию вставаем сразу после текущего шага;\nafter_step_id нужен, чтобы несколько назначений подряд шли в порядке добавления.",
         "operationId": "add_step_api_v1_route_steps_post",
         "parameters": [
           {
@@ -306,6 +348,22 @@
                 }
               ],
               "title": "After Step Id"
+            }
+          },
+          {
+            "name": "before_step_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Step Id"
             }
           }
         ],
@@ -346,7 +404,6 @@
     "/api/v1/route/steps/{step_id}": {
       "delete": {
         "summary": "Delete Step",
-        "description": "Удалить непройденный шаг; если удалили текущий — текущим становится следующий pending.",
         "operationId": "delete_step_api_v1_route_steps__step_id__delete",
         "parameters": [
           {
@@ -365,7 +422,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RouteDto"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RouteDto"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Delete Step Api V1 Route Steps  Step Id  Delete"
                 }
               }
             }
@@ -384,7 +449,6 @@
       },
       "patch": {
         "summary": "Update Step",
-        "description": "Изменить срок шага (в том числе шаблонного) — выполняенный не меняем.",
         "operationId": "update_step_api_v1_route_steps__step_id__patch",
         "parameters": [
           {
@@ -414,6 +478,107 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StepDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Шаг выполнен или изменился одновременно; обновите маршрут"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/route/steps/{step_id}/assignments": {
+      "post": {
+        "summary": "Assign Steps",
+        "operationId": "assign_steps_api_v1_route_steps__step_id__assignments_post",
+        "parameters": [
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Step Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepAssignmentsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepAssignmentsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/route/steps/{step_id}/booking": {
+      "post": {
+        "summary": "Save Booking",
+        "operationId": "save_booking_api_v1_route_steps__step_id__booking_post",
+        "parameters": [
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Step Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepBookingIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompleteStepOut"
                 }
               }
             }
@@ -490,7 +655,6 @@
     "/api/v1/route/steps/{step_id}/uncomplete": {
       "post": {
         "summary": "Uncomplete Step",
-        "description": "Отменить выполнение шага (отметили случайно — можно снять).",
         "operationId": "uncomplete_step_api_v1_route_steps__step_id__uncomplete_post",
         "parameters": [
           {
@@ -644,6 +808,24 @@
               "default": "",
               "title": "Org Type"
             }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Не передан — регион профиля; пустая строка или «Все» — все регионы",
+              "title": "Region"
+            },
+            "description": "Не передан — регион профиля; пустая строка или «Все» — все регионы"
           }
         ],
         "responses": {
@@ -667,6 +849,25 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/maps/config": {
+      "get": {
+        "summary": "Maps Config",
+        "description": "Публичная конфигурация клиентской части Яндекс.Карт.",
+        "operationId": "maps_config_api_v1_maps_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapConfigDto"
                 }
               }
             }
@@ -741,9 +942,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object",
-                "title": "Body"
+                "$ref": "#/components/schemas/ReminderAddIn"
               }
             }
           },
@@ -795,6 +994,266 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ReminderDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/family/access": {
+      "get": {
+        "summary": "Family Access List",
+        "description": "Доступы, которыми владеет текущий пользователь.",
+        "operationId": "family_access_list_api_v1_family_access_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FamilyAccessDto"
+                  },
+                  "type": "array",
+                  "title": "Response Family Access List Api V1 Family Access Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/family/access/invite": {
+      "post": {
+        "summary": "Create Family Invitation",
+        "description": "Создать одноразовый код для read-only помощника.",
+        "operationId": "create_family_invitation_api_v1_family_access_invite_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyInviteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyInviteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/family/access/accept": {
+      "post": {
+        "summary": "Accept Family Invitation",
+        "operationId": "accept_family_invitation_api_v1_family_access_accept_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyAcceptIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyAccessDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/family/access/{access_id}": {
+      "delete": {
+        "summary": "Revoke Family Access",
+        "operationId": "revoke_family_access_api_v1_family_access__access_id__delete",
+        "parameters": [
+          {
+            "name": "access_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Access Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyAccessDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/family/observed": {
+      "get": {
+        "summary": "Family Observed",
+        "description": "Активные read-only доступы текущего пользователя.",
+        "operationId": "family_observed_api_v1_family_observed_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FamilyAccessDto"
+                  },
+                  "type": "array",
+                  "title": "Response Family Observed Api V1 Family Observed Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/family/observed/{access_id}": {
+      "get": {
+        "summary": "Family Snapshot",
+        "description": "Безопасная агрегированная витрина маршрута: без заметок и сырых измерений.",
+        "operationId": "family_snapshot_api_v1_family_observed__access_id__get",
+        "parameters": [
+          {
+            "name": "access_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Access Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilySnapshotDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/family": {
+      "get": {
+        "summary": "Family",
+        "operationId": "family_api_v1_family_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FamilyMemberDto"
+                  },
+                  "type": "array",
+                  "title": "Response Family Api V1 Family Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add Family Member",
+        "operationId": "add_family_member_api_v1_family_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyAddIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyMemberDto"
                 }
               }
             }
@@ -937,9 +1396,22 @@
       }
     },
     "/api/v1/health/send-to-bot": {
+      "get": {
+        "summary": "Pdf In Chat Status",
+        "operationId": "pdf_in_chat_status_api_v1_health_send_to_bot_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
       "post": {
         "summary": "Request Pdf In Chat",
-        "description": "Попросить бота прислать PDF-сводку в чат (на телефонах вебвью MAX не умеет скачивать).",
         "operationId": "request_pdf_in_chat_api_v1_health_send_to_bot_post",
         "responses": {
           "200": {
@@ -956,7 +1428,6 @@
     "/api/v1/health/export": {
       "get": {
         "summary": "Export Health Pdf",
-        "description": "PDF-сводка дневников для врача. Авторизация: initData-заголовок ИЛИ ?t=<токен из /health/export-token>.",
         "operationId": "export_health_pdf_api_v1_health_export_get",
         "parameters": [
           {
@@ -1050,7 +1521,6 @@
     "/api/v1/health/{type}/{record_id}": {
       "delete": {
         "summary": "Delete Health Record",
-        "description": "Удалить одну запись дневника (ошибочно внесённую).",
         "operationId": "delete_health_record_api_v1_health__type___record_id__delete",
         "parameters": [
           {
@@ -1097,7 +1567,6 @@
     "/api/v1/health/report": {
       "get": {
         "summary": "Health Report",
-        "description": "Сводка для врача: агрегаты за 30 дней по включённым дневникам, только факты.",
         "operationId": "health_report_api_v1_health_report_get",
         "responses": {
           "200": {
@@ -1187,9 +1656,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "additionalProperties": true,
-                "title": "Body"
+                "$ref": "#/components/schemas/MedIntakeToggleIn"
               }
             }
           }
@@ -1257,57 +1724,17 @@
         }
       }
     },
-    "/api/v1/family": {
+    "/api/v1/faq": {
       "get": {
-        "summary": "Family",
-        "operationId": "family_api_v1_family_get",
+        "summary": "Faq",
+        "operationId": "faq_api_v1_faq_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/FamilyMemberDto"
-                  },
-                  "type": "array",
-                  "title": "Response Family Api V1 Family Get"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "summary": "Add Family Member",
-        "operationId": "add_family_member_api_v1_family_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FamilyAddIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FamilyMemberDto"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/FaqOut"
                 }
               }
             }
@@ -1396,6 +1823,64 @@
         ],
         "title": "ChecklistOut"
       },
+      "CityDto": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "region"
+        ],
+        "title": "CityDto",
+        "description": "Город из пилотного справочника; техническая зона наружу не выходит."
+      },
+      "ClinicChangeIn": {
+        "properties": {
+          "attached_clinic_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Attached Clinic Id"
+          },
+          "expected_clinic_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Clinic Id"
+          },
+          "expected_region": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Expected Region"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attached_clinic_id",
+          "expected_clinic_id",
+          "expected_region"
+        ],
+        "title": "ClinicChangeIn",
+        "description": "Явный подтверждённый выбор с проверкой состояния профиля из открытого окна."
+      },
       "CompleteStepIn": {
         "properties": {
           "date": {
@@ -1453,17 +1938,6 @@
       },
       "ConsentIn": {
         "properties": {
-          "tz": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tz"
-          },
           "region": {
             "anyOf": [
               {
@@ -1474,6 +1948,17 @@
               }
             ],
             "title": "Region"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
           },
           "diaries": {
             "anyOf": [
@@ -1488,17 +1973,156 @@
               }
             ],
             "title": "Diaries"
+          },
+          "attached_clinic_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attached Clinic Id"
           }
         },
         "type": "object",
         "title": "ConsentIn",
         "description": "Согласие и настройки первого входа сохраняются одной транзакцией."
       },
+      "ContentSourceDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Url"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "checked_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked By"
+          },
+          "checked_where": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked Where"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "url",
+          "scope"
+        ],
+        "title": "ContentSourceDto"
+      },
       "CustomStepIn": {
         "properties": {
           "title": {
             "type": "string",
             "title": "Title"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "visit",
+              "booking",
+              "investigation",
+              "task",
+              "process"
+            ],
+            "title": "Kind",
+            "default": "unknown"
+          },
+          "client_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Key"
+          },
+          "booking_target_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Target Key"
+          },
+          "before_position": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Position"
+          },
+          "appointment_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Date"
           },
           "deadline": {
             "anyOf": [
@@ -1515,13 +2139,19 @@
           "deadline_time": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "description": "Местное время события в поясе профиля; нормализуется в HH:MM. Требует даты."
               },
               {
                 "type": "null"
               }
             ],
             "title": "Deadline Time"
+          },
+          "place": {
+            "type": "string",
+            "title": "Place",
+            "default": ""
           }
         },
         "type": "object",
@@ -1530,6 +2160,181 @@
         ],
         "title": "CustomStepIn",
         "description": "Свой шаг при создании маршрута из конструктора."
+      },
+      "DoctorAssignmentIn": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "visit",
+              "booking",
+              "investigation",
+              "task",
+              "process"
+            ],
+            "title": "Kind",
+            "default": "unknown"
+          },
+          "appointment_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Date"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "deadline_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Местное время события в поясе профиля; нормализуется в HH:MM. Требует даты."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Time"
+          },
+          "place": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Place",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "DoctorAssignmentIn"
+      },
+      "FamilyAcceptIn": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 8,
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "FamilyAcceptIn"
+      },
+      "FamilyAccessDto": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "active",
+              "revoked",
+              "expired"
+            ],
+            "title": "Status"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "owner_name": {
+            "type": "string",
+            "title": "Owner Name"
+          },
+          "viewer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer Name"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "label",
+          "owner_name",
+          "scopes",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "FamilyAccessDto"
       },
       "FamilyAddIn": {
         "properties": {
@@ -1548,6 +2353,106 @@
           "name"
         ],
         "title": "FamilyAddIn"
+      },
+      "FamilyDiaryStatusDto": {
+        "properties": {
+          "diary": {
+            "type": "string",
+            "title": "Diary"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "filled_today": {
+            "type": "boolean",
+            "title": "Filled Today"
+          },
+          "last_record_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Record At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "diary",
+          "label",
+          "enabled",
+          "filled_today"
+        ],
+        "title": "FamilyDiaryStatusDto"
+      },
+      "FamilyInviteIn": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label",
+            "default": "Помощник"
+          },
+          "expires_days": {
+            "type": "integer",
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Expires Days",
+            "default": 7
+          }
+        },
+        "type": "object",
+        "title": "FamilyInviteIn"
+      },
+      "FamilyInviteOut": {
+        "properties": {
+          "access": {
+            "$ref": "#/components/schemas/FamilyAccessDto"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access",
+          "code"
+        ],
+        "title": "FamilyInviteOut"
+      },
+      "FamilyMedicationStatusDto": {
+        "properties": {
+          "active_courses": {
+            "type": "integer",
+            "title": "Active Courses"
+          },
+          "planned_today": {
+            "type": "integer",
+            "title": "Planned Today"
+          },
+          "taken_today": {
+            "type": "integer",
+            "title": "Taken Today"
+          }
+        },
+        "type": "object",
+        "required": [
+          "active_courses",
+          "planned_today",
+          "taken_today"
+        ],
+        "title": "FamilyMedicationStatusDto"
       },
       "FamilyMemberDto": {
         "properties": {
@@ -1576,6 +2481,255 @@
           "color"
         ],
         "title": "FamilyMemberDto"
+      },
+      "FamilyRouteSnapshotDto": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "subtitle": {
+            "type": "string",
+            "title": "Subtitle"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          },
+          "total_steps": {
+            "type": "integer",
+            "title": "Total Steps"
+          },
+          "done_steps": {
+            "type": "integer",
+            "title": "Done Steps"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyStepSnapshotDto"
+            },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "subtitle",
+          "active",
+          "total_steps",
+          "done_steps",
+          "steps"
+        ],
+        "title": "FamilyRouteSnapshotDto"
+      },
+      "FamilySnapshotDto": {
+        "properties": {
+          "access_id": {
+            "type": "integer",
+            "title": "Access Id"
+          },
+          "owner_name": {
+            "type": "string",
+            "title": "Owner Name"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FamilyRouteSnapshotDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diaries": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyDiaryStatusDto"
+            },
+            "type": "array",
+            "title": "Diaries"
+          },
+          "medication": {
+            "$ref": "#/components/schemas/FamilyMedicationStatusDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_id",
+          "owner_name",
+          "generated_at",
+          "diaries",
+          "medication"
+        ],
+        "title": "FamilySnapshotDto"
+      },
+      "FamilyStepSnapshotDto": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "visit",
+              "booking",
+              "investigation",
+              "task",
+              "process"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "appointment_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Date"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "deadline_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Time"
+          },
+          "place": {
+            "type": "string",
+            "title": "Place",
+            "default": ""
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "position",
+          "title",
+          "kind",
+          "status"
+        ],
+        "title": "FamilyStepSnapshotDto"
+      },
+      "FaqItemDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Category"
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Question"
+          },
+          "answer": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Answer"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Order"
+          },
+          "source_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "question",
+          "answer",
+          "order"
+        ],
+        "title": "FaqItemDto",
+        "description": "One plain-language answer from the versioned static FAQ content."
+      },
+      "FaqOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FaqItemDto"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "FaqOut"
       },
       "HTTPValidationError": {
         "properties": {
@@ -1997,6 +3151,25 @@
         ],
         "title": "HealthSettingsOut"
       },
+      "MapConfigDto": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "api_key": {
+            "type": "string",
+            "title": "Api Key",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "MapConfigDto",
+        "description": "Публичная конфигурация JS API: сам ключ ограничивается доменом в кабинете."
+      },
       "MedAddIn": {
         "properties": {
           "name": {
@@ -2073,6 +3246,21 @@
           "enabled"
         ],
         "title": "MedCourseDto"
+      },
+      "MedIntakeToggleIn": {
+        "properties": {
+          "at_time": {
+            "type": "string",
+            "minLength": 1,
+            "title": "At Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at_time"
+        ],
+        "title": "MedIntakeToggleIn",
+        "description": "Время приёма лекарства, которое нужно отметить или снять."
       },
       "MedSlotDto": {
         "properties": {
@@ -2175,6 +3363,28 @@
             },
             "type": "array",
             "title": "Services"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
           }
         },
         "type": "object",
@@ -2203,6 +3413,13 @@
             "type": "boolean",
             "title": "Pilot",
             "default": false
+          },
+          "cities": {
+            "items": {
+              "$ref": "#/components/schemas/CityDto"
+            },
+            "type": "array",
+            "title": "Cities"
           }
         },
         "type": "object",
@@ -2212,6 +3429,38 @@
         ],
         "title": "RegionDto",
         "description": "Регион из content/regions.json: добавление региона — правка файла, без кода."
+      },
+      "ReminderAddIn": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Title"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "at"
+        ],
+        "title": "ReminderAddIn",
+        "description": "Данные для создания напоминания."
       },
       "ReminderDto": {
         "properties": {
@@ -2397,6 +3646,51 @@
             ],
             "title": "Notifications On"
           },
+          "notify_day_before": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Day Before"
+          },
+          "notify_hour_before": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Hour Before"
+          },
+          "notify_at_deadline": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify At Deadline"
+          },
+          "step_day_before_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Day Before Time"
+          },
           "email": {
             "anyOf": [
               {
@@ -2418,6 +3712,56 @@
               }
             ],
             "title": "Region"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "attached_clinic_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attached Clinic Id"
+          },
+          "confirm_clinic_reset": {
+            "type": "boolean",
+            "title": "Confirm Clinic Reset",
+            "default": false
+          },
+          "expected_clinic_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Clinic Id"
+          },
+          "expected_region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Region"
           }
         },
         "type": "object",
@@ -2457,6 +3801,43 @@
             "type": "string",
             "title": "Title"
           },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "visit",
+              "booking",
+              "investigation",
+              "task",
+              "process"
+            ],
+            "title": "Kind",
+            "default": "unknown"
+          },
+          "booking_target_step_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Target Step Id"
+          },
+          "appointment_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Date"
+          },
           "deadline": {
             "anyOf": [
               {
@@ -2472,13 +3853,37 @@
           "deadline_time": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "description": "Местное время события в поясе профиля; нормализуется в HH:MM. Требует даты."
               },
               {
                 "type": "null"
               }
             ],
             "title": "Deadline Time"
+          },
+          "reminder_mode": {
+            "type": "string",
+            "enum": [
+              "profile",
+              "day",
+              "hour",
+              "custom"
+            ],
+            "title": "Reminder Mode",
+            "default": "profile"
+          },
+          "reminder_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminder At"
           },
           "place": {
             "type": "string",
@@ -2491,6 +3896,7 @@
             "default": "user"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "title"
@@ -2498,11 +3904,197 @@
         "title": "StepAddIn",
         "description": "Новый шаг маршрута: назначение врача (source=doctor) или свой пункт (source=user)."
       },
+      "StepAssignmentsIn": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete"
+          },
+          "assignments": {
+            "items": {
+              "$ref": "#/components/schemas/DoctorAssignmentIn"
+            },
+            "type": "array",
+            "title": "Assignments"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request_id",
+          "complete",
+          "assignments"
+        ],
+        "title": "StepAssignmentsIn"
+      },
+      "StepAssignmentsOut": {
+        "properties": {
+          "step": {
+            "$ref": "#/components/schemas/StepDto"
+          },
+          "route": {
+            "$ref": "#/components/schemas/RouteDto"
+          },
+          "next_step": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "added_step_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Added Step Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "step",
+          "route",
+          "added_step_ids"
+        ],
+        "title": "StepAssignmentsOut"
+      },
+      "StepBookingIn": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete"
+          },
+          "appointment_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Date"
+          },
+          "target_step_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Step Id"
+          },
+          "expected_target_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Target Revision"
+          },
+          "confirm_target_change": {
+            "type": "boolean",
+            "title": "Confirm Target Change",
+            "default": false
+          },
+          "target_reminder_action": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "profile"
+            ],
+            "title": "Target Reminder Action",
+            "default": "keep"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request_id",
+          "complete",
+          "appointment_date",
+          "target_step_id"
+        ],
+        "title": "StepBookingIn"
+      },
       "StepDto": {
         "properties": {
           "id": {
             "type": "integer",
             "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "visit",
+              "booking",
+              "investigation",
+              "task",
+              "process"
+            ],
+            "title": "Kind",
+            "default": "unknown"
+          },
+          "template_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key"
+          },
+          "booking_target_step_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Target Step Id"
+          },
+          "appointment_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Date"
+          },
+          "reminder_revision": {
+            "type": "integer",
+            "title": "Reminder Revision",
+            "default": 0
           },
           "position": {
             "type": "integer",
@@ -2543,9 +4135,56 @@
             ],
             "title": "Deadline Time"
           },
+          "reminder_mode": {
+            "type": "string",
+            "enum": [
+              "profile",
+              "day",
+              "hour",
+              "custom"
+            ],
+            "title": "Reminder Mode",
+            "default": "profile"
+          },
+          "reminder_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminder At"
+          },
+          "activated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
           "status": {
             "type": "string",
             "title": "Status"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
           },
           "has_checklist": {
             "type": "boolean",
@@ -2566,6 +4205,33 @@
             "type": "string",
             "title": "Source",
             "default": "template"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Почему шаг появился в маршруте пользователя",
+            "default": ""
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "source_info": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentSourceDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -2582,6 +4248,31 @@
       },
       "StepUpdateIn": {
         "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "visit",
+              "booking",
+              "investigation",
+              "task",
+              "process"
+            ],
+            "title": "Kind",
+            "default": "unknown"
+          },
+          "booking_target_step_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Target Step Id"
+          },
           "deadline": {
             "anyOf": [
               {
@@ -2592,12 +4283,112 @@
                 "type": "null"
               }
             ],
-            "title": "Deadline"
+            "title": "Deadline",
+            "description": "Местная дата события. Пропуск сохраняет дату; null очищает дату и зависимое время."
+          },
+          "deadline_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Местное время события в поясе профиля; нормализуется в HH:MM. Требует даты."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Time",
+            "description": "Местное время HH:MM. Пропуск сохраняет время; null очищает только время. Требует даты."
+          },
+          "reminder_mode": {
+            "type": "string",
+            "enum": [
+              "profile",
+              "day",
+              "hour",
+              "custom"
+            ],
+            "title": "Reminder Mode",
+            "default": "profile"
+          },
+          "reminder_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminder At"
           }
         },
         "type": "object",
         "title": "StepUpdateIn",
-        "description": "Изменение срока шага; null — срока нет."
+        "description": "PATCH срока: пропущенное поле сохраняется, null явно очищает его."
+      },
+      "TemplateStepDto": {
+        "properties": {
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "has_checklist": {
+            "type": "boolean",
+            "title": "Has Checklist",
+            "default": false
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "visit",
+              "booking",
+              "investigation",
+              "task",
+              "process"
+            ],
+            "title": "Kind",
+            "default": "unknown"
+          },
+          "booking_target_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Target Key"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "title"
+        ],
+        "title": "TemplateStepDto"
       },
       "UserDto": {
         "properties": {
@@ -2630,15 +4421,52 @@
             "type": "boolean",
             "title": "Notifications On"
           },
-          "tz": {
+          "notify_day_before": {
+            "type": "boolean",
+            "title": "Notify Day Before",
+            "default": true
+          },
+          "notify_hour_before": {
+            "type": "boolean",
+            "title": "Notify Hour Before",
+            "default": true
+          },
+          "notify_at_deadline": {
+            "type": "boolean",
+            "title": "Notify At Deadline",
+            "default": true
+          },
+          "step_day_before_time": {
             "type": "string",
-            "title": "Tz",
-            "default": "Europe/Moscow"
+            "title": "Step Day Before Time",
+            "default": "09:00"
           },
           "region": {
             "type": "string",
             "title": "Region",
             "default": ""
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "attached_clinic_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attached Clinic Id"
           },
           "consent_at": {
             "anyOf": [
@@ -2651,6 +4479,11 @@
               }
             ],
             "title": "Consent At"
+          },
+          "contains_demo_data": {
+            "type": "boolean",
+            "title": "Contains Demo Data",
+            "default": false
           }
         },
         "type": "object",

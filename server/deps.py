@@ -34,9 +34,15 @@ class PendingUser:
     email: str
     avatar_url: str
     region: str
-    id: int = 0  # служебное значение только в ответе GET /me
+    id: int = 0
     notifications_on: bool = True
+    notify_day_before: bool = True
+    notify_hour_before: bool = True
+    notify_at_deadline: bool = True
+    step_day_before_time: str = "09:00"
     tz: str = "Europe/Moscow"
+    city: str | None = None
+    attached_clinic_id: int | None = None
     consent_at: None = None
 
 
@@ -71,7 +77,13 @@ def validate_init_data(raw: str) -> dict | None:
     check_string = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs))
     secret_key = hmac.new(b"WebAppData", settings.max_bot_token.encode(), hashlib.sha256).digest()
     computed = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(computed, received_hash):
+    try:
+        signature_matches = hmac.compare_digest(computed, received_hash)
+    except TypeError:
+        # Python 3.12 выбрасывает TypeError для не-ASCII Unicode в строковом
+        # варианте compare_digest; это входные данные клиента, а не ошибка сервера.
+        return None
+    if not signature_matches:
         return None
 
     try:
@@ -98,11 +110,11 @@ def _parse_user(payload: dict) -> dict:
 
 
 def get_authenticated_user(db: Session, init_data: str | None, test_token: str | None = None) -> User | PendingUser:
-    """Валидирует initData и возвращает профиль, не записывая нового пользователя до согласия.
+    """Проверяет initData и не записывает новый профиль до согласия.
 
     При dev_bypass_auth и отсутствии/невалидном initData работаем под демо-пользователем.
-    Если initData нет/невалиден, но передан верный X-Test-Token — работаем с
-    тестовым профилем (проверка API платформой, см. DATA-API.yaml).
+    Если initData нет/невалиден, но передан верный X-Test-Token — работаем под тестовой
+    учётной записью (проверка API платформой, см. DATA-API.yaml).
     """
     settings = get_settings()
     user_payload: dict = {}
@@ -131,7 +143,7 @@ def get_authenticated_user(db: Session, init_data: str | None, test_token: str |
             last_name=user_payload.get("last_name") or "",
             email=f"user{max_id}@demo.local",
             avatar_url=user_payload.get("avatar_url") or user_payload.get("photo_url") or "",
-            region=pilot_region(),
+            region=pilot_region(),  # регион пилотного запуска — потом выбирается в профиле
         )
     # До согласия существующий профиль не обновляем. После согласия фото из MAX
     # может измениться; обновляем его при следующем входе.
@@ -139,4 +151,22 @@ def get_authenticated_user(db: Session, init_data: str | None, test_token: str |
     if user.consent_at is not None and fresh_avatar and fresh_avatar != user.avatar_url:
         user.avatar_url = fresh_avatar
         db.commit()
+    return user
+
+
+def get_or_create_user(db: Session, init_data: str | None, test_token: str | None = None) -> User:
+    """Backward-compatible helper for bot/callers that expect eager creation."""
+    user = get_authenticated_user(db, init_data, test_token=test_token)
+    if isinstance(user, PendingUser):
+        user = User(
+            max_user_id=user.max_user_id,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            email=user.email,
+            avatar_url=user.avatar_url,
+            region=user.region,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
     return user

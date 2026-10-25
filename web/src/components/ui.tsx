@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { Children, cloneElement, isValidElement, useEffect, useId, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { Spinner, Switch as MaxSwitch } from "@maxhub/max-ui";import { I, Logo } from "../icons";
 import { initials } from "../format";
 
@@ -14,23 +14,37 @@ export function BrandMark() {
 
 export function Button({
   className = "", variant = "primary", children, ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" }) {
   return (
-    <button className={`btn ${variant} ${className}`} {...props}>
+    <button type="button" className={`btn ${variant} ${className}`} {...props}>
       {children}
     </button>
   );
 }
 
-/** Переключатель из MAX-UI. Обёртка гасит клик, чтобы не срабатывала строка-родитель. */
-export function Switch({ on, onChange, label }: { on: boolean; onChange?: (v: boolean) => void; label?: string }) {
+/** Переключатель из MAX-UI. Клик самого контрола не должен срабатывать на строке-родителе. */
+export function Switch({ on, onChange, label, className }: { on: boolean; onChange?: (v: boolean) => void; label?: string; className?: string }) {
+  const expandedHitbox = className === "switch-control";
   return (
-    <span className="switch-wrap" onClick={(e) => e.stopPropagation()}>
+    <span className={`switch-wrap${className ? ` ${className}` : ""}`}>
       <MaxSwitch
         checked={on}
-        aria-label={label ?? "Переключить"}
-        onChange={(e) => onChange?.(e.target.checked)}
+        aria-label={expandedHitbox ? undefined : (label ?? "Переключить")}
+        aria-hidden={expandedHitbox ? true : undefined}
+        tabIndex={expandedHitbox ? -1 : undefined}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => { if (!expandedHitbox) onChange?.(e.target.checked); }}
       />
+      {expandedHitbox && (
+        <button
+          type="button"
+          className="switch-hitbox"
+          role="switch"
+          aria-checked={on}
+          aria-label={label ?? "Переключить"}
+          onClick={(e) => { e.stopPropagation(); onChange?.(!on); }}
+        />
+      )}
     </span>
   );
 }
@@ -41,7 +55,7 @@ export function Header({ title, subtitle, back, right }: { title: string; subtit
     <div className="header">
       <div className="h-row">
         {back && (
-          <button className="hdr-back" onClick={() => navigate(back)} aria-label="Назад">
+          <button type="button" className="hdr-back" onClick={() => navigate(back)} aria-label="Назад">
             <I.back size={22} />
           </button>
         )}
@@ -83,7 +97,7 @@ export function TabBar() {
         const active = t.to === "/" ? pathname === "/" : pathname.startsWith(t.to);
         const Icon = t.icon;
         return (
-          <button key={t.to} className={`tab${active ? " active" : ""}`} onClick={() => navigate(t.to)} aria-label={t.label}>
+          <button type="button" key={t.to} className={`tab${active ? " active" : ""}`} onClick={() => navigate(t.to)} aria-label={t.label}>
             <Icon size={22} />
             <span>{t.label}</span>
           </button>
@@ -95,13 +109,93 @@ export function TabBar() {
 
 /** Нижний лист (bottom sheet) с затемнением. */
 export function Sheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const titleId = `sheet-title-${useId().replace(/:/g, "")}`;
+  const labelledChildren = Children.toArray(children);
+  const headingIndex = labelledChildren.findIndex(
+    (child) => isValidElement(child) && typeof child.type === "string" && /^h[1-6]$/.test(child.type),
+  );
+  const heading = headingIndex >= 0 ? labelledChildren[headingIndex] as ReactElement<{ id?: string }> : null;
+  const labelledBy = heading?.props.id || titleId;
+
+  if (heading) {
+    labelledChildren[headingIndex] = cloneElement(heading, { id: labelledBy });
+  } else {
+    labelledChildren.unshift(<h2 key={titleId} id={titleId} className="sr-only">Диалог</h2>);
+  }
+
+  const restoreFocus = () => {
+    const element = previouslyFocusedRef.current;
+    previouslyFocusedRef.current = null;
+    if (element?.isConnected) element.focus();
+  };
+
+  useEffect(() => {
+    if (!open) {
+      restoreFocus();
+      return;
+    }
+
+    if (!previouslyFocusedRef.current && document.activeElement instanceof HTMLElement) {
+      previouslyFocusedRef.current = document.activeElement;
+    }
+
+    const sheet = sheetRef.current;
+    const firstFocusable = sheet?.querySelector<HTMLElement>(
+      'a[href], area[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
+    );
+    (firstFocusable || sheet)?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(sheet?.querySelectorAll<HTMLElement>(
+        'a[href], area[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
+      ) ?? []);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        sheet?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open]);
+
+  useEffect(() => {
+    return () => restoreFocus();
+  }, []);
+
   if (!open) return null;
   return (
     <>
-      <div className="sheet-backdrop open" onClick={onClose} />
-      <div className="sheet open">
+      <div className="sheet-backdrop open" aria-hidden="true" onClick={onClose} />
+      <div
+        ref={sheetRef}
+        className="sheet open"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={labelledBy}
+        tabIndex={-1}
+      >
         <div className="grab" />
-        {children}
+        {labelledChildren}
       </div>
     </>
   );
@@ -147,7 +241,7 @@ export function InlineError({ message, onRetry, retrying = false }: {
 
 export function Toast({ text }: { text: string | null }) {
   if (!text) return null;
-  return <div className="toast">{text}</div>;
+  return <div className="toast" role="status" aria-live="polite" aria-atomic="true">{text}</div>;
 }
 
 /** Одноразовый тост: const [toastNode, showToast] = useToast() */
@@ -169,7 +263,40 @@ export function UserAvatar({
 }: { name: string; url?: string | null; size?: number; color?: "blue" | "red"; onClick?: () => void }) {
   const box = { width: size, height: size, cursor: onClick ? ("pointer" as const) : undefined };
   if (url) {
-    return <img className="uavatar" src={url} alt={name || "Аватар"} style={box} onClick={onClick} />;
+    if (onClick) {
+      return (
+        <button
+          type="button"
+          className="uavatar"
+          style={{ ...box, border: "none", padding: 0, background: "none" }}
+          onClick={onClick}
+          aria-label={name || "Открыть профиль"}
+        >
+          <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        </button>
+      );
+    }
+    return <img className="uavatar" src={url} alt={name || "Аватар"} style={box} />;
+  }
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        className="uavatar"
+        style={{
+          ...box,
+          border: "none",
+          padding: 0,
+          background: color === "red" ? "var(--red-tint)" : "var(--blue-tint)",
+          color: color === "red" ? "var(--red)" : "var(--blue)",
+          fontSize: Math.round(size / 2.7),
+        }}
+        onClick={onClick}
+        aria-label={name || "Открыть профиль"}
+      >
+        {initials(name.trim() || "Я")}
+      </button>
+    );
   }
   return (
     <span

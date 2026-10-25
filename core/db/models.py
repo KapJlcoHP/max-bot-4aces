@@ -7,7 +7,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    """Текущее время UTC без tzinfo для DateTime без timezone в SQLite/SQL."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):
@@ -23,13 +24,24 @@ class User(Base):
     last_name: Mapped[str] = mapped_column(String(120), default="")
     email: Mapped[str] = mapped_column(String(200), default="")  # демо-поле профиля
     notifications_on: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_day_before: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_hour_before: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_at_deadline: Mapped[bool] = mapped_column(Boolean, default=True)
+    step_day_before_time: Mapped[str] = mapped_column(String(5), default="09:00")
     consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 152-ФЗ: дата согласия
+    contains_demo_data: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     avatar_url: Mapped[str] = mapped_column(String(500), default="")  # фото из MAX, если платформа его отдала
     tz: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")  # IANA-зона с телефона — «настенные» времена пушей
     region: Mapped[str] = mapped_column(String(100), default="")  # регион из content/regions.json
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)  # город из content/cities.json; tz не показывается пользователю
+    attached_clinic_id: Mapped[int | None] = mapped_column(
+        ForeignKey("organizations.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     routes: Mapped[list["Route"]] = relationship(back_populates="user")
+    attached_clinic: Mapped["Organization | None"] = relationship(foreign_keys=[attached_clinic_id])
+    assignment_receipts: Mapped[list["RouteAssignmentReceipt"]] = relationship(cascade="all, delete-orphan")
 
 
 class Route(Base):
@@ -57,14 +69,25 @@ class RouteStep(Base):
     position: Mapped[int] = mapped_column(Integer)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(String(1000), default="")
+    kind: Mapped[str] = mapped_column(String(20), default="unknown", server_default="unknown")
+    template_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    booking_target_step_id: Mapped[int | None] = mapped_column(
+        ForeignKey("route_steps.id", ondelete="SET NULL"), nullable=True,
+    )
+    appointment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     place: Mapped[str] = mapped_column(String(200), default="")
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
     deadline_time: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    reminder_mode: Mapped[str] = mapped_column(String(16), default="profile", server_default="profile")
+    reminder_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reminder_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | current | done
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     has_checklist: Mapped[bool] = mapped_column(Boolean, default=False)
     source: Mapped[str] = mapped_column(String(16), default="template")  # template | user | doctor
+    source_id: Mapped[str | None] = mapped_column(String(80), nullable=True)  # content/sources.json
 
     route: Mapped[Route] = relationship(back_populates="steps")
 
@@ -77,6 +100,20 @@ class ChecklistItem(Base):
     title: Mapped[str] = mapped_column(String(200))
     collected: Mapped[bool] = mapped_column(Boolean, default=False)
     position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class RouteAssignmentReceipt(Base):
+    """Durable result, deliberately independent of route/step lifetime."""
+
+    __tablename__ = "route_assignment_receipts"
+    __table_args__ = (UniqueConstraint("user_id", "request_id", name="uq_route_assignment_request"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    request_id: Mapped[str] = mapped_column(String(36))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    response: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Organization(Base):
@@ -132,7 +169,7 @@ class HealthRecord(Base):
     meal_tag: Mapped[str | None] = mapped_column(String(20), nullable=True)  # до еды | после еды
     # mood
     mood: Mapped[str | None] = mapped_column(String(20), nullable=True)  # Хорошо | Нормально | Плохо
-    pain: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1..10
+    pain: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0..10; null = не указано
     # общий контекст
     tag: Mapped[str | None] = mapped_column(String(20), nullable=True)  # утром | вечером | ...
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -183,7 +220,9 @@ class NotificationLog(Base):
     """Журнал пушей бота: один и тот же напоминатель не отправляем дважды (lead: day | hour | now)."""
 
     __tablename__ = "notification_log"
-    __table_args__ = (UniqueConstraint("kind", "ref_id", "lead", name="uq_notification_kind_ref_lead"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "kind", "ref_id", "lead", name="uq_notification_user_kind_ref_lead"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -194,7 +233,7 @@ class NotificationLog(Base):
 
 
 class ExportRequest(Base):
-    """Заявка мини-апа «прислать PDF-сводку в чат бота»: API кладёт, ��от-вотчер отправляет.
+    """Заявка мини-апа «прислать PDF-сводку в чат бота»: API кладёт, бот-вотчер отправляет.
 
     Обходной путь для телефонов — вебвью MAX блокирует скачивание файлов.
     """
@@ -206,7 +245,9 @@ class ExportRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
-
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | processing | retry | failed | sent
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 class BpRecord(Base):
     """Устаревшая таблица АД — оставлена для разовой миграции в HealthRecord."""
@@ -231,3 +272,24 @@ class FamilyMember(Base):
     name: Mapped[str] = mapped_column(String(120))
     role: Mapped[str] = mapped_column(String(60))
     color: Mapped[str] = mapped_column(String(16), default="blue")  # pink | yellow | blue
+
+
+class FamilyAccess(Base):
+    """Одноразовое приглашение и активный read-only доступ помощника."""
+
+    __tablename__ = "family_accesses"
+    __table_args__ = (
+        UniqueConstraint("invite_hash", name="uq_family_access_invite_hash"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    viewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    label: Mapped[str] = mapped_column(String(120), default="Помощник")
+    invite_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | active | revoked | expired
+    scopes: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

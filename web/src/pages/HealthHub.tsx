@@ -1,11 +1,11 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ReactElement } from "react";
 import { CellHeader, CellList, CellSimple } from "@maxhub/max-ui";
 import { api } from "../api";
 import { fmtWhen } from "../format";
 import type { HealthRecord, HealthSetting, HealthType, MedsOut } from "../types";
-import { Button, ErrorView, Header, InlineError, LoadingView, Sheet, Switch, useToast } from "../components/ui";
+import { Button, ErrorView, Header, LoadingView, Sheet, Switch, useToast } from "../components/ui";
 import { I } from "../icons";
 
 const DIARY_META: Record<HealthType, { title: string; hint: string; icon: (p: { size?: number }) => ReactElement; cls: string }> = {
@@ -20,7 +20,12 @@ function lastValueSummary(type: HealthType, r: HealthRecord | undefined): string
   if (type === "bp") return `${r.systolic}/${r.diastolic} · ${fmtWhen(r.at)}`;
   if (type === "weight") return `${String(r.weight_kg).replace(".", ",")} кг · ${fmtWhen(r.at)}`;
   if (type === "sugar") return `${String(r.sugar_mmol).replace(".", ",")} ммоль/л · ${r.meal_tag ?? fmtWhen(r.at)}`;
-  return `${r.mood}${r.pain ? ` · боль ${r.pain}/10` : ""} · ${fmtWhen(r.at)}`;
+  const painText = (r.pain === null || r.pain === undefined)
+    ? " · боль не указана"
+    : r.pain === 0
+      ? " · без боли"
+      : ` · боль ${r.pain}/10`;
+  return `${r.mood}${painText} · ${fmtWhen(r.at)}`;
 }
 
 export default function HealthHub() {
@@ -30,21 +35,13 @@ export default function HealthHub() {
   const [lasts, setLasts] = useState<Partial<Record<HealthType, HealthRecord>>>({});
   const [meds, setMeds] = useState<MedsOut | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [settingsError, setSettingsError] = useState(false);
-  const [recordErrors, setRecordErrors] = useState<Partial<Record<HealthType, boolean>>>({});
-  const [medsError, setMedsError] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [retrying, setRetrying] = useState<Partial<Record<HealthType | "meds", boolean>>>({});
-  const loadId = useRef(0);
   const [sheet, setSheet] = useState(false);
   const [draft, setDraft] = useState<Record<HealthType, boolean>>({ bp: true, weight: true, sugar: false, mood: true });
   // время пуша: всегда валидное, пока дневник включён — иначе сохранился бы null при «не трогал поле»
   const [draftTimes, setDraftTimes] = useState<Record<HealthType, string>>({ bp: "09:00", weight: "09:00", sugar: "09:00", mood: "09:00" });
 
   const load = useCallback(() => {
-    const requestId = ++loadId.current;
-    setRefreshing(true);
-    setStatus((previous) => previous === "ready" ? "ready" : "loading");
+    setStatus("loading");
     Promise.allSettled([
       api.get<{ diaries: HealthSetting[] }>("/api/v1/health/settings"),
       api.get<HealthRecord[]>("/api/v1/health/bp/records?limit=1"),
@@ -54,66 +51,38 @@ export default function HealthHub() {
       api.get<MedsOut>("/api/v1/meds"),
     ])
       .then(([s, bp, w, sg, m, md]) => {
-        if (requestId !== loadId.current) return;
-        if (s.status === "fulfilled") {
-          setSettings(s.value.diaries);
-          setDraft(Object.fromEntries(s.value.diaries.map((d) => [d.diary, d.enabled])) as Record<HealthType, boolean>);
-          setDraftTimes(
-            Object.fromEntries(
-              s.value.diaries.map((d) => [d.diary, d.push_time || "09:00"]),
-            ) as Record<HealthType, string>,
-          );
+        // Settings and the accompanying summaries form one screen model. If
+        // any request failed, do not turn missing data into disabled diaries
+        // (or empty records); show the common retry state instead.
+        if (
+          s.status !== "fulfilled" || bp.status !== "fulfilled" || w.status !== "fulfilled" ||
+          sg.status !== "fulfilled" || m.status !== "fulfilled" || md.status !== "fulfilled"
+        ) {
+          setSettings([]);
+          setLasts({});
+          setMeds(null);
+          setStatus("error");
+          return;
         }
-        setLasts((previous) => ({
-          ...previous,
-          ...(bp.status === "fulfilled" ? { bp: bp.value[0] } : {}),
-          ...(w.status === "fulfilled" ? { weight: w.value[0] } : {}),
-          ...(sg.status === "fulfilled" ? { sugar: sg.value[0] } : {}),
-          ...(m.status === "fulfilled" ? { mood: m.value[0] } : {}),
-        }));
-        if (md.status === "fulfilled") setMeds(md.value);
-        setSettingsError(s.status === "rejected");
-        setRecordErrors({
-          bp: bp.status === "rejected",
-          weight: w.status === "rejected",
-          sugar: sg.status === "rejected",
-          mood: m.status === "rejected",
+        setSettings(s.value.diaries);
+        setDraft(Object.fromEntries(s.value.diaries.map((d) => [d.diary, d.enabled])) as Record<HealthType, boolean>);
+        setDraftTimes(
+          Object.fromEntries(
+            s.value.diaries.map((d) => [d.diary, d.push_time || "09:00"]),
+          ) as Record<HealthType, string>,
+        );
+        setLasts({
+          bp: bp.value.length ? bp.value[0] : undefined,
+          weight: w.value.length ? w.value[0] : undefined,
+          sugar: sg.value.length ? sg.value[0] : undefined,
+          mood: m.value.length ? m.value[0] : undefined,
         });
-        setMedsError(md.status === "rejected");
-        setStatus((previous) => s.status === "fulfilled" || previous === "ready" ? "ready" : "error");
-        setRefreshing(false);
+        setMeds(md.value);
+        setStatus("ready");
       });
   }, []);
 
-  useEffect(() => {
-    load();
-    return () => { loadId.current += 1; };
-  }, [load]);
-
-  const retryRecord = async (type: HealthType) => {
-    setRetrying((previous) => ({ ...previous, [type]: true }));
-    try {
-      const records = await api.get<HealthRecord[]>(`/api/v1/health/${type}/records?limit=1`);
-      setLasts((previous) => ({ ...previous, [type]: records[0] }));
-      setRecordErrors((previous) => ({ ...previous, [type]: false }));
-    } catch {
-      setRecordErrors((previous) => ({ ...previous, [type]: true }));
-    } finally {
-      setRetrying((previous) => ({ ...previous, [type]: false }));
-    }
-  };
-
-  const retryMeds = async () => {
-    setRetrying((previous) => ({ ...previous, meds: true }));
-    try {
-      setMeds(await api.get<MedsOut>("/api/v1/meds"));
-      setMedsError(false);
-    } catch {
-      setMedsError(true);
-    } finally {
-      setRetrying((previous) => ({ ...previous, meds: false }));
-    }
-  };
+  useEffect(load, []);
 
   const saveSettings = async () => {
     try {
@@ -149,15 +118,12 @@ export default function HealthHub() {
       <Header title="Здоровье" subtitle="Дневники самонаблюдения" back="/" />
       <div className="screen-body">
         {status === "loading" && <LoadingView />}
-        {status === "ready" && settingsError && (
-          <InlineError message="Не удалось обновить настройки дневников. Показаны последние данные." onRetry={load} retrying={refreshing} />
-        )}
         {status === "ready" && (
           <div className="split">
             <div className="col">
               <CellHeader
                 titleStyle="normal"
-                after={<button className="cell-h-btn" onClick={() => setSheet(true)}>Настроить</button>}
+                after={<button type="button" className="cell-h-btn" onClick={() => setSheet(true)}>Настроить</button>}
               >
                 Мои дневники
               </CellHeader>
@@ -165,21 +131,20 @@ export default function HealthHub() {
                 const meta = DIARY_META[t];
                 const Icon = meta.icon;
                 return (
-                  <Fragment key={t}>
-                    <CellList mode="island">
-                      <CellSimple
-                        className="press"
-                        before={<div className={`ic ${meta.cls}`}><Icon size={18} /></div>}
-                        title={meta.title}
-                        after={<span className="cell-note">{recordErrors[t] && !lasts[t] ? "данные недоступны" : lastValueSummary(t, lasts[t])}</span>}
-                        showChevron
-                        onClick={() => nav(`/health/${t}`)}
-                      />
-                    </CellList>
-                    {recordErrors[t] && (
-                      <InlineError message={`Не удалось загрузить дневник «${meta.title}».`} onRetry={() => retryRecord(t)} retrying={retrying[t]} />
-                    )}
-                  </Fragment>
+                  <CellList mode="island" key={t}>
+                    <CellSimple
+                      className="press"
+                      before={<div className={`ic ${meta.cls}`}><Icon size={18} /></div>}
+                      title={meta.title}
+                      after={<span className="cell-note">{lastValueSummary(t, lasts[t])}</span>}
+                      showChevron
+                      onClick={() => nav(`/health/${t}`)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav(`/health/${t}`); }
+                      }}
+                    />
+                  </CellList>
                 );
               })}
               {!anyEnabled && (
@@ -188,7 +153,7 @@ export default function HealthHub() {
                   <div className="muted">Нажмите «Настроить» — включите то, что нужно именно вам.</div>
                 </div>
               )}
-              <button className="add-dash" onClick={() => setSheet(true)}>
+              <button type="button" className="add-dash" onClick={() => setSheet(true)}>
                 <I.plus size={18} /> Добавить дневник
               </button>
             </div>
@@ -200,16 +165,31 @@ export default function HealthHub() {
                   before={<div className="ic"><I.pill size={18} /></div>}
                   title="Приём лекарств"
                   after={<span className="cell-note">
-                    {medsError && !meds ? "данные недоступны" : nextMed ? `${meds!.courses.length} ${meds!.courses.length === 1 ? "курс" : meds!.courses.length < 5 ? "курса" : "курсов"} · в ${nextMed.at_time}` : "добавить курс"}
+                    {nextMed ? `${meds!.courses.length} ${meds!.courses.length === 1 ? "курс" : meds!.courses.length < 5 ? "курса" : "курсов"} · в ${nextMed.at_time}` : "добавить курс"}
                   </span>}
-                  showChevron
-                  onClick={() => nav("/meds")}
+                   showChevron
+                   onClick={() => nav("/meds")}
+                   onKeyDown={(e) => {
+                     if (e.target !== e.currentTarget) return;
+                     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav("/meds"); }
+                   }}
                 />
               </CellList>
-              {medsError && <InlineError message="Не удалось загрузить лекарства." onRetry={retryMeds} retrying={retrying.meds} />}
 
               <CellHeader titleStyle="normal">Отчёты</CellHeader>
-              <div className="card tinted press" onClick={() => nav("/health/report")}>
+              <div
+                className="card tinted press"
+                role="button"
+                tabIndex={0}
+                aria-label="Открыть сводку для врача"
+                onClick={() => nav("/health/report")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    nav("/health/report");
+                  }
+                }}
+              >
                 <b style={{ color: "var(--blue)" }}>Сводка для врача</b>
                 <div className="muted" style={{ marginTop: 5 }}>
                   Давление, вес, приёмы лекарств за 30 дней — покажите на приёме вместо слов.

@@ -6,6 +6,7 @@
 
 import logging
 import re
+from datetime import datetime
 
 from maxapi import F, Router
 from maxapi.filters.command import Command
@@ -20,8 +21,10 @@ from bot.keyboards import (
     sugar_meal_keyboard,
 )
 from core.db.models import HealthSetting, MedCourse, RouteStep, User
-from core.db.demo import fill_demo, has_any_data, wipe_data
+from core.db.demo import fill_demo, has_any_data, is_demo_data, wipe_data
 from core.db.session import SessionLocal
+from core.db.seed import project_step_clinic
+from core.diary_settings import diary_settings
 from core.services import (
     ServiceError,
     active_route,
@@ -29,9 +32,12 @@ from core.services import (
     complete_reminder,
     complete_route_step,
     take_med,
+    user_today,
 )
+from core.time import normalize_clock_time
 from bot.exporter import send_health_pdf
 from bot.throttle import throttled
+from bot.step_text import booking_information, completion_label, deadline_label
 
 log = logging.getLogger("bot.actions")
 
@@ -103,14 +109,20 @@ async def status_command(event: MessageCreated):
             )
             return
         parts = [f"📍 Текущий шаг: **{step.title}**"]
-        if step.place:
-            parts.append(f"Где: {step.place}")
+        place = project_step_clinic(step).get("place", step.place)
+        if place:
+            parts.append(f"Где: {place}")
         when = " · ".join(
             filter(None, [step.deadline.strftime("%d.%m") if step.deadline else "", step.deadline_time or ""])
         )
         if when:
-            parts.append(f"Срок: {when}")
-        kb = push_keyboard(username, [("✅ Выполнить шаг", f"sdone_{step.id}")], app_payload=f"step_{step.id}")
+            parts.append(f"{deadline_label(step)}: {when}")
+        if step.kind == "booking":
+            parts.append(booking_information(step))
+            parts.append("Полученную дату внесите в карточке записи до завершения. Кнопка в чате только подтверждает запись и не меняет дату/выполнение будущего события.")
+        elif step.kind == "visit":
+            parts.append("В чате визит завершается без ввода назначений. Внести их можно в карточке визита, в том числе после завершения.")
+        kb = push_keyboard(username, [(completion_label(step), f"sdone_{step.id}")], app_payload=f"step_{step.id}")
         await event.message.answer("\n".join(parts), attachments=[kb.as_markup()])
 
 
@@ -123,11 +135,7 @@ async def diary_command(event: MessageCreated):
         if user is None or user.consent_at is None:
             await event.message.answer("Сначала откройте «МедМаршрут» — настройка дневников там.")
             return
-        enabled = (
-            db.query(HealthSetting)
-            .filter(HealthSetting.user_id == user.id, HealthSetting.enabled.is_(True))
-            .all()
-        )
+        enabled = [s for s in diary_settings(db, user.id).values() if s.enabled]
     diaries = [(s.diary, DIARY_TITLES[s.diary]) for s in enabled if s.diary in DIARY_TITLES]
     if not diaries:
         await event.message.answer("Дневники пока не выбраны — настройте их в приложении, раздел «Здоровье».")
@@ -151,16 +159,22 @@ async def demo_command(event: MessageCreated):
         if user is None or user.consent_at is None:
             await event.message.answer("Сначала откройте «МедМаршрут» и пройдите вход — потом возвращайтесь за демо-данными.")
             return
-        if has_any_data(db, user.id):
+        if has_any_data(db, user.id) and not is_demo_data(db, user.id):
             await event.message.answer("В аккаунте уже есть данные — чтобы заменить их на демо, сначала отправьте /wipe.")
             return
-        fill_demo(db, user)
+        try:
+            fill_demo(db, user)
+        except Exception:
+            log.exception("Не удалось заполнить демо для пользователя %s", user.max_user_id)
+            await event.message.answer("Не удалось загрузить демо-данные — попробуйте ещё раз.")
+            return
     await event.message.answer(
         "🎲 Аккаунт заполнен **модельными данными** для демонстрации:\n\n"
-        "• маршрут «Наблюдаться по хроническому» — первые шаги выполнены\n"
+        "• синтетическая история: прошедший приём, внесённые назначения и будущий контроль\n"
         "• дневники за 30 дней: давление и пульс, вес, сахар, самочувствие\n"
         "• курсы лекарств с отметками приёма\n"
-        "• два будущих визита — придут напоминания\n\n"
+        "• два отдельных независимых напоминания, не шаги маршрута\n"
+        "• уведомления маршрута — только о текущем шаге при включённых настройках\n\n"
         "Откройте приложение и смотрите: маршрут, графики, «Сводка для врача» — /svodka.\n"
         "Убрать демо-данные: /wipe."
     )
@@ -249,7 +263,16 @@ async def cb_step_done(event: MessageCallback):
         except ServiceError as e:
             await event.answer(notification=str(e))
             return
-    await event.answer(new_text=f"✅ Шаг выполнен: {step.title}", attachments=[])
+    text = f"✅ Шаг выполнен: {step.title}"
+    payload = f"step_{step.id}"
+    if step.kind == "visit":
+        text += "\nВизит завершён без внесения назначений. Их можно записать в карточке выполненного врачебного визита."
+    elif step.kind == "booking":
+        text += "\nПодтверждена только запись. Дата и выполнение будущего события не изменены. Неизвестную дату можно задать в карточке самого события."
+        payload = f"step_{step.booking_target_step_id}" if step.booking_target_step_id else "route"
+    username = _username(event)
+    attachments = [open_app_keyboard(username, payload=payload).as_markup()] if username and step.kind in {"visit", "booking"} else []
+    await event.answer(new_text=text, attachments=attachments)
 
 
 @router.message_callback(F.callback.payload.startswith("rdone_"))
@@ -272,19 +295,43 @@ async def cb_reminder_done(event: MessageCallback):
 @router.message_callback(F.callback.payload.startswith("mtake_"))
 @throttled
 async def cb_med_taken(event: MessageCallback):
-    _, course_id_raw, hhmm = event.callback.payload.split("_")
-    at_time = f"{hhmm[:2]}:{hhmm[2:]}"
+    # Medication callbacks are tied to the local day on which the push was
+    # generated.  Do not accept the legacy three-part payload: it has no day
+    # and would make take_med() silently record an old button as today.
+    parts = event.callback.payload.split("_")
+    if len(parts) != 4:
+        await event.answer(notification="Кнопка приёма устарела — откройте лекарства заново")
+        return
+    _, course_id_raw, day_raw, hhmm = parts
+    try:
+        course_id = int(course_id_raw)
+        day = datetime.strptime(day_raw, "%Y%m%d").date()
+        at_time = normalize_clock_time(f"{hhmm[:2]}:{hhmm[2:]}")
+        if at_time is None or len(hhmm) != 4:
+            raise ValueError
+    except (TypeError, ValueError):
+        await event.answer(notification="Кнопка приёма устарела — откройте лекарства заново")
+        return
     with SessionLocal() as db:
         user = _user(db, event.callback.user.user_id)
         if user is None or user.consent_at is None:
             await event.answer(notification="Сначала откройте приложение")
             return
+        course = db.query(MedCourse).filter(
+            MedCourse.id == course_id,
+            MedCourse.user_id == user.id,
+        ).first()
+        if course is None:
+            await event.answer(notification="Курс лекарства не найден")
+            return
+        if not course.enabled or (course.until is not None and course.until < user_today(user)):
+            await event.answer(notification="Курс лекарства уже отключён или завершён")
+            return
         try:
-            take_med(db, user.id, int(course_id_raw), at_time)
+            take_med(db, user.id, course_id, at_time, day=day)
         except ServiceError as e:
             await event.answer(notification=str(e))
             return
-        course = db.query(MedCourse).filter(MedCourse.id == int(course_id_raw)).first()
     await event.answer(new_text=f"✅ Принято: {course.name if course else 'лекарство'}, {at_time}", attachments=[])
 
 
@@ -318,7 +365,7 @@ async def cb_mood_pick(event: MessageCallback):
         return
     dialog["mood"] = MOOD_PAYLOADS[event.callback.payload]
     await event.answer(
-        new_text="Оцените боль по шкале от 1 до 10 — или напишите «нет», если боли нет.",
+        new_text="Оцените боль по шкале от 0 до 10 — или напишите «нет», если боли нет.",
         attachments=[],
     )
 
@@ -387,11 +434,19 @@ async def diary_text_input(event: MessageCreated):
                     await event.message.answer("Сначала выберите самочувствие кнопкой выше.")
                     return
                 pain = None
-                if not re.search(r"нет|без боли", body_text, re.IGNORECASE):
+                if re.search(r"нет|без боли", body_text, re.IGNORECASE):
+                    # Explicitly saying there is no pain is a measured zero,
+                    # not the same thing as leaving pain unanswered.
+                    pain = 0
+                else:
                     ints = [int(n) for n in _nums(body_text)]
                     pain = ints[0] if ints else None
                 row = add_health_record(db, user.id, "mood", mood=mood, pain=pain)
-                saved = f"самочувствие — {row.mood}" + (f", боль {row.pain}/10" if row.pain else "")
+                saved = f"самочувствие — {row.mood}"
+                if row.pain == 0:
+                    saved += ", без боли"
+                elif row.pain is not None:
+                    saved += f", боль {row.pain}/10"
             else:
                 _DIALOGS.pop(max_user_id, None)
                 return
@@ -400,5 +455,5 @@ async def diary_text_input(event: MessageCreated):
             return
     _DIALOGS.pop(max_user_id, None)
     username = _username(event)
-    kb = open_app_keyboard(username, app_payload="health") if username else None
+    kb = open_app_keyboard(username, payload="health") if username else None
     await event.message.answer(f"✅ Записал: {saved}. 💙", attachments=[kb.as_markup()] if kb else None)

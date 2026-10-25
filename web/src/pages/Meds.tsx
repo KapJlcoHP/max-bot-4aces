@@ -134,8 +134,11 @@ export default function Meds() {
                         </small>
                       </div>
                       <button
+                        type="button"
                         className={`pick${s.taken ? " on" : ""}`}
                         style={{ height: 32, padding: "0 12px" }}
+                        aria-label={`${s.taken ? "Отменить приём" : "Отметить приём"}: ${s.name}, ${s.at_time}`}
+                        aria-pressed={s.taken}
                         onClick={() => toggleIntake(s.course_id, s.at_time)}
                       >
                         {s.taken ? "✓" : "Принять"}
@@ -160,13 +163,17 @@ export default function Meds() {
                         {c.times.length === 1 ? "1 р/день" : `${c.times.length} р/день`}
                         {c.until ? ` · до ${fmtDayMonth(c.until)}` : ""}
                       </small>
-                      <button className="link-red" onClick={() => disable(c.id)}>завершить</button>
+                      {c.enabled ? (
+                        <button type="button" className="link-red" onClick={() => disable(c.id)}>завершить</button>
+                      ) : (
+                        <small className="muted">завершён</small>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
 
-              <button className="card press" style={{ width: "100%", textAlign: "left" }} onClick={() => setSheet(true)}>
+              <button type="button" className="card press" style={{ width: "100%", textAlign: "left" }} onClick={() => setSheet(true)}>
                 <div className="kv" style={{ alignItems: "center", color: "var(--blue)", fontWeight: 800 }}>
                   <I.plus size={20} />
                   Добавить лекарство или витамины
@@ -197,7 +204,7 @@ export default function Meds() {
             {times.map((t) => (
               <span className="chip-time" key={t}>
                 {t}
-                <button onClick={() => removeTimeChip(t)} aria-label={`Убр��ть ${t}`}>✕</button>
+                <button type="button" onClick={() => removeTimeChip(t)} aria-label={`Убрать время приёма ${t}`}>✕</button>
               </span>
             ))}
           </div>
@@ -210,7 +217,7 @@ export default function Meds() {
             onChange={(e) => setTime(e.target.value)}
             aria-label="Время приёма"
           />
-          <button className="add" onClick={addTimeChip} disabled={!time} aria-label="Добавить время приёма">+</button>
+          <button type="button" className="add" onClick={addTimeChip} disabled={!time} aria-label="Добавить время приёма">+</button>
           <input
             className="date"
             type="date"

@@ -17,8 +17,10 @@ import HealthDiary from "./pages/HealthDiary";
 import Report from "./pages/Report";
 import Meds from "./pages/Meds";
 import Family from "./pages/Family";
+import FamilyView from "./pages/FamilyView";
 import Profile from "./pages/Profile";
 import About from "./pages/About";
+import Faq from "./pages/Faq";
 import Onboarding from "./pages/Onboarding";
 
 createRoot(document.getElementById("root")!).render(
@@ -39,8 +41,10 @@ createRoot(document.getElementById("root")!).render(
             <Route path="health/:type" element={<HealthDiary />} />
             <Route path="meds" element={<Meds />} />
             <Route path="family" element={<Family />} />
+            <Route path="family/view/:accessId" element={<FamilyView />} />
             <Route path="profile" element={<Profile />} />
             <Route path="about" element={<About />} />
+            <Route path="faq" element={<Faq />} />
             <Route path="onboarding" element={<Onboarding />} />
             <Route path="catalog" element={<Navigate to="/builder" replace />} />
             <Route path="*" element={<Home />} />

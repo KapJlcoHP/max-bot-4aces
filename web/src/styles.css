@@ -19,6 +19,7 @@
   --border: #E6EAF0;
   --r: 16px;
   --r-sm: 12px;
+  --desktop-tabbar-gap: 92px;
   --shadow: 0 6px 20px rgba(15, 42, 90, 0.08);
   --shadow-btn: 0 8px 18px rgba(31, 107, 242, 0.28);
 }
@@ -29,6 +30,7 @@ button, input, textarea { font-family: inherit; }
 a { color: var(--blue); text-decoration: none; }
 
 body {
+  overflow-x: hidden;
   font-family: "Figtree", "Noto Sans", "Inter", "Segoe UI", sans-serif;
   background: var(--bg);
   color: var(--text);
@@ -111,8 +113,27 @@ body {
 .muted { color: var(--muted); font-size: 13.5px; }
 .press { cursor: pointer; transition: transform 0.12s; }
 .press:active { transform: scale(0.985); }
+.press[role="button"]:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
 
 /* статус-карточка маршрута */
+.home-focus {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: linear-gradient(135deg, #fff, var(--blue-tint));
+  border: 1px solid #c8ddff;
+}
+.home-focus-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.home-focus-label { color: var(--blue-dark); font-size: 13px; font-weight: 800; }
+.home-focus h2 { font-size: clamp(23px, 4.5vw, 30px); line-height: 1.2; overflow-wrap: anywhere; }
+.home-focus-deadline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; font-size: 15px; }
+.home-focus-deadline strong { color: var(--blue-dark); }
+.home-focus .btn { align-self: flex-start; width: auto; padding-inline: 22px; max-width: 100%; }
+.home-focus.is-overdue { border-color: #f0c6c8; }
+.home-focus.is-overdue .home-focus-deadline strong { color: var(--red); }
+.home-route-summary .big-nums .n { font-size: 28px; }
+
 .route-status .label { display: flex; justify-content: space-between; align-items: baseline; }
 .route-status .label span { color: var(--muted); font-size: 13px; font-weight: 500; }
 .route-status .label b { color: var(--blue); font-size: 15px; font-weight: 800; }
@@ -149,6 +170,16 @@ body {
   border: 1px solid var(--border); border-radius: 8px; background: var(--card);
   padding: 4px 8px; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--text);
 }
+.step-deadline-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.step-deadline-meta:empty { display: none; }
+.secondary-action { border: 1.5px solid var(--border); background: #fff; color: var(--text); }
+.step-countdown {
+  display: inline-flex; align-items: center; max-width: 100%; margin-top: 8px; padding: 5px 10px;
+  border: 1.5px solid var(--border); border-radius: 12px; background: #fff; color: var(--text);
+  font-size: 12.5px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere;
+}
+.step-countdown.is-overdue { border-color: #efc5c7; background: #fff; color: #a31920; }
+.step-countdown.no-deadline { background: #fff; color: #526071; }
 
 .tz-select {
   width: 100%; margin-top: 8px; border: 1px solid var(--border); border-radius: 10px;
@@ -171,9 +202,33 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   background: none; border: none; color: var(--blue);
   font-weight: 700; font-size: 13.5px; cursor: pointer; font-family: inherit;
 }
+.reminder-form { display: grid; gap: 12px; min-width: 0; width: 100%; max-width: 100%; }
+.reminder-form > .h3 { margin-bottom: 2px; }
+.reminder-form .reminder-date-field { display: grid; gap: 6px; min-width: 0; width: 100%; max-width: 100%; font-size: 13px; font-weight: 600; }
+.reminder-form .date-field {
+  display: block; width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; max-inline-size: 100%;
+  box-sizing: border-box; height: 46px; padding: 0 12px; border: 1.5px solid var(--border);
+  border-radius: 12px; background: #fff; color: var(--text); font: inherit; font-size: 16px;
+}
+.reminder-form .date-field:focus { border-color: var(--blue); outline: none; }
+.reminder-form-actions { margin-top: 4px; gap: 10px; }
+@supports (-webkit-touch-callout: none) {
+  .reminder-form .date-field[type="datetime-local"] {
+    -webkit-appearance: none; appearance: none; width: 100%; min-width: 0; min-inline-size: 0; max-width: 100%; max-inline-size: 100%;
+  }
+}
 
 /* переключатель — сам Switch берётся из @maxhub/max-ui */
 .switch-wrap { flex: 0 0 auto; display: inline-flex; align-items: center; }
+.switch-control {
+  position: relative; width: 67px; height: 47px; display: inline-flex;
+  align-items: center; justify-content: center;
+}
+.switch-control > span { pointer-events: none; }
+.switch-hitbox {
+  position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%;
+  margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer;
+}
 
 /* плитки 2×2 */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -203,6 +258,15 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 .btn.primary:active { background: var(--blue-dark); }
 .btn.primary:disabled { opacity: 0.4; box-shadow: none; cursor: default; }
 .btn.secondary { background: #fff; color: var(--text); border: 1.5px solid var(--border); }
+.btn.danger { background: var(--red); color: #fff; height: auto; min-height: 52px; padding: 12px 16px; }
+.btn.danger svg { flex-shrink: 0; }
+.btn.danger:active { background: #b91c23; }
+.btn.danger:disabled { opacity: 0.4; cursor: default; }
+.btn.danger:focus-visible { outline: 3px solid var(--red); outline-offset: 3px; }
+.danger-zone { background: var(--red-tint); border: 1px solid var(--red); box-shadow: none; }
+.danger-zone h2 { display: flex; align-items: center; gap: 8px; color: #a31920; font-size: 17px; }
+.danger-zone p { margin-top: 12px; font-size: 14px; line-height: 1.5; }
+.danger-zone .btn { margin-top: 16px; }
 .foot { padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); }
 .btn-row { display: flex; gap: 10px; }
 .btn-row .btn { flex: 1; }
@@ -241,6 +305,55 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 .org .addr { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; margin-top: 5px; }
 .org .acts { display: flex; gap: 10px; margin-top: 12px; }
 .org .acts .btn { height: 44px; font-size: 14px; border-radius: 12px; }
+
+/* карта организаций: при недоступном API остаётся компактный понятный фолбэк */
+.organization-map-wrap { grid-column: 1 / -1; position: relative; min-height: 188px; }
+.organization-map { visibility: hidden; width: 100%; height: 260px; overflow: hidden; border-radius: var(--r); background: var(--blue-tint); box-shadow: var(--shadow); }
+.organization-map.is-ready { visibility: visible; }
+.map-fallback {
+  position: absolute; inset: 0; min-height: 188px; padding: 24px 18px; border: 1px dashed var(--border); border-radius: var(--r);
+  background: #fff; color: var(--muted); display: flex; align-items: center; justify-content: center;
+  flex-wrap: wrap; gap: 10px; text-align: center; font-size: 13.5px; box-shadow: var(--shadow);
+}
+.map-fallback-pin { color: var(--blue); font-size: 30px; line-height: 1; }
+.map-retry { padding: 10px 14px; border: 1px solid var(--blue); border-radius: 10px; background: var(--blue-tint); color: var(--blue); font: inherit; cursor: pointer; }
+.map-retry:focus-visible, .organization-marker:focus-visible { outline: 3px solid var(--blue); outline-offset: 4px; }
+.organization-marker {
+  width: 34px; height: 34px; border: 3px solid #fff; border-radius: 50%; background: var(--blue);
+  box-shadow: 0 3px 12px rgba(15, 42, 90, 0.28); cursor: pointer; position: relative;
+}
+.organization-marker::after { content: ""; position: absolute; inset: 8px; border-radius: 50%; background: #fff; }
+.organization-marker.selected { background: var(--red); transform: scale(1.15); }
+.organization-marker.selected::after { background: #fff; }
+/* Прикрепление — информационный бейдж; состояние выбора имеет отдельный focus-style. */
+.selected-clinic { outline: none; }
+
+/* единый экран организаций: выбранная карточка не равна прикреплению */
+.org-screen { display: flex; flex-direction: column; gap: 16px; min-width: 0; overflow-x: hidden; }
+.org-jumps { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.org-jumps .btn { flex: 1 1 140px; min-width: 0; max-width: 100%; }
+.org-cards { display: grid; grid-template-columns: 1fr; gap: 14px; min-width: 0; }
+.org-card { position: relative; min-width: 0; max-width: 100%; scroll-margin-top: 20px; overflow-wrap: anywhere; }
+.org-card-selected { box-shadow: 0 0 0 3px var(--blue-tint), var(--shadow); border-left: 4px solid var(--blue); }
+.org-card-select { display: block; width: 100%; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.org-card-heading { display: flex; align-items: flex-start; gap: 8px; min-width: 0; max-width: 100%; }
+.org-card-heading h3 { min-width: 0; flex: 1 1 150px; padding-right: 36px; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.attached-clinic-badge {
+  position: absolute; top: 12px; right: 12px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: 1px solid var(--border); border-radius: 50%;
+  background: var(--blue-tint); color: var(--blue); pointer-events: none;
+}
+.attached-clinic-badge svg { flex: 0 0 auto; }
+.org-card-select p { margin-top: 8px; overflow-wrap: anywhere; }
+.org-card-hint { display: block; margin-top: 10px; color: var(--blue); font-size: 13px; font-weight: 600; }
+.org-card-select:focus-visible, .org-card:focus-visible, #org-map:focus-visible, #org-list:focus-visible { outline: 3px solid var(--blue); outline-offset: 4px; }
+.org-details { display: flex; flex-direction: column; gap: 12px; min-width: 0; margin: 16px 0; padding-top: 16px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.org-details a { color: var(--blue); overflow-wrap: anywhere; }
+.bullet-list { min-width: 0; margin: 0; padding: 0 0 0 20px; overflow-wrap: anywhere; word-break: break-word; }
+.bullet-list li { min-width: 0; margin-top: 6px; line-height: 1.4; overflow-wrap: anywhere; word-break: break-word; }
+#org-map, #org-list { scroll-margin-top: 20px; }
+@media (min-width: 700px) { .org-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
 
 /* маршрут: таймлайн + документы */
 .tl { display: flex; flex-direction: column; }
@@ -301,6 +414,7 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 /* bottom-sheet */
 .sheet-backdrop {
   position: fixed; inset: 0; background: rgba(10, 16, 28, 0.45); z-index: 20;
+  cursor: pointer;
   opacity: 0; transition: opacity 0.2s;
 }
 .sheet-backdrop.open { opacity: 1; }
@@ -314,6 +428,11 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 .sheet.open { transform: translate(-50%, 0); }
 .sheet .grab { width: 40px; height: 4px; border-radius: 99px; background: var(--border); margin: 0 auto 12px; }
 .sheet h3 { font-size: 17px; font-weight: 800; }
+.sheet:focus-visible, .sheet :focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 .sheet .sub { color: var(--muted); font-size: 13px; margin: 2px 0 12px; }
 .pick-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .pick {
@@ -322,13 +441,63 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   cursor: pointer; color: var(--text);
 }
 .pick.on { background: var(--blue-tint); border-color: var(--blue); color: var(--blue); }
-.own-row { display: flex; gap: 8px; }
-.own-row input {
+.own-row { display: flex; gap: 8px; width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.route-add-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 46px; align-items: start;
+}
+.route-add-row > input { grid-column: 1; grid-row: 1; }
+.route-add-row > .step-date-time-row, .route-add-row > .date-only-field {
+  grid-column: 1 / -1; grid-row: 2;
+}
+.route-add-row > .add { grid-column: 2; grid-row: 1; }
+.own-row input, .step-date-time-row input, .step-schedule-date-row input {
   flex: 1; height: 46px; border: 1.5px solid var(--border); border-radius: 12px;
-  padding: 0 12px; font-family: inherit; font-size: 14px; outline: none; min-width: 0;
+  box-sizing: border-box; min-width: 0; padding: 0 12px; font-family: inherit; font-size: 14px; outline: none;
   background: #fff; color: var(--text);
 }
-.own-row input:focus { border-color: var(--blue); }
+.own-row input:focus, .step-schedule-date-row input:focus { border-color: var(--blue); }
+.step-date-time-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start; gap: 8px; width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; flex: 0 1 100%; order: 2;
+}
+.own-row > .step-date-time-row, .own-row > .date-only-field {
+  flex: 0 1 100%; width: 100%; min-width: 0; max-width: 100%;
+}
+.step-date-time-field { display: grid; min-width: 0; gap: 4px; font-size: 13px; }
+.step-time-field { white-space: normal; line-height: 1.2; font-size: 13px; }
+.step-date-time-row input,
+.step-schedule-date-row input,
+.step-schedule-card input[type="datetime-local"] {
+  display: block; width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; inline-size: 100%;
+  overflow: hidden; font-size: 16px;
+}
+.step-date-time-row input:focus { border-color: var(--blue); }
+.step-schedule-date-row {
+  display: block; width: 100%; min-width: 0; max-width: 100%; overflow: hidden;
+}
+.step-schedule-date-row > label {
+  display: grid; min-width: 0; gap: 4px; font-size: 13px;
+}
+.step-schedule-date-row > label input { min-width: 0; min-inline-size: 0; }
+/* iOS Safari gives native calendar/time controls a min-content width larger
+   than their grid track. Remove that native sizing so the fields can shrink. */
+@supports (-webkit-touch-callout: none) {
+  .step-date-time-row input[type="date"],
+  .step-date-time-row input[type="time"],
+  .step-schedule-date-row input[type="date"],
+  .step-schedule-card input[type="datetime-local"] {
+    -webkit-appearance: none; appearance: none; width: 100%; min-width: 0; min-inline-size: 0;
+  }
+}
+.date-only-field {
+  display: grid; flex: 0 1 100%; gap: 6px; width: 100%; max-width: 100%; min-width: 0;
+  box-sizing: border-box; font-size: 14px;
+}
+.date-only-field input {
+  box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; padding: 10px;
+  border: 1px solid var(--border); border-radius: 10px; font: inherit;
+  background: var(--card); color: inherit;
+}
 .own-row .date { flex: 0 0 110px; }
 .own-row .add {
   flex: 0 0 46px; height: 46px; border-radius: 12px; border: none;
@@ -363,11 +532,60 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
 .ic.g { background: var(--green-tint); color: var(--green); }
 .ic.r { background: var(--red-tint); color: var(--red); }
 .cell-note { color: var(--muted); font-size: 13px; font-weight: 500; text-align: right; }
+
+/* Семейный read-only доступ */
+.family-info-card, .family-readonly-banner { display: flex; align-items: flex-start; gap: 12px; }
+.family-info-icon { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--blue-tint); color: var(--blue); }
+.family-invite-code { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; padding: 12px; border-radius: 12px; background: var(--blue-tint); color: var(--text); font-size: 13px; line-height: 1.4; }
+.family-invite-code strong { color: var(--blue); font-size: 22px; letter-spacing: 2px; text-align: center; }
+.family-access-list { display: grid; gap: 10px; }
+.family-access-card { display: flex; flex-direction: column; gap: 10px; }
+.family-access-top, .family-step-top, .family-status-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.family-observed-card { width: 100%; border: 0; text-align: left; cursor: pointer; font: inherit; }
+.family-readonly-banner { background: var(--blue-tint); box-shadow: none; color: var(--blue); }
+.family-readonly-banner p { margin-top: 4px; color: var(--text); }
+.family-route-summary { display: flex; flex-direction: column; gap: 14px; }
+.family-route-summary h2 { font-size: 19px; margin: 0; }
+.family-progress { height: 8px; border-radius: 99px; background: var(--border); overflow: hidden; }
+.family-progress span { display: block; height: 100%; border-radius: inherit; background: var(--blue); }
+.family-step-list { display: grid; gap: 8px; }
+.family-step-card { display: flex; gap: 12px; padding: 13px; }
+.family-step-marker { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--border); color: var(--muted); font-size: 12px; font-weight: 800; }
+.family-step-done .family-step-marker { background: var(--green-tint); color: var(--green); }
+.family-step-current .family-step-marker { background: var(--blue); color: #fff; }
+.family-step-top { align-items: flex-start; }
+.family-step-top h3 { margin: 0; font-size: 15px; line-height: 1.25; }
+.family-step-card .muted { display: flex; align-items: center; gap: 5px; margin-top: 7px; }
+.family-status-list { display: grid; gap: 13px; }
+.family-status-row { font-size: 14px; }
+.family-status-row > span:last-child { text-align: right; font-size: 13px; }
+.status-ok { color: var(--green); font-weight: 700; }
+.family-updated { color: var(--muted); text-align: center; font-size: 12px; margin: 14px 0; }
 .cell-h-btn {
   background: none; border: none; color: var(--blue);
   font-weight: 700; font-size: 13.5px; cursor: pointer; font-family: inherit; padding: 4px 8px;
 }
 .loading-wrap { display: flex; justify-content: center; align-items: center; padding: 56px 0; color: var(--blue); }
+
+/* FAQ: native details/summary keeps the accordion keyboard and screen-reader accessible. */
+.faq-screen { gap: 16px; }
+.faq-loading-label { text-align: center; margin-top: -42px; }
+.faq-list { display: flex; flex-direction: column; gap: 20px; }
+.faq-list > .muted { margin-bottom: -4px; }
+.faq-category { display: flex; flex-direction: column; gap: 8px; }
+.faq-category h2 { font-size: 16px; font-weight: 800; }
+.faq-questions { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+.faq-item { border-top: 1px solid var(--border); }
+.faq-item:first-child { border-top: none; }
+.faq-item summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  cursor: pointer; list-style: none; padding: 15px 16px; font-size: 14.5px; font-weight: 700;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after { content: "+"; color: var(--blue); font-size: 21px; font-weight: 400; line-height: 1; flex: 0 0 auto; }
+.faq-item[open] summary::after { content: "−"; }
+.faq-item summary:focus-visible { outline: 3px solid var(--blue); outline-offset: -3px; }
+.faq-item p { padding: 0 16px 16px; color: var(--muted); font-size: 14px; line-height: 1.5; }
 
 /* старые самописные строки (ещё используются на внутренних экранах) */
 .list-item {
@@ -401,6 +619,7 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   padding: 0 12px; font-family: inherit; font-size: 14.5px; outline: none; background: #fff; color: var(--text);
 }
 .field:focus { border-color: var(--blue); }
+.field + .btn { margin-top: 8px; }
 .field.tall { height: auto; padding: 10px 12px; min-height: 72px; resize: vertical; }
 
 /* ===== онбординг ===== */
@@ -566,9 +785,14 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   .app.white .foot { max-width: 560px; margin-left: auto; margin-right: auto; width: 100%; }
   .app.narrow .screen-body,
   .app.narrow .foot { max-width: 720px; margin-left: auto; margin-right: auto; width: 100%; }
-  .header { padding: 22px 0 14px; background: transparent; }
-  .screen-body { padding: 8px 0 40px; }
-  .foot { padding: 12px 0 24px; }
+  /* Keep the sticky header opaque while the inner screen-body scrolls. */
+  .header { padding: 22px 0 14px; background: var(--bg); }
+  /* The desktop tab bar is fixed outside the page flow; keep the final
+     screen content scrollable above it on screens without a .foot action row. */
+  .screen-body { padding: 8px 0 calc(40px + var(--desktop-tabbar-gap)); }
+  /* На десктопе TabBar плавающий и находится поверх нижнего края приложения.
+     Резервируем место, чтобы sticky-действия экранов не перекрывались навигацией. */
+  .foot { padding: 12px 0 calc(24px + var(--desktop-tabbar-gap)); }
   .greeting h2 { font-size: 32px; }
   .split { display: grid; grid-template-columns: 1.45fr 1fr; gap: 16px; align-items: start; }
   .split .col > .section-h { margin-top: 2px; }
@@ -632,6 +856,22 @@ input.invalid, textarea.invalid, select.invalid { border-color: var(--red) !impo
   font-weight: 600;
   color: var(--muted);
 }
+.step-source p, .step-source .btn { margin-top: 10px; }
+.step-source > summary, .step-advanced > summary, .booking-advanced > summary, .builder-details > summary {
+  cursor: pointer; color: var(--text); font-size: 14px; font-weight: 700; list-style-position: inside;
+}
+.step-source[open] > summary, .step-advanced[open] > summary, .booking-advanced[open] > summary { margin-bottom: 10px; }
+.step-advanced { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 12px 14px; background: var(--card); }
+.step-advanced > .card { box-shadow: none; padding: 8px 0 0; }
+.booking-advanced { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.booking-advanced p + p { margin-top: 8px; }
+.builder-details { margin-top: 4px; }
+.builder-details > summary { color: var(--blue); font-size: 12px; font-weight: 600; }
+.builder-details > small { display: block; margin-top: 5px; line-height: 1.35; }
+.step-source-title { font-size: 14px; font-weight: 600; }
+.kind-select { display: grid; gap: 6px; margin: 10px 0; font-size: 14px; min-width: 0; width: 100%; }
+.kind-select select, .kind-select input { box-sizing: border-box; max-width: 100%; width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 10px; font: inherit; background: var(--card); color: inherit; }
+
 .chip-dot {
   display: inline-block;
   width: 8px;
