@@ -151,7 +151,7 @@ export default function Home() {
               <div className="col">
                 <div className="section-h">
                   <b>Напоминания</b>
-                  {!empty && <button onClick={() => nav("/reminders")}>Все</button>}
+                  <button onClick={() => nav("/reminders")}>Все</button>
                 </div>
                 {upcoming.length === 0 ? (
                   <div className="card empty-card">

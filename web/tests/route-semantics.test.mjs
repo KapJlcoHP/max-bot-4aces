@@ -83,6 +83,14 @@ test("empty home state does not imply personal reminders require a route", async
   assert.doesNotMatch(page.text(), /появятся после первого шага маршрута/);
 });
 
+test("home reminders link stays available without a route", async () => {
+  const page = reminderHarness("pages/Home.tsx", { user, api: {
+    get: async (path) => path.endsWith("/route") ? null : path.endsWith("/meds") ? { today: [] } : [],
+  } });
+  await page.flush();
+  assert.equal(typeof page.button("Все").props.onClick, "function");
+});
+
 for (const kind of ["unknown", "booking", "investigation", "task", "process"]) {
   test(`${kind} completes normally without assignment sheet; done anchor cannot add assignments`, async () => {
     const value = { ...booking, kind };

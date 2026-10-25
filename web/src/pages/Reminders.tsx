@@ -94,14 +94,17 @@ export default function Reminders() {
           <h3 className="h3">Новое напоминание</h3>
           <Input value={draft.title} className={attempted && !draft.title.trim() ? "invalid" : undefined} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Событие" aria-label="Событие" />
           <Input value={draft.place} onChange={(e) => setDraft({ ...draft, place: e.target.value })} placeholder="Место (необязательно)" aria-label="Место" />
-          <input
-            className={`date-field${attempted && !draft.at ? " invalid" : ""}`}
-            type="datetime-local"
-            value={draft.at}
-            onChange={(e) => setDraft({ ...draft, at: e.target.value })}
-            aria-label="Дата и время"
-          />
-          <div className="btn-row"><Button variant="secondary" onClick={() => setAdding(false)}>Отмена</Button><Button onClick={add} disabled={busy}>Сохранить</Button></div>
+          <label className="reminder-date-field">
+            <span>Дата и время</span>
+            <input
+              className={`date-field${attempted && !draft.at ? " invalid" : ""}`}
+              type="datetime-local"
+              value={draft.at}
+              onChange={(e) => setDraft({ ...draft, at: e.target.value })}
+              aria-label="Дата и время"
+            />
+          </label>
+          <div className="btn-row reminder-form-actions"><Button variant="secondary" onClick={() => setAdding(false)}>Отмена</Button><Button onClick={add} disabled={busy}>Сохранить</Button></div>
         </div>}
         {status === "error" && (
           <div className="state-wrap">
